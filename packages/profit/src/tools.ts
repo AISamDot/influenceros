@@ -174,6 +174,7 @@ const runLeversTool: ToolDef<Record<string, never>> = {
   scope: 'studio',
   callers: ACTORS,
   mutates: true,
+  ownerIntent: /\b(?:pull|run|apply)\b.*\blevers?\b/i,
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   parse(raw) {
     only(obj(raw), []);
@@ -188,6 +189,7 @@ const weeklyCycleTool: ToolDef<Record<string, never>> = {
   scope: 'studio',
   callers: ACTORS,
   mutates: true,
+  ownerIntent: /\b(?:run|start|kick\s+off|trigger)\b.*\b(?:profit|weekly)\s+(?:cycle|engine)\b/i,
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   parse(raw) {
     only(obj(raw), []);
@@ -202,6 +204,7 @@ const reportTool: ToolDef<Record<string, never>> = {
   scope: 'studio',
   callers: ACTORS,
   mutates: true,
+  ownerIntent: /\b(?:post|send|write|publish|share|make|generate)\b.*\breport\b/i,
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   parse(raw) {
     only(obj(raw), []);
@@ -240,6 +243,7 @@ const forecastRunTool: ToolDef<Record<string, never>> = {
   scope: 'studio',
   callers: ACTORS,
   mutates: true,
+  ownerIntent: /\b(?:run|re-?run|refresh|recompute|update|redo)\b.*\bforecasts?\b/i,
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   parse(raw) {
     only(obj(raw), []);

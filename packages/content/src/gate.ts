@@ -61,8 +61,8 @@ interface Pattern {
   /**
    * Cautionary education passes: the match is skipped when a negator governs the claim verb ("Never stop your
    * medication…", "Most supplements don't cure anything", "No tea cures diabetes") or the claim is attributed to
-   * someone being warned about ("Anyone who says returns are guaranteed is lying"). The claim verb is the named
-   * group `v` when the pattern starts with its subject, else the start of the match.
+   * someone and refuted in the same sentence ("Anyone who says returns are guaranteed is lying"). The claim verb is
+   * the named group `v` when the pattern starts with its subject, else the start of the match.
    */
   readonly negatable?: true;
 }
@@ -93,12 +93,25 @@ const ATTRIB_BEFORE = new RegExp(
   'i',
 );
 
-/** True when the claim whose verb starts at `verbIndex` in `sentence` is negated or attributed (see Pattern.negatable). */
+/**
+ * A refutation of an attributed claim: "… are wrong", "… is a myth", "… isn't true", "there's no evidence", "don't
+ * believe it", "… is lying", "… is a scam", "…, run." Not when it is itself negated ("they're never wrong").
+ * Attribution alone is a testimonial, not a warning: "People who tried it say this tea cures diabetes" stays red.
+ */
+const REFUTED = new RegExp(
+  String.raw`(?<!\b(?:never|not|no|hardly|rarely)\s+(?:[\w'’]+\s+)?)(?<!n['’]t\s+(?:[\w'’]+\s+)?)\b(?:wrong|false|untrue|myths?|not true|isn['’]t true|no (?:evidence|proof|science)|don['’]?t believe|do not believe|debunked|lying|lies|liars?|a lie|scams?|scammers?|nonsense|misleading|bogus|beware|red flag|don['’]?t fall for|don['’]?t trust)\b|,\s*run(?:\s+away)?\b[.!]*\s*$`,
+  'i',
+);
+
+/**
+ * True when the claim whose verb starts at `verbIndex` in `sentence` is negated, or attributed to someone else and
+ * refuted in the same sentence (see Pattern.negatable).
+ */
 export function negatedMatch(sentence: string, verbIndex: number): boolean {
   const toVerb = sentence.slice(0, verbIndex);
   if (NEG_BEFORE.test(toVerb)) return true;
   if (!COMPARATIVE_VERB.test(sentence.slice(verbIndex)) && NEG_SUBJECT_BEFORE.test(toVerb)) return true;
-  return ATTRIB_BEFORE.test(toVerb);
+  return ATTRIB_BEFORE.test(toVerb) && REFUTED.test(sentence);
 }
 
 const MONEY_OR_NUMBER = String.raw`(?:over\s+|about\s+|almost\s+|nearly\s+|more than\s+)?[$£€]?\d[\d,.]*\s*(?:k\b|K\b)?`;

@@ -64,7 +64,7 @@ export const studioProposeKillTool = tool({
   scope: 'persona',
   callers: ['studio-manager'],
   mutates: true,
-  ownerIntent: /\b(?:kill|retire|shut (?:\w+ )?down)\b/i,
+  ownerIntent: /\b(?:kill(?!\s+switch)|retire|shut\s+(?:[\w'’]+\s+){0,3}down)\b/i,
   input: {
     persona_id: PERSONA_ID,
     action: { type: 'string', enum: ['kill', 'retire'] },
@@ -122,6 +122,17 @@ export const studioPausePostingTool = tool({
   },
 });
 
+/**
+ * "Ask Vivian to …", "Tell Vivian's manager to …", "Delegate the hooks to Vivian", "Check with Vivian about …".
+ * Never "Tell me …", "I have nothing to add", "What do you have on Vivian?".
+ */
+const DELEGATE_INTENT = new RegExp(
+  String.raw`(?:\bask|\btell|(?<!\b(?:i|we|you|they|he|she|it|who|would|will|could|should|might|must|may|to)\s+)(?<!['’](?:ll|d|ve)\s+)\bhave)\s+` +
+    String.raw`(?!(?:me|us|you|it|them|him|her|a|an|what|how|why|when|where|who|if|whether|about|nothing|something|anything|everything|no|some|any|got|been|had|time|enough|more|less)\b)` +
+    String.raw`@?[\w'’]+(?:\s+(?!to\b)[\w'’]+){0,3}\s+to\b|\b(?:delegate|hand\s+(?:off|over))\b.*\bto\b|\bcheck\s+with\s+(?!(?:me|us)\b)@?\w`,
+  'i',
+);
+
 export const studioDelegateTool = tool({
   name: 'studio.delegate',
   description:
@@ -129,7 +140,7 @@ export const studioDelegateTool = tool({
   scope: 'persona',
   callers: ['studio-manager'],
   mutates: true,
-  ownerIntent: /\b(?:ask|tell|have|get|delegate|check with|hand)\b|@\w/i,
+  ownerIntent: DELEGATE_INTENT,
   input: { persona_id: PERSONA_ID, instruction: { type: 'string', maxLength: 2000 } },
   run: async (ctx, i) => {
     const { personaManagerAnswer } = await import('../agents/persona-manager');
@@ -161,7 +172,7 @@ export const studioAdoptRuleTool = tool({
   scope: 'studio',
   callers: ['studio-manager'],
   mutates: true,
-  ownerIntent: /\b(?:adopt|rules?)\b/i,
+  ownerIntent: /\b(?:adopt|accept|approve|activate|drop|retire|reject)\b.*\b(?:rules?|proposals?)\b/i,
   input: { rule_id: { type: 'string', uuid: true }, adopt: { type: 'boolean' } },
   run: async (ctx, i) => {
     const rows = await ctx.services.db.query(
@@ -197,7 +208,7 @@ export const personaLowerControlsTool = tool({
   scope: 'persona',
   callers: ['studio-manager', 'persona-manager', 'profit-engine'],
   mutates: true,
-  ownerIntent: /\b(?:lower|reduce|cut|decrease|limit|autonomy|caps?|budget)\b/i,
+  ownerIntent: /\b(?:lower|reduce|cut|decrease|drop|set(?!\s+up)|limit|cap|tighten)\b.*\b(?:autonomy|budgets?|caps?|limits?|spend(?:ing)?|L[012])\b/i,
   input: {
     persona_id: PERSONA_ID,
     autonomy: { type: 'string', enum: ['L0', 'L1', 'L2'], optional: true },
@@ -235,7 +246,7 @@ export const bibleReviseTool = tool({
   scope: 'persona',
   callers: MANAGERS,
   mutates: true,
-  ownerIntent: /\b(?:bible|voice|tone|style|hooks?|look|revise|rewrite|change|update)\b/i,
+  ownerIntent: /\b(?:revise|rewrite|change|update|edit|adjust|tweak)\b.*(?:\b(?:bible|profile|voice|tone|style|personality)\b|\b(?:the|her|his|their|its|[\w]+['’]s)\s+look\b)/i,
   input: {
     persona_id: PERSONA_ID,
     section: { type: 'string', enum: [...BIBLE_SECTIONS] },
@@ -260,7 +271,7 @@ export const playbookAddRuleTool = tool({
   scope: 'persona',
   callers: MANAGERS,
   mutates: true,
-  ownerIntent: /\b(?:rules?|playbook|always|never|from now on)\b/i,
+  ownerIntent: /\b(?:add|make|create|record|write|set|save)\b.*\b(?:rules?|playbook)\b/i,
   input: {
     persona_id: PERSONA_ID,
     rule: { type: 'string', maxLength: 500 },
@@ -325,7 +336,7 @@ export const approvalsWithdrawTool = tool({
   scope: 'studio',
   callers: MANAGERS,
   mutates: true,
-  ownerIntent: /\b(?:withdraw|cancel|retract|drop|pull)\b/i,
+  ownerIntent: /\b(?:withdraw|cancel|retract|drop|pull|rescind)\b.*\b(?:approvals?|proposals?|kill|retirement|requests?|cards?)\b/i,
   input: { approval_id: { type: 'string', uuid: true } },
   run: async (ctx, i) => {
     // A persona manager may only withdraw its own persona's approvals (every persona manager shares one agent id).
@@ -385,7 +396,7 @@ export const chatNotifyOwnerTool = tool({
     'Tell the Owner about a decision you made (creative changes are yours to make; the Owner is notified, not asked). Posts to the notification centre and the Studio chat.',
   scope: 'studio',
   mutates: true,
-  ownerIntent: /\b(?:notify|remind|let me know|tell me|ping me|alert)\b/i,
+  ownerIntent: /\b(?:notify|remind|ping|alert|message)\s+me\b|\blet\s+me\s+know\b|\btell\s+me\s+(?:when|if|once|as\s+soon\s+as)\b/i,
   input: { title: { type: 'string', maxLength: 140 }, body: { type: 'string', maxLength: 1500 }, link: { type: 'string', maxLength: 200, optional: true } },
   run: async (ctx, i) => {
     const db = ctx.services.db;

@@ -75,7 +75,7 @@ const planWeekTool: ToolDef<{ persona_id: string; week_start?: string; run_pipel
   description: "Plan a persona's week: 10 posts (more for winners) with the format and purpose mix, posting windows, CTA keywords and sell slots. Leaves an already-planned week alone. Optionally queues every new slot for the pipeline.",
   scope: 'persona',
   mutates: true,
-  ownerIntent: /\b(?:plan|schedule|calendar)\b/i,
+  ownerIntent: /\b(?:plan|re-?plan|schedule|fill|build|make|draft|create)\b.*\b(?:weeks?|calendar|slots?|posts)\b/i,
   callers: MAKERS,
   inputSchema: schema({ persona_id: PID, week_start: { type: 'string', description: 'Any date in the week (YYYY-MM-DD); default next week.' }, run_pipeline: { type: 'boolean' } }, ['persona_id']),
   parse: (raw) => {
@@ -103,6 +103,7 @@ const weekTool: ToolDef<{ persona_id: string; week_start?: string }, unknown> = 
   name: 'calendar.week',
   description: "A persona's planned week: each slot's time, format, purpose, pillar, title, CTA keyword and pipeline stage.",
   scope: 'persona',
+  untrustedOutput: true, // slot titles and hooks can come from news reactions: it taints the run
   inputSchema: schema({ persona_id: PID, week_start: S }, ['persona_id']),
   parse: (raw) => {
     const r = obj(raw, ['persona_id', 'week_start']);
@@ -136,6 +137,7 @@ const scriptGetTool: ToolDef<{ persona_id: string; slot_id: string }, unknown> =
   name: 'script.get',
   description: "A slot's current script: shipped hook, A/B variants, the scored hook-lab, body, voiceover text, caption, on-screen text, carousel, evidence, plus its Q1 and Gate results.",
   scope: 'persona',
+  untrustedOutput: true, // scripts written from news reactions and evidence text: it taints the run
   inputSchema: schema({ persona_id: PID, slot_id: S }, ['persona_id', 'slot_id']),
   parse: (raw) => {
     const r = obj(raw, ['persona_id', 'slot_id']);
@@ -167,6 +169,7 @@ const gateReplyTool: ToolDef<{ persona_id: string; incoming: string; reply: stri
   description: 'Run the Gate on a community reply before it is sent (recorded as a gate result). Red when it denies being AI to a sincere question, or crosses a legal line.',
   scope: 'persona',
   mutates: true,
+  ownerIntent: /\b(?:check|gate|run|vet|screen)\b.*\brepl(?:y|ies)\b/i,
   inputSchema: schema({ persona_id: PID, incoming: S, reply: S, subject_id: { type: 'string', description: 'Comment or DM id being answered.' } }, ['persona_id', 'incoming', 'reply']),
   parse: (raw) => {
     const r = obj(raw, ['persona_id', 'incoming', 'reply', 'subject_id']);
@@ -198,6 +201,7 @@ const voiceCheckTool: ToolDef<{ persona_id: string; script_id: string; audio_url
   description: 'QC Q2: re-transcribe a voice track and diff it against the script (word-error rate, misheard words, pace, pauses, cut-off ending). Run before any avatar credits are spent.',
   scope: 'persona',
   mutates: true,
+  ownerIntent: /\b(?:check|qc|run|test|verify|transcribe)\b.*\b(?:voice|audio|voiceover|track)\b/i,
   callers: ['quality-control', 'studio-manager', 'owner', 'system'],
   inputSchema: schema({ persona_id: PID, script_id: S, audio_url: S }, ['persona_id', 'script_id', 'audio_url']),
   parse: (raw) => {
@@ -217,6 +221,7 @@ const signalTool: ToolDef<{ persona_id: string; source: string; text: string; to
   description: 'Record a demand signal (a repeated question, a "where can I get this?" comment, a market best-seller) for the Product Opportunity Score.',
   scope: 'persona',
   mutates: true,
+  ownerIntent: /\b(?:add|record|log|note|save|track)\b.*\b(?:signals?|demand)\b/i,
   callers: MONEY,
   inputSchema: schema({ persona_id: PID, source: S, text: S, topic: S, weight: { type: 'number' } }, ['persona_id', 'source', 'text']),
   parse: (raw) => {
@@ -245,6 +250,7 @@ const briefTool: ToolDef<{ persona_id: string; opportunity_id?: string; rung?: R
   description: 'Write a product brief (promise, audience, outline, format, pages, bonuses, price inside the band, ladder rung, upsell) and create the product at status brief.',
   scope: 'persona',
   mutates: true,
+  ownerIntent: /\b(?:make(?!\s+sure)|build|create|write|draft|start)\b.*\b(?:products?|brief)\b/i,
   callers: MONEY,
   inputSchema: schema({ persona_id: PID, opportunity_id: S, rung: { type: 'string', enum: [...RUNGS] }, title: S }, ['persona_id']),
   parse: (raw) => {
@@ -266,6 +272,7 @@ const listingTool: ToolDef<{ persona_id: string; product_id: string }, unknown> 
   description: 'Write the listing pack for a product: Lemon Squeezy fields and an Etsy variant, both passed through the Gate.',
   scope: 'persona',
   mutates: true,
+  ownerIntent: /\b(?:make|build|create|write|draft|prepare|generate)\b.*\blistings?\b/i,
   callers: MONEY,
   inputSchema: schema({ persona_id: PID, product_id: S }, ['persona_id', 'product_id']),
   parse: (raw) => {
@@ -283,6 +290,7 @@ const launchTool: ToolDef<{ persona_id: string; product_id: string; starts_on?: 
   description: 'Plan a launch: teaser → reveal → walkthrough → FAQ → last call (only with a real deadline), waitlist email, thank-you upsell, bundle and attribution coupon. Sell slots pick the beats up once v1 is approved.',
   scope: 'persona',
   mutates: true,
+  ownerIntent: /\b(?:plan|schedule|prepare|build|create|make|draft|set\s+up)\b.*\blaunch(?:es)?\b/i,
   callers: MONEY,
   inputSchema: schema({ persona_id: PID, product_id: S, starts_on: S }, ['persona_id', 'product_id']),
   parse: (raw) => {
@@ -300,6 +308,7 @@ const cycleTool: ToolDef<{ persona_id: string }, unknown> = {
   description: "Queue the Monetization Agent's cycle for a persona now (signal intake, scoring, validation, briefs, listing packs, launch plans).",
   scope: 'persona',
   mutates: true,
+  ownerIntent: /\b(?:run|start|kick\s+off|trigger|queue)\b.*\bmonetization\b/i,
   callers: MONEY,
   inputSchema: schema({ persona_id: PID }, ['persona_id']),
   parse: (raw) => ({ persona_id: uuid(obj(raw, ['persona_id']), 'persona_id')! }),
@@ -310,6 +319,7 @@ const boardTool: ToolDef<{ persona_id?: string; days?: number }, unknown> = {
   name: 'pipeline.board',
   description: 'The Pipeline board: every slot in the next days by stage (idea, script, Q1, Gate, queued for media, …, blocked with the reason).',
   scope: 'studio',
+  untrustedOutput: true, // slot titles can come from news reactions: it taints the run
   inputSchema: schema({ persona_id: S, days: { type: 'integer', description: 'Days ahead, 1–21 (default 8).' } }, []),
   parse: (raw) => {
     const r = obj(raw ?? {}, ['persona_id', 'days']);
@@ -337,7 +347,7 @@ const runSlotTool: ToolDef<{ persona_id: string; slot_id: string }, unknown> = {
     'Queue one slot for the pipeline (idea → script → Q1 → Gate → media). Reopens a slot blocked by repeated pipeline failures. Safe to repeat: a queued slot is not queued twice.',
   scope: 'persona',
   mutates: true,
-  ownerIntent: /\b(?:run|queue|retry|re-?run|redo|unblock|reopen|pipeline)\b/i,
+  ownerIntent: /\b(?:run|queue|re-?queue|retry|re-?run|redo|unblock|reopen|restart)\b.*\b(?:slots?|posts?|pipeline|scripts?|videos?|reels?)\b/i,
   callers: MAKERS,
   inputSchema: schema({ persona_id: PID, slot_id: S }, ['persona_id', 'slot_id']),
   parse: (raw) => {

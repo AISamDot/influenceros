@@ -90,6 +90,10 @@ describe('Compliance Gate v1: the red lines (contract §1)', () => {
     ["It doesn't just melt fat, this tea cures diabetes.", 'red', 'medical_claims'],
     ['No tea beats this one for diabetes.', 'red', 'medical_claims'],
     ['When I tell you this tea cures diabetes, believe me.', 'red', 'medical_claims'],
+    // Attribution without a refutation is a testimonial, not a warning.
+    ['People who tried it say this tea cures diabetes.', 'red', 'medical_claims'],
+    ['My followers swear this tea cures diabetes.', 'red', 'medical_claims'],
+    ['Influencers who say this tea melts fat are never wrong.', 'red', 'medical_claims'],
     ['No tea cures diabetes; see your doctor.', 'green', null],
     ["This isn't a get-rich-quick scheme and nobody can promise returns.", 'green', null],
     ['Influencers who say this tea melts fat are wrong.', 'green', null],

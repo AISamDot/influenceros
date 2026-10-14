@@ -19,16 +19,40 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** An Owner's short yes to the agent's own proposal. */
 const CONFIRM_RE = /^\s*(?:yes|yep|yeah|yup|ok(?:ay)?|sure|confirm(?:ed)?|approved?|do it|go ahead|go for it|please do|sounds good)\b/i;
 
+/** A question never asks for a write: it ends with "?" or opens with a question word ("Give me an update on…"). */
+const QUESTION_RE = /\?["'”’)\]]*\s*$|^\W*(?:what|how|why|when|where|who|whom|whose|which|give\s+me|show\s+me)\b/i;
+/** A negator before the action verb: "Don't change Vivian's voice", "I won't lower her budget". */
+const NEGATED_RE =
+  /\b(?:don['’]?t|do\s+not|never(?!\s+mind)|no\s+need\s+to|won['’]?t|will\s+not|shouldn['’]?t|should\s+not|can['’]?t|cannot|mustn['’]?t|must\s+not|not\s+(?:yet|now))\b/i;
+
+/** Sentences of a chat message: a sentence ends at . ! ? ; followed by a space, or at a line break. */
+function sentencesOf(text: string): string[] {
+  return text
+    .split(/(?<=[.!?;])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** Whether `sentence` asks for the action: the intent (action verb … object) matches and no negator precedes it. */
+function asksFor(intent: RegExp, sentence: string): boolean {
+  const m = new RegExp(intent.source, intent.flags.replace(/[gy]/g, '')).exec(sentence);
+  return m !== null && !NEGATED_RE.test(sentence.slice(0, m.index));
+}
+
 /**
- * Whether the Owner asked for this tool in the current turn: the Owner's own message (dashboard session) matches the
- * tool's `ownerIntent`, or it is a "yes" to this agent's own proposal of it. Background and delegated runs carry no
+ * Whether the Owner asked for this tool in the current turn: one sentence of the Owner's own message (dashboard
+ * session) is a command that matches the tool's `ownerIntent` (an action verb plus the tool's object, e.g. "revise …
+ * bible"), or the message is a "yes" to this agent's own proposal of it. Questions ("What's the budget looking
+ * like?", "Give me an update on the news") and negated asks never count. Background and delegated runs carry no
  * Owner message, so in an untrusted context they never pass.
  */
 export function ownerAsked(def: Pick<ToolDef, 'ownerIntent'>, trust: RunTrust): boolean {
   const owner = trust.ownerText?.trim();
-  if (!owner || !def.ownerIntent) return false;
-  if (def.ownerIntent.test(owner)) return true;
-  return CONFIRM_RE.test(owner) && Boolean(trust.proposal && def.ownerIntent.test(trust.proposal));
+  const intent = def.ownerIntent;
+  if (!owner || !intent) return false;
+  if (sentencesOf(owner).some((s) => !QUESTION_RE.test(s) && asksFor(intent, s))) return true;
+  // The agent's proposal is usually a question ("Shall I pause TikTok?"); the Owner's "yes" makes it a command.
+  return CONFIRM_RE.test(owner) && Boolean(trust.proposal) && sentencesOf(trust.proposal!).some((s) => asksFor(intent, s));
 }
 
 export function createToolRegistry(initial: ReadonlyArray<ToolDef<any, any>> = []): ToolRegistry {

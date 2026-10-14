@@ -206,7 +206,8 @@ export interface ToolDef<I = Record<string, unknown>, O = unknown> {
   readonly mutates?: boolean;
   /**
    * (stream A, additive) For a mutating tool: what the Owner's message has to ask for before a run whose context is
-   * untrusted may call it (e.g. /\bpause\b/ for pausing). Without it, untrusted runs can't call the tool at all.
+   * untrusted may call it: an action verb followed by the tool's object in one sentence (e.g. /\b(?:revise|change)\b.*\bbible\b/).
+   * Questions and negated sentences never match (see ownerAsked). Without it, untrusted runs can't call the tool at all.
    */
   readonly ownerIntent?: RegExp;
   /** (stream A, additive) The result carries third-party text (news, comments, web research): it makes the run untrusted. */

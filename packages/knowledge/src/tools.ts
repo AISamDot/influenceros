@@ -94,6 +94,7 @@ export const requestBuildTool: ToolDef<{ niche: string; max_nodes?: number }, un
   scope: 'studio',
   callers: REQUESTERS,
   mutates: true,
+  ownerIntent: /\b(?:build|re-?build|refresh|update|research|map)\b.*\b(?:field\s*brains?|knowledge(?:\s*base)?|curriculum)\b/i,
   inputSchema: {
     type: 'object',
     additionalProperties: false,
@@ -171,6 +172,7 @@ export const requestScanTool: ToolDef<{ niche: string }, unknown> = {
   scope: 'studio',
   callers: REQUESTERS,
   mutates: true,
+  ownerIntent: /\b(?:re-?scan|scan|run|refresh|fetch|queue)\b.*\b(?:news|feeds?|scan)\b/i,
   inputSchema: { type: 'object', additionalProperties: false, required: ['niche'], properties: { niche: { type: 'string' } } },
   parse(raw) {
     return { niche: reqStr(obj(raw, ['niche']), 'niche', 120).toLowerCase() };
