@@ -33,17 +33,21 @@ describe('pnpm worker', () => {
     const once = await runCommand(parseArgs(['once'], {}), deps);
     expect(once.code).toBe(0);
     const jobs = await t.db.query<{ kind: string; status: string }>('SELECT kind, status FROM job ORDER BY kind');
-    expect(jobs).toEqual([
-      { kind: 'media.render', status: 'queued' },
+    // Other streams' schedules also enqueue work on the tick; every handled job must succeed.
+    expect(jobs.filter((j) => j.kind !== 'media.render' && j.status !== 'succeeded')).toEqual([]);
+    expect(jobs.filter((j) => j.kind.startsWith('profit.'))).toEqual([
       { kind: 'profit.measure', status: 'succeeded' },
       { kind: 'profit.weekly_cycle', status: 'succeeded' },
     ]);
+    const renders = jobs.filter((j) => j.kind === 'media.render');
+    expect(renders.length).toBeGreaterThan(0);
+    expect(renders.every((j) => j.status === 'queued')).toBe(true);
     // The weekly cycle posted its report into the Studio chat.
     expect((await t.db.one<{ n: number }>(`SELECT count(*)::int AS n FROM chat_message WHERE author = 'agent:profit-engine'`)).n).toBe(1);
 
     lines.length = 0;
     await runCommand(parseArgs(['status'], {}), deps);
-    expect(lines.join('\n')).toMatch(/media\.render\s+queued\s+1/);
+    expect(lines.join('\n')).toMatch(/media\.render\s+queued\s+\d+/);
     expect(lines.join('\n')).toMatch(/schedule profit\.weekly_cycle/);
   });
 });
