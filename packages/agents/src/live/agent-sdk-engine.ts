@@ -159,13 +159,15 @@ export function createAgentSdkEngine(opts: { sdk: () => Promise<AgentSdk>; cwd: 
       };
       const model = Object.keys(result.modelUsage ?? {})[0] ?? req.model;
       usage.costUsd = usageCost(model, req.tier, usage);
-      if (result.stop_reason === 'refusal') throw new AgentRefusalError(null);
+      // Every failure after a result was paid for: attach the usage so the runtime debits it.
+      const billed = <E extends Error>(err: E): E => Object.assign(err, { usage: { ...usage } });
+      if (result.stop_reason === 'refusal') throw billed(new AgentRefusalError(null));
       if (result.subtype !== 'success') {
         // Over budget or turns: keep what was produced; anything else is an error.
         if (result.subtype === 'error_max_budget_usd' || result.subtype === 'error_max_turns') {
           return { text: streamed, model, usage, toolCalls, stopReason: result.subtype === 'error_max_turns' ? 'max_turns' : 'budget', engine: 'agent-sdk' };
         }
-        throw new Error(`Agent SDK run failed: ${result.subtype}${'errors' in result && result.errors?.length ? `: ${result.errors.join('; ')}` : ''}`);
+        throw billed(new Error(`Agent SDK run failed: ${result.subtype}${'errors' in result && result.errors?.length ? `: ${result.errors.join('; ')}` : ''}`));
       }
       let structured: unknown;
       if (req.jsonSchema) {
@@ -174,7 +176,7 @@ export function createAgentSdkEngine(opts: { sdk: () => Promise<AgentSdk>; cwd: 
           try {
             structured = JSON.parse(result.result);
           } catch {
-            throw new AgentOutputError(`expected JSON output, got: ${result.result.slice(0, 120)}`);
+            throw billed(new AgentOutputError(`expected JSON output, got: ${result.result.slice(0, 120)}`));
           }
         }
       }

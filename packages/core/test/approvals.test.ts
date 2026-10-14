@@ -174,15 +174,20 @@ describe('approval engine: 24 h one-tap cards', () => {
   it('respects the studio switch and the configured hours', async () => {
     ctx = await setup({ approvals: { auto_approve_cards: false, auto_approve_hours: 24, post_veto_window_minutes: 120 } });
     const id = await makePersona(ctx, { state: 'PROPOSED' });
-    const off = await propose(ctx.db, { studioId: ctx.studioId, personaId: id, kind: 'persona_launch', title: 'Launch', proposedBy: STUDIO_MANAGER });
+    const off = await propose(ctx.db, { studioId: ctx.studioId, kind: 'product_v1', title: 'Product', proposedBy: STUDIO_MANAGER, personaId: id });
     expect(off).toMatchObject({ mode: 'explicit', auto_approve_at: null });
     expect(await sweepAutoApprovals(ctx.db, { now: new Date(Date.now() + 100 * HOUR) })).toEqual([]);
+    // A persona launch is delegated (PRD §3.7): it never waits on the switch, but the Owner can still veto it.
+    const launch = await propose(ctx.db, { studioId: ctx.studioId, personaId: id, kind: 'persona_launch', title: 'Launch', proposedBy: STUDIO_MANAGER });
+    expect(launch).toMatchObject({ mode: 'auto_after' });
+    expect(await sweepAutoApprovals(ctx.db, { now: new Date(Date.now() + 25 * HOUR) })).toEqual([launch.id]);
+    expect(await state(id)).toBe('SETUP');
 
     // Turned on with a 6 h window.
     await updateSettings(ctx.db, ctx.studioId, { approvals: { auto_approve_cards: true, auto_approve_hours: 6, post_veto_window_minutes: 120 } }, OWNER);
     const p2 = await makePersona(ctx, { state: 'PROPOSED' });
     const t0 = new Date();
-    const on = await propose(ctx.db, { studioId: ctx.studioId, personaId: p2, kind: 'persona_launch', title: 'Launch 2', proposedBy: STUDIO_MANAGER, now: t0 });
+    const on = await propose(ctx.db, { studioId: ctx.studioId, personaId: p2, kind: 'product_v1', title: 'Product 2', proposedBy: STUDIO_MANAGER, now: t0 });
     expect(on.auto_approve_at?.getTime()).toBe(t0.getTime() + 6 * HOUR);
 
     // Switched off again before it fires → the card becomes explicit instead of auto-approving.
@@ -295,7 +300,7 @@ describe('approval engine: one bad approval never blocks the sweep', () => {
     const goodCard = await propose(ctx.db, { studioId: ctx.studioId, personaId: good, kind: 'product_v1', title: 'Kit v1', subjectType: 'product', subjectId: productId, proposedBy: STUDIO_MANAGER, now: new Date(t0.getTime() + 1000) });
 
     const r = await tick(ctx.db, { now: new Date(t0.getTime() + 25 * HOUR) });
-    expect(r).toEqual({ approved: [goodCard.id], reaped: 0, errors: [] });
+    expect(r).toEqual({ approved: [goodCard.id], reaped: 0, holds: 0, errors: [] });
     expect((await ctx.db.one<{ status: string }>('SELECT status FROM product WHERE id = $1', [productId])).status).toBe('approved');
     expect(await ctx.db.one('SELECT mode, status, auto_approve_at FROM approval WHERE id = $1', [badCard.id])).toEqual({ mode: 'explicit', status: 'pending', auto_approve_at: null });
     expect(await count(ctx.db, `SELECT 1 FROM audit_log WHERE entity_id = $1 AND action = 'approval.auto_failed'`, [badCard.id])).toBe(1);

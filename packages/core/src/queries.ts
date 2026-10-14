@@ -33,6 +33,15 @@ export interface PersonaCard {
 
 const dayKey = (d: Date) => d.toISOString().slice(0, 10);
 
+/** The calendar date (YYYY-MM-DD) of `d` in time zone `tz` (UTC when the zone is unknown). */
+export function localDayKey(d: Date, tz: string | null | undefined): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  } catch {
+    return dayKey(d);
+  }
+}
+
 export function lastNDays(now: Date, n: number): string[] {
   const out: string[] = [];
   for (let i = n - 1; i >= 0; i--) out.push(dayKey(new Date(now.getTime() - i * 86_400_000)));
@@ -140,7 +149,7 @@ export function weekStart(now: Date): Date {
 
 export interface PersonaPage {
   card: PersonaCard;
-  bible: { version: number; status: string; content: Record<string, unknown>; approved_at: Date | null } | null;
+  bible: { version: number; status: string; content: Record<string, unknown>; approved_at: Date | null; approved_by: string | null } | null;
   week: { start: Date; days: Array<{ date: string; slots: SlotView[] }> };
   posts: Array<{ id: string; platform: string; format: PostFormat; caption: string | null; thumbnail_url: string | null; published_at: Date | null; url: string | null; status: string; views: number; likes: number; saves: number; shares: number }>;
   products: Array<{ id: string; name: string; ladder_rung: string; status: string; price_cents: number; cover_url: string | null; orders: number; revenue_cents: number }>;
@@ -157,10 +166,15 @@ export async function personaPage(db: Db, slug: string, now = new Date()): Promi
   const end = new Date(start.getTime() + 7 * 86_400_000);
   const [bible, slots, posts, products, plan, community, llm, credits] = await Promise.all([
     db.maybeOne<PersonaPage['bible']>(
-      `SELECT version, status, content, approved_at FROM persona_bible WHERE persona_id = $1 ORDER BY version DESC LIMIT 1`,
+      `SELECT version, status, content, approved_at, approved_by FROM persona_bible WHERE persona_id = $1 ORDER BY version DESC LIMIT 1`,
       [persona.id],
     ),
-    db.query<SlotView>(`SELECT * FROM calendar_slot WHERE persona_id = $1 AND slot_at >= $2 AND slot_at < $3 ORDER BY slot_at`, [persona.id, start, end]),
+    // The planned week (week_start), as the calendar planned it: posting windows are persona-local, so a west-of-UTC
+    // Sunday evening is Monday in UTC but still this week's post.
+    db.query<SlotView>(
+      `SELECT * FROM calendar_slot WHERE persona_id = $1 AND (week_start = $4::date OR (week_start IS NULL AND slot_at >= $2 AND slot_at < $3)) ORDER BY slot_at`,
+      [persona.id, start, end, dayKey(start)],
+    ),
     db.query<PersonaPage['posts'][number]>(
       `SELECT p.id, p.platform, p.format, p.caption, p.thumbnail_url, p.published_at, p.url, p.status,
               COALESCE(m.views,0)::int AS views, COALESCE(m.likes,0)::int AS likes, COALESCE(m.saves,0)::int AS saves, COALESCE(m.shares,0)::int AS shares
@@ -192,9 +206,10 @@ export async function personaPage(db: Db, slug: string, now = new Date()): Promi
     budgetStatus(db, { studioId: persona.studio_id, personaId: persona.id, unit: 'llm_usd', now }),
     budgetStatus(db, { studioId: persona.studio_id, personaId: persona.id, unit: 'hf_credits', now }),
   ]);
+  // Days in the persona's own time zone, matching the posting windows (19:00 local is that day's evening post).
   const days = Array.from({ length: 7 }, (_, i) => {
     const date = dayKey(new Date(start.getTime() + i * 86_400_000));
-    return { date, slots: slots.filter((s) => dayKey(new Date(s.slot_at)) === date) };
+    return { date, slots: slots.filter((s) => localDayKey(new Date(s.slot_at), persona.timezone) === date) };
   });
   return { card, bible, week: { start, days }, posts, products, plan, community, budget: { llm, credits } };
 }

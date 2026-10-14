@@ -1,7 +1,7 @@
 import { createHash, randomBytes, scrypt as scryptCb, type ScryptOptions, timingSafeEqual } from 'node:crypto';
 import type { Db } from '@ios/db';
 import type { EmailProvider } from '@ios/providers';
-import { SESSION_TTL_MS, signSession } from './guard';
+import { safeNext, SESSION_TTL_MS, signSession } from './guard';
 
 /**
  * Owner sign-in (one Owner): a magic link to OWNER_EMAIL via Resend, or the fallback password set from the CLI.
@@ -73,13 +73,22 @@ export class AuthError extends Error {
   }
 }
 
-async function throttled(db: Db, kind: keyof typeof THROTTLE, countOk: boolean, now: Date): Promise<boolean> {
+/** A much higher studio-wide ceiling behind the per-client limits (a distributed attack still gets stopped). */
+export const GLOBAL_THROTTLE_FACTOR = 20;
+
+/**
+ * Throttles per client (ip_hash), with a global backstop of GLOBAL_THROTTLE_FACTOR × the per-client limit, so one
+ * client's failures can never lock the Owner out. `which` picks the attempts that count: failures, successes or all.
+ */
+async function throttled(db: Db, kind: keyof typeof THROTTLE, which: 'failed' | 'ok' | 'all', now: Date, ipHash: string | null, perClient = true): Promise<boolean> {
   const t = THROTTLE[kind];
-  const r = await db.one<{ n: number }>(
-    `SELECT count(*)::int AS n FROM auth_attempt WHERE kind = $1 AND created_at > $2 AND ($3 OR NOT ok)`,
-    [kind, new Date(now.getTime() - t.windowMs), countOk],
+  const since = new Date(now.getTime() - t.windowMs);
+  const r = await db.one<{ mine: number; all: number }>(
+    `SELECT count(*) FILTER (WHERE ip_hash IS NOT DISTINCT FROM $4)::int AS mine, count(*)::int AS all
+       FROM auth_attempt WHERE kind = $1 AND created_at > $2 AND ($3 = 'all' OR ($3 = 'ok') = ok)`,
+    [kind, since, which, ipHash],
   );
-  return r.n >= t.max;
+  return (perClient ? r.mine : r.all) >= t.max || r.all >= t.max * GLOBAL_THROTTLE_FACTOR;
 }
 
 async function attempt(db: Db, kind: keyof typeof THROTTLE, ok: boolean, ipHash: string | null): Promise<void> {
@@ -128,7 +137,7 @@ export async function loginWithPassword(
   input: { password: string; secret: string; userAgent?: string | null; ipHash?: string | null; now?: Date },
 ): Promise<IssuedSession> {
   const now = input.now ?? new Date();
-  if (await throttled(db, 'password', false, now)) throw new AuthError('too many attempts: try again in 15 minutes', 429);
+  if (await throttled(db, 'password', 'failed', now, input.ipHash ?? null)) throw new AuthError('too many attempts: try again in 15 minutes', 429);
   const row = await db.maybeOne<{ password_hash: string }>(`SELECT password_hash FROM owner_credential WHERE id = 'owner'`);
   const ok = Boolean(row && input.password && input.password.length <= 1024 && (await verifyPassword(input.password, row.password_hash)));
   await attempt(db, 'password', ok, input.ipHash ?? null);
@@ -146,17 +155,20 @@ export const MAGIC_LINK_TTL_MS = 15 * 60_000;
 export async function requestMagicLink(
   db: Db,
   email: EmailProvider,
-  input: { email: string; ownerEmail: string | null | undefined; from: string; baseUrl: string; ipHash?: string | null; now?: Date },
+  input: { email: string; ownerEmail: string | null | undefined; from: string; baseUrl: string; ipHash?: string | null; now?: Date; next?: string | null },
 ): Promise<{ sent: boolean; link: string | null }> {
   const now = input.now ?? new Date();
-  if (await throttled(db, 'magic_link', true, now)) throw new AuthError('too many sign-in links requested: try again in 15 minutes', 429);
   const owner = input.ownerEmail?.trim().toLowerCase();
   const match = Boolean(owner) && input.email.trim().toLowerCase() === owner;
+  // Requests for other addresses are limited per client and never count against the Owner's own address; links to
+  // the Owner's address have their own limit (so nobody can flood the Owner's inbox).
+  const limited = match
+    ? await throttled(db, 'magic_link', 'ok', now, input.ipHash ?? null, false)
+    : await throttled(db, 'magic_link', 'failed', now, input.ipHash ?? null);
+  if (limited) throw new AuthError('too many sign-in links requested: try again in 15 minutes', 429);
   await attempt(db, 'magic_link', match, input.ipHash ?? null);
   if (!match || !owner) return { sent: false, link: null };
-  const token = randomBytes(32).toString('base64url');
-  await db.query(`INSERT INTO auth_token (token_hash, purpose, expires_at) VALUES ($1, 'magic_link', $2)`, [sha256(token), new Date(now.getTime() + MAGIC_LINK_TTL_MS)]);
-  const link = `${input.baseUrl.replace(/\/$/, '')}/login/verify?token=${token}`;
+  const link = await issueLoginLink(db, { baseUrl: input.baseUrl, now, next: input.next });
   await email.send({
     from: input.from,
     to: owner,
@@ -167,13 +179,26 @@ export async function requestMagicLink(
   return { sent: true, link };
 }
 
+/**
+ * A one-time sign-in link (the same single-use, 15-minute token the email carries). Also the CLI recovery path
+ * (`pnpm owner login-link`) when the Owner can't sign in from the web.
+ */
+export async function issueLoginLink(db: Db, input: { baseUrl: string; now?: Date; next?: string | null }): Promise<string> {
+  const now = input.now ?? new Date();
+  const token = randomBytes(32).toString('base64url');
+  await db.query(`INSERT INTO auth_token (token_hash, purpose, expires_at) VALUES ($1, 'magic_link', $2)`, [sha256(token), new Date(now.getTime() + MAGIC_LINK_TTL_MS)]);
+  // Where to land after signing in (a deep link from a notification): same-origin paths only.
+  const next = safeNext(input.next);
+  return `${input.baseUrl.replace(/\/$/, '')}/login/verify?token=${token}${next === '/' ? '' : `&next=${encodeURIComponent(next)}`}`;
+}
+
 /** Exchanges a magic-link token (single use, unexpired) for a session. */
 export async function loginWithMagicToken(
   db: Db,
   input: { token: string; secret: string; userAgent?: string | null; ipHash?: string | null; now?: Date },
 ): Promise<IssuedSession> {
   const now = input.now ?? new Date();
-  if (await throttled(db, 'verify', false, now)) throw new AuthError('too many attempts: try again in 15 minutes', 429);
+  if (await throttled(db, 'verify', 'failed', now, input.ipHash ?? null)) throw new AuthError('too many attempts: try again in 15 minutes', 429);
   const token = input.token.trim();
   const used = token.length >= 20 && token.length <= 200
     ? await db.maybeOne(

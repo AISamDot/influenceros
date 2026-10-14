@@ -8,6 +8,13 @@ export function money(cents: number): string {
   return `${v < 0 ? '−' : ''}$${Math.abs(v).toLocaleString('en-US')}`;
 }
 
+/** Unit economics (per post, RPM): cents precision below $10, so a $0.12 script doesn't read as "$0". */
+export function centsMoney(cents: number): string {
+  if (Math.abs(cents) >= 1000) return money(cents);
+  const v = Math.abs(cents) / 100;
+  return `${cents < 0 ? '−' : ''}$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export function signedMoney(cents: number): string {
   const v = Math.round(cents / 100);
   return `${v < 0 ? '−' : '+'}$${Math.abs(v).toLocaleString('en-US')}`;

@@ -339,10 +339,15 @@ export function enforceScript(d: ScriptDraft, b: Pick<ScriptBrief, 'ctx' | 'form
   const avoid = b.ctx.voice.avoid.map((w) => w.toLowerCase()).filter(Boolean);
   const offVoice = (s: string) => avoid.some((w) => s.toLowerCase().includes(w));
   const claims = d.claims.filter((c) => c.evidenceId && evidence.includes(c.evidenceId));
+  const hookSentences = Math.max(1, sentences(d.hook).length);
+  const opensWithHook = (lines: readonly string[]) => {
+    const opening = lines.slice(0, hookSentences).join(' ');
+    return !!opening && (opening.startsWith(d.hook) || similarity(opening, d.hook) >= 0.8);
+  };
   const clean = (lines: string[], keepFirst = true) => {
     const out: string[] = [];
     for (const [i, s] of lines.entries()) {
-      const isHook = keepFirst && i === 0;
+      const isHook = keepFirst && i < hookSentences;
       if (!isHook && (uncitedClaims(s, claims, evidence).length || offVoice(s))) continue;
       if (out.some((o) => o.toLowerCase() === s.toLowerCase())) continue;
       out.push(s);
@@ -357,7 +362,7 @@ export function enforceScript(d: ScriptDraft, b: Pick<ScriptBrief, 'ctx' | 'form
 
   if (SPOKEN.includes(b.format)) {
     let lines = clean(sentences(body));
-    if (!lines[0] || similarity(lines[0], d.hook) < 0.8) lines.unshift(d.hook);
+    if (!opensWithHook(lines)) lines.unshift(d.hook);
     lines = lines.filter((s, i) => i === 0 || !hasCta(s));
     const total = () => wordCount([...lines, cta].join(' '));
     while (total() > WORDS.max - 5 && lines.length > 2) lines.splice(lines.length - 1, 1);

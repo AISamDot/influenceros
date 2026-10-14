@@ -44,6 +44,10 @@ export function approvalPolicy(
   ctx: PolicyContext = {},
 ): { mode: ApprovalMode; windowMs: number | null } {
   if (isOwnerOnly(kind)) return { mode: 'explicit', windowMs: null };
+  // Persona creation is delegated to the Studio Manager (PRD §3.7: the Owner gets a notification, not an approval
+  // card), so a launch never waits on the cards switch: it auto-approves after the window and the Owner can still
+  // reject it (veto) until then.
+  if (kind === 'persona_launch') return { mode: 'auto_after', windowMs: settings.approvals.auto_approve_hours * 3_600_000 };
   if (CARD_KINDS.includes(kind)) {
     return settings.approvals.auto_approve_cards
       ? { mode: 'auto_after', windowMs: settings.approvals.auto_approve_hours * 3_600_000 }

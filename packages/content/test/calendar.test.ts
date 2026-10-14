@@ -2,10 +2,11 @@ import { type CadencePolicy, CADENCE_BOUNDS, DEFAULT_CADENCE } from '@ios/agents
 import { createTestStudio, makeTestPersona } from '@ios/agents/testing';
 import { json } from '@ios/db';
 import { describe, expect, it } from 'vitest';
-import { assignMix, effectiveCadence, normaliseCadence, planWeek, postingTimes, WINNER_CADENCE } from '../src/calendar';
+import { assignMix, bookReactionIdeas, effectiveCadence, normaliseCadence, planWeek, postingTimes, WINNER_CADENCE } from '../src/calendar';
 import { fakeHooks, HOOK_TYPES, parseHooks, scoreHook, selectHooks } from '../src/hooks';
 import { loadPersonaContext } from '../src/persona';
 import { attachSampleBible } from '../src/sample';
+import { schedules } from '../src/jobs';
 import { tzOffsetMs } from '../src/util';
 
 const NOW = new Date('2026-10-14T10:00:00Z'); // a Wednesday
@@ -19,6 +20,7 @@ const localHour = (d: Date, tz: string) => {
   const local = new Date(new Date(d).getTime() + tzOffsetMs(new Date(d), tz));
   return local.getUTCHours() + local.getUTCMinutes() / 60;
 };
+const isoDateOf = (d: Date) => new Date(d).toISOString().slice(0, 10);
 const localDay = (d: Date, tz: string) => new Date(new Date(d).getTime() + tzOffsetMs(new Date(d), tz)).toISOString().slice(0, 10);
 
 describe('weekly calendar', () => {
@@ -109,6 +111,61 @@ describe('weekly calendar', () => {
     const news = rows.find((r) => r.title.startsWith('What the new rent data'))!;
     expect(new Date(news.slot_at).getTime()).toBeLessThan(new Date('2026-10-21T00:00:00Z').getTime());
     expect((await t.db.one<{ status: string }>(`SELECT status FROM idea WHERE title LIKE 'What the new rent%'`)).status).toBe('booked');
+    await t.db.close();
+  });
+
+  it('keeps a west-of-UTC Sunday evening in its own week, so the next week still gets planned', async () => {
+    const t = await createTestStudio({ now: () => new Date('2026-10-28T10:00:00Z') });
+    const p = await makeTestPersona(t, { timezone: 'America/New_York' });
+    await attachSampleBible(t.db, p.id);
+    const first = await planWeek(t.services, p.id, new Date('2026-11-02T00:00:00Z'));
+    expect(first.created).toBe(10);
+    const last = (await slotsOf(t.db, p.id)).at(-1)!;
+    expect(new Date(last.slot_at).getTime()).toBeGreaterThanOrEqual(new Date('2026-11-09T00:00:00Z').getTime()); // Sun 19:xx EST
+    const second = await planWeek(t.services, p.id, new Date('2026-11-09T00:00:00Z'));
+    expect(second.skipped).toBeUndefined();
+    expect(second.created).toBe(10);
+    const plan = schedules.find((s) => s.name === 'calendar.weekly_plan')!;
+    expect(await plan.run(t.services, new Date('2026-11-12T10:00:00Z'))).toEqual({ queued: 1 }); // only the week of Nov 16
+    await t.db.close();
+  });
+
+  it('books a fresh News Desk reaction into a week that is already planned, before the idea expires', async () => {
+    const t = await createTestStudio({ now: () => NOW });
+    const p = await makeTestPersona(t);
+    await attachSampleBible(t.db, p.id);
+    expect((await planWeek(t.services, p.id, NOW)).created).toBeGreaterThan(0);
+    // The briefing lands after the week was planned; replanning does nothing.
+    const expires = new Date(NOW.getTime() + 48 * 3_600_000);
+    const addIdea = (title: string, id: string) =>
+      t.db.one<{ id: string }>(
+        `INSERT INTO idea (persona_id, title, pillar, format, purpose, source, status) VALUES ($1, $2, 'News reaction', 'talking', 'reach', $3::jsonb, 'new') RETURNING id`,
+        [p.id, title, json({ type: 'news', news_item_id: id, briefing_date: '2026-10-14', expires_at: expires.toISOString() })],
+      );
+    const a = await addIdea('The new CPI print, in plain English', 'n1');
+    const b = await addIdea('Why the Fed pause matters for your savings', 'n2');
+    expect((await planWeek(t.services, p.id, NOW)).skipped).toBe('week already planned');
+
+    const advance = schedules.find((s) => s.name === 'pipeline.advance')!;
+    const res = (await advance.run(t.services, NOW)) as { queued: number; reactions?: number };
+    expect(res.reactions).toBe(1); // one per persona per run
+    const slot = await t.db.one<{ slot_at: Date; title: string; status: string; purpose: string; idea_id: string }>(
+      `SELECT slot_at, title, status, purpose, idea_id FROM calendar_slot WHERE idea_id = ANY($1::uuid[])`,
+      [[a.id, b.id]],
+    );
+    const [first, other] = slot.idea_id === a.id ? [a, b] : [b, a];
+    expect(slot.title).toBe(first === a ? 'The new CPI print, in plain English' : 'Why the Fed pause matters for your savings');
+    expect(['reach', 'trust']).toContain(slot.purpose);
+    expect(new Date(slot.slot_at).getTime()).toBeGreaterThan(NOW.getTime());
+    expect(new Date(slot.slot_at).getTime()).toBeLessThanOrEqual(expires.getTime());
+    expect((await t.db.one<{ status: string }>(`SELECT status FROM idea WHERE id = $1`, [first.id])).status).toBe('booked');
+    expect((await t.db.one<{ n: number }>(`SELECT count(*)::int AS n FROM job WHERE kind = 'pipeline.slot' AND payload->>'slotId' = (SELECT id::text FROM calendar_slot WHERE idea_id = $1)`, [first.id])).n).toBe(1);
+
+    // The next run books the other idea on a different day (one reaction a day).
+    const second = await bookReactionIdeas(t.services, { now: NOW });
+    expect(second.map((r) => r.ideaId)).toEqual([other.id]);
+    expect(isoDateOf(second[0]!.slotAt)).not.toBe(isoDateOf(slot.slot_at));
+    expect(await bookReactionIdeas(t.services, { now: NOW })).toEqual([]);
     await t.db.close();
   });
 

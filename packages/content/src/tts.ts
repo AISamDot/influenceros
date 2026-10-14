@@ -131,6 +131,9 @@ export function ttsNormalize(text: string, opts: { keep?: readonly string[] } = 
   sub(EMOJI_RE, 'emoji', () => '');
   sub(/(^|\s)#[A-Za-z][\w]*/g, 'hashtag', (_m, pre: string) => pre);
   for (const [re, spoken] of ABBREV) sub(re, 'abbreviation', () => spoken);
+  // Pence: 50p · £0.99 (Dot is UK: "a 75p tin" is "seventy-five p", never "seven five p")
+  sub(/£0\.(\d{1,2})\b/g, 'money', (_m, c: string) => `${numberToWords(Number(c.padEnd(2, '0')))} p`);
+  sub(/\b(\d{1,3})p\b/g, 'money', (_m, n: string) => `${numberToWords(Number(n))} p`);
   // Money: $1,200 · $5K · $2.50 · £40 · $5K/month
   sub(/([$£€])(\d[\d,]*(?:\.\d+)?)(?:\s?([kKmMbB])\b)?(?:\s?\/\s?(mo|month|wk|week|yr|year|day|hr|hour)\b)?/g, 'money', (_m, cur: string, num: string, mult: string, per: string) => {
     const [one, many] = CURRENCY[cur]!;

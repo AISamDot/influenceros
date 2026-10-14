@@ -1,3 +1,4 @@
+import { requireOwner } from '@/lib/auth';
 import { studioContext } from '@/lib/server';
 import { knowledgeService, NICHE_RE } from '@/app/knowledge/_data';
 
@@ -5,6 +6,8 @@ export const dynamic = 'force-dynamic';
 
 /** GET ?niche=dating&q=…&k=5&kinds=node,news → the hits a content agent would get (ids, text, citations). */
 export async function GET(req: Request) {
+  const denied = await requireOwner(req);
+  if (denied) return denied;
   const url = new URL(req.url);
   const niche = (url.searchParams.get('niche') ?? '').trim();
   const q = (url.searchParams.get('q') ?? '').trim().slice(0, 2000);

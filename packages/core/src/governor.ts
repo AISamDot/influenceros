@@ -266,3 +266,32 @@ export async function settleHold(db: Db, holdId: string, input: Omit<DebitInput,
 export async function releaseHold(db: Db, holdId: string): Promise<void> {
   await db.query(`DELETE FROM credit_ledger WHERE id = $1 AND entry_type = 'hold'`, [holdId]);
 }
+
+/** Longer than any paid call runs: a hold older than this belongs to a process that died mid-call. */
+export const ORPHAN_HOLD_MS = 30 * 60_000;
+
+/**
+ * Deletes holds orphaned by a process that died between reserve and settle/release (worker restart, function
+ * timeout, dev reload), so they stop counting against the month's headroom. Each one is audited; the actual cost
+ * of the interrupted call is unknown, so nothing is debited. Returns how many were removed.
+ */
+export async function reapOrphanHolds(db: Db, opts: { now?: Date; maxAgeMs?: number } = {}): Promise<number> {
+  const before = new Date((opts.now ?? new Date()).getTime() - (opts.maxAgeMs ?? ORPHAN_HOLD_MS));
+  const rows = await db.query<{ id: string; studio_id: string; persona_id: string | null; unit: string; amount: number; operation: string | null; created_at: Date }>(
+    `DELETE FROM credit_ledger WHERE entry_type = 'hold' AND created_at < $1
+     RETURNING id, studio_id, persona_id, unit, amount, operation, created_at`,
+    [before],
+  );
+  for (const r of rows) {
+    await audit(db, {
+      studioId: r.studio_id,
+      personaId: r.persona_id,
+      actor: SYSTEM,
+      action: 'budget.hold_reaped',
+      entityType: 'credit_ledger',
+      entityId: r.id,
+      data: { unit: r.unit, amount: r.amount, operation: r.operation, held_since: new Date(r.created_at).toISOString() },
+    });
+  }
+  return rows.length;
+}

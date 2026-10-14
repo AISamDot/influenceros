@@ -1,6 +1,8 @@
 import { appendFileSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { reviseBible } from '@ios/agents';
+import { OWNER } from '@ios/core';
 import { defaultPersonasDir, launchPersonaSlugs } from '@ios/core/seed';
 import { describe, expect, it } from 'vitest';
 import { embedPending, importPersonas, syncPersonaDocs } from '../src';
@@ -45,6 +47,25 @@ describe('launch-persona importer (personas.import)', () => {
     const note = await t.db.one<{ title: string }>(`SELECT title FROM notification WHERE title LIKE '%bible v2 imported'`);
     expect(note.title).toMatch(/bible v2 imported$/);
     expect(readFileSync(join(dir, slug, 'bible.md'), 'utf8')).toContain('Late note');
+  });
+
+  it('keeps Owner feedback rules when edited documents are re-imported', async () => {
+    const t = await knowledgeStudio();
+    const dir = mkdtempSync(join(tmpdir(), 'ios-personas-'));
+    syncPersonaDocs(defaultPersonasDir(), dir);
+    await importPersonas(t.services, { dir });
+    const slug = launchPersonaSlugs()[0]!;
+    const p = await t.db.one<{ id: string }>('SELECT id FROM persona WHERE slug = $1', [slug]);
+    expect(await reviseBible(t.db, { personaId: p.id, studioId: t.studioId, section: 'content_dna', rule: 'Hooks under 8 words, always.', actor: OWNER })).toBe(2);
+    appendFileSync(join(dir, slug, 'bible.md'), '\n\n## 19. Late note\n\nA new studio note.\n');
+    const res = await importPersonas(t.services, { dir });
+    expect(res.find((r) => r.slug === slug)).toMatchObject({ updated: true, bibleVersion: 3 });
+    const v3 = await t.db.one<{ content: { content_dna: { owner_rules?: string[] }; changelog?: Array<{ version: number; change: string }> } }>(
+      `SELECT content FROM persona_bible WHERE persona_id = $1 AND version = 3 AND status = 'approved'`,
+      [p.id],
+    );
+    expect(v3.content.content_dna.owner_rules).toEqual(['Hooks under 8 words, always.']);
+    expect(v3.content.changelog?.map((c) => c.version)).toEqual([2, 3]);
   });
 
   it('does nothing without persona folders', async () => {

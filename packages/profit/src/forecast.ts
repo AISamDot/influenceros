@@ -19,6 +19,8 @@ import { addDays, clamp, DAY_MS, hashSeed, isoDate, mean, mondayOf, mulberry32, 
 
 export const HORIZON_WEEKS = 13; // 91 days
 export const HISTORY_WEEKS = 8;
+/** Weeks averaged for the gross and cost level. */
+export const LEVEL_WEEKS = 6;
 const DEFAULT_FEE_RATE = 0.11;
 const ACTIVE_STATES = ['SETUP', 'TESTING', 'RE_ANGLE', 'MONETISING', 'SCALING', 'BRAND'] as const;
 
@@ -40,19 +42,36 @@ export function fitSeries(history: readonly WeekPoint[], partial?: { grossCents:
   const first = history.findIndex((w) => w.grossCents > 0 || w.costCents > 0 || w.posts > 0);
   const h = first < 0 ? [] : history.slice(first);
   const n = h.length;
-  const recent = h.slice(-Math.min(3, n));
+  // Level: the mean of the last LEVEL_WEEKS weeks, so lumpy sales (a sale every other week) don't make the level
+  // depend on which week the history happens to end on.
+  const recent = h.slice(-Math.min(LEVEL_WEEKS, n));
   const gross = h.map((w) => w.grossCents);
   const grossSum = sum(gross);
   const feeRate = grossSum > 0 ? clamp(sum(h.map((w) => w.feesCents + w.refundsCents)) / grossSum, 0, 0.5) : DEFAULT_FEE_RATE;
   let growth = 0;
   let volatility = 0.5;
   if (n >= 3 && grossSum > 0) {
+    const slopeOf = (vals: readonly number[]) => {
+      const ys = vals.map((g) => Math.log(g + 500));
+      const xs = ys.map((_, i) => i);
+      const mx = mean(xs);
+      const my = mean(ys);
+      const sxx = sum(xs.map((x) => (x - mx) ** 2));
+      return sxx ? sum(xs.map((x, i) => (x - mx) * (ys[i]! - my))) / sxx : 0;
+    };
+    // When zero weeks are common, fit the trend on 2-week sums (newest pairs first) so the zeros don't set it.
+    const zeroShare = gross.filter((g) => g <= 0).length / n;
+    let slope: number;
+    if (zeroShare >= 0.25 && n >= 4) {
+      const pairs: number[] = [];
+      for (let i = n; i - 2 >= 0; i -= 2) pairs.unshift(gross[i - 2]! + gross[i - 1]!);
+      slope = slopeOf(pairs) / 2;
+    } else {
+      slope = slopeOf(gross);
+    }
     const y = gross.map((g) => Math.log(g + 500));
-    const xs = y.map((_, i) => i);
-    const mx = mean(xs);
+    const mx = (n - 1) / 2;
     const my = mean(y);
-    const sxx = sum(xs.map((x) => (x - mx) ** 2));
-    const slope = sxx ? sum(xs.map((x, i) => (x - mx) * (y[i]! - my))) / sxx : 0;
     const resid = y.map((v, i) => v - (my + slope * (i - mx)));
     const sd = Math.sqrt(sum(resid.map((r) => r * r)) / Math.max(1, n - 2));
     growth = clamp(slope * (n / (n + 4)), -0.2, 0.2);
@@ -113,9 +132,11 @@ function summarise(personaId: string | null, runs: Float64Array[], monday: Date,
   for (let k = 1; k <= HORIZON_WEEKS; k++) {
     weekly.push({ weekStart: isoDate(new Date(monday.getTime() + k * WEEK_MS)), ...band(runs.map((r) => r[k]!)) });
   }
+  // Negative weeks are judged on the expected (mean) profit: with skewed sales the median sits well below the mean,
+  // and a persona earning money on average must not read as a loss.
   let negativeWeeks = 0;
-  for (const w of weekly) {
-    if (w.median < 0) negativeWeeks++;
+  for (let k = 1; k <= HORIZON_WEEKS; k++) {
+    if (mean(runs.map((r) => r[k]!)) < 0) negativeWeeks++;
     else break;
   }
   return {

@@ -23,6 +23,31 @@ const DATE = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', 
 
 export const weekday = (d: Date) => WEEKDAY.format(d);
 export const time = (d: Date) => TIME.format(d);
+
+const zoned = new Map<string, { weekday: Intl.DateTimeFormat; time: Intl.DateTimeFormat; zone: Intl.DateTimeFormat }>();
+function zoneFormats(tz: string | null | undefined) {
+  const key = tz || 'UTC';
+  let f = zoned.get(key);
+  if (!f) {
+    try {
+      f = {
+        weekday: new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: key }),
+        time: new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: key }),
+        zone: new Intl.DateTimeFormat('en-US', { timeZoneName: 'short', timeZone: key }),
+      };
+    } catch {
+      return zoneFormats('UTC');
+    }
+    zoned.set(key, f);
+  }
+  return f;
+}
+
+/** Weekday and time in the persona's own time zone (where its posting windows are), e.g. "Mon 19:12". */
+export const localWeekday = (d: Date, tz: string | null | undefined) => zoneFormats(tz).weekday.format(d);
+export const localTime = (d: Date, tz: string | null | undefined) => zoneFormats(tz).time.format(d);
+/** The zone's short name at `d` ("EST", "GMT+1"…). */
+export const zoneLabel = (d: Date, tz: string | null | undefined) => zoneFormats(tz).zone.formatToParts(d).find((p) => p.type === 'timeZoneName')?.value ?? (tz || 'UTC');
 export const shortDate = (d: Date) => DATE.format(d);
 
 export function relative(d: Date, now = new Date()): string {

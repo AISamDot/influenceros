@@ -57,7 +57,7 @@ export function hostOf(url: string): string | null {
  */
 export async function enqueueOnce(
   db: Db,
-  job: { kind: string; key: string; payload: Record<string, unknown>; studioId?: string | null; personaId?: string | null; priority?: number; runAt?: Date },
+  job: { kind: string; key: string; payload: Record<string, unknown>; studioId?: string | null; personaId?: string | null; priority?: number; runAt?: Date; maxAttempts?: number },
 ): Promise<JobRow | null> {
   const open = await db.maybeOne(
     `SELECT 1 FROM job WHERE kind = $1 AND status IN ('queued','running') AND payload->>'dedupe' = $2 LIMIT 1`,
@@ -71,6 +71,7 @@ export async function enqueueOnce(
     personaId: job.personaId ?? null,
     priority: job.priority,
     runAt: job.runAt,
+    maxAttempts: job.maxAttempts,
   });
 }
 

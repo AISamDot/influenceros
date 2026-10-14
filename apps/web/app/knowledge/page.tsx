@@ -8,6 +8,7 @@ import { SubmitButton } from '@/components/submit-button';
 import { relative, shortDate } from '@/lib/format';
 import { studioContext } from '@/lib/server';
 import { activeNiches, knowledgeProviders, knowledgeService } from './_data';
+import { requireOwnerPage } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Knowledge' };
@@ -15,6 +16,7 @@ export const metadata = { title: 'Knowledge' };
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
 
 export default async function Knowledge({ searchParams }: { searchParams: Promise<{ q?: string; niche?: string; error?: string; ok?: string }> }) {
+  await requireOwnerPage();
   const sp = await searchParams;
   const { db, studio } = await studioContext();
   const niches = await activeNiches(db, studio.id);

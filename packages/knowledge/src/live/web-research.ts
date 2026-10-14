@@ -76,7 +76,7 @@ export class ClaudeWebResearch implements WebResearchProvider {
       '"experts":[{"name":"","school":"","why":"","url":""}],"curriculum":[{"path":"","title":"","level":"fundamental|intermediate|advanced|debate|myth|frontier"}]}',
     ].join('\n');
     const r = await this.#call(prompt, MAP_SCHEMA, this.#opts.maxSearches * 2);
-    const map = parseFieldMap(r.value);
+    const map = withCost(r.costUsd, () => parseFieldMap(r.value));
     return { ...map, sources: map.sources.slice(0, maxSources), curriculum: map.curriculum.slice(0, maxNodes), costUsd: r.costUsd };
   }
 
@@ -90,13 +90,23 @@ export class ClaudeWebResearch implements WebResearchProvider {
       'JSON shape: {"synthesis":"","facts":[{"claim":"","citations":[{"url":"","title":"","quote":""}]}],"frameworks":[""],"questions":[""],"sources":[{"url":"","title":""}]}',
     ].join('\n');
     const r = await this.#call(prompt, TOPIC_SCHEMA, this.#opts.maxSearches);
-    const t = parseTopicResearch(r.value);
+    const t = withCost(r.costUsd, () => parseTopicResearch(r.value));
     // Sources the model searched but didn't list still count as sources it read.
     const sources = dedupeCitations([...t.sources, ...r.searchResults]).slice(0, Math.max(4, req.maxSources ?? 8));
     return { ...t, sources, costUsd: r.costUsd };
   }
 
+  /** Every error after the first paid stream carries what was already spent (`costUsd`), so metered() debits it. */
   async #call(prompt: string, schema: Record<string, unknown>, maxSearches: number): Promise<CallResult> {
+    const spent = { usd: 0 };
+    try {
+      return await this.#run(prompt, schema, maxSearches, spent);
+    } catch (err) {
+      throw attachCost(err, spent.usd);
+    }
+  }
+
+  async #run(prompt: string, schema: Record<string, unknown>, maxSearches: number, spent: { usd: number }): Promise<CallResult> {
     const model = LLM_PRICES[this.#tier].model;
     const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: 'user', content: prompt }];
     let cost = 0;
@@ -118,6 +128,7 @@ export class ClaudeWebResearch implements WebResearchProvider {
       });
       const msg = await stream.finalMessage();
       cost += usageCost(this.#tier, msg.usage);
+      spent.usd = cost;
       for (const block of msg.content) {
         if (block.type === 'web_search_tool_result' && Array.isArray(block.content)) {
           for (const r of block.content) searchResults.push({ url: r.url, title: r.title });
@@ -143,9 +154,26 @@ export class ClaudeWebResearch implements WebResearchProvider {
       messages: [{ role: 'user', content: `Convert this research into the JSON schema. Keep every citation URL exactly as written.\n\n${text}` }],
     });
     cost += usageCost('fast', repair.usage);
+    spent.usd = cost;
     const repaired = extractJson(repair.content.map((b) => (b.type === 'text' ? b.text : '')).join(''));
     if (repaired === undefined) throw new Error('research answer was not valid JSON');
     return { value: repaired, costUsd: cost, searchResults };
+  }
+}
+
+/** Tags an error with the money a failed research call already spent (metered() debits `err.costUsd`). */
+function attachCost(err: unknown, usd: number): unknown {
+  if (usd <= 0) return err;
+  const e = err instanceof Error ? err : new Error(String(err));
+  if (typeof (e as { costUsd?: unknown }).costUsd !== 'number') Object.assign(e, { costUsd: usd });
+  return e;
+}
+
+function withCost<T>(usd: number, fn: () => T): T {
+  try {
+    return fn();
+  } catch (err) {
+    throw attachCost(err, usd);
   }
 }
 

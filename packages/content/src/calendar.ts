@@ -1,4 +1,4 @@
-import { CADENCE_BOUNDS, type CadenceTarget, DEFAULT_CADENCE, type StudioServices } from '@ios/agents';
+import { CADENCE_BOUNDS, type CadenceTarget, DEFAULT_CADENCE, type StudioServices, WINNER_CADENCE, WINNER_STATES } from '@ios/agents';
 import { type PersonaState, type PostFormat, type PostPurpose, PUBLISHING_STATES, thumbnailUri } from '@ios/core';
 import { json } from '@ios/db';
 import { loadPersonaContext, type PersonaContext } from './persona';
@@ -15,19 +15,12 @@ import { asRecord, asString, DAY_MS, hashInt, isoDate, lowerFirst, mondayUtc, sa
 export const FORMATS: readonly PostFormat[] = ['talking', 'activity_text', 'voiceover', 'static', 'carousel'];
 export const PURPOSES: readonly PostPurpose[] = ['reach', 'trust', 'sell'];
 
-/** FR-4.3 winner column: ~17 a week (2–3 a day): 5 talking, 5 activity, 3 voiceover, 2 static, 2 carousel. */
-export const WINNER_CADENCE: CadenceTarget = {
-  postsPerWeek: 17,
-  formatMix: { talking: 5, activity_text: 5, voiceover: 3, static: 2, carousel: 2 },
-  purposeMix: { reach: 10, trust: 5, sell: 2 },
-  source: 'default',
-  reason: 'winner cadence (FR-4.3): 2–3 posts a day',
-};
-export const WINNER_STATES: readonly PersonaState[] = ['SCALING', 'BRAND'];
+export { WINNER_CADENCE, WINNER_STATES };
 
 /**
  * The target the calendar plans to. A lever or Owner target from the CadencePolicy is taken as given; the plain
- * default is raised to the winner cadence for SCALING / BRAND personas.
+ * default is raised to the winner cadence for SCALING / BRAND personas. (The Profit Engine's policy already returns
+ * WINNER_CADENCE for winners, so this only matters with the default policy.)
  */
 export function effectiveCadence(target: CadenceTarget, state: PersonaState): CadenceTarget {
   if (target.source === 'default' && target.postsPerWeek === DEFAULT_CADENCE.postsPerWeek && WINNER_STATES.includes(state)) return WINNER_CADENCE;
@@ -272,6 +265,13 @@ export function bookSellSlots<S extends { at: Date }>(slots: readonly S[], queue
   return out;
 }
 
+/**
+ * Week membership for calendar slots, with params $2 = week_start (date), $3/$4 = the week's UTC range. week_start
+ * decides: a west-of-UTC persona's Sunday evening is Monday in UTC but still belongs to its own week. The UTC range is
+ * only a fallback for legacy rows without week_start.
+ */
+export const WEEK_MEMBER_SQL = '(week_start = $2::date OR (week_start IS NULL AND slot_at >= $3 AND slot_at < $4))';
+
 export interface PlanWeekResult {
   readonly created: number;
   readonly existing: number;
@@ -294,7 +294,7 @@ export async function planWeek(services: StudioServices, personaId: string, week
   const countExisting = async () =>
     (
       await db.one<{ n: number }>(
-        `SELECT count(*)::int AS n FROM calendar_slot WHERE persona_id = $1 AND status <> 'skipped' AND (week_start = $2::date OR (slot_at >= $3 AND slot_at < $4))`,
+        `SELECT count(*)::int AS n FROM calendar_slot WHERE persona_id = $1 AND status <> 'skipped' AND ${WEEK_MEMBER_SQL}`,
         [personaId, isoDate(weekStart), weekStart, weekEnd],
       )
     ).n;
@@ -382,7 +382,7 @@ Recent titles (don't repeat):\n${recent.slice(0, 30).map((t) => `- ${t}`).join('
   const slotIds = await db.transaction(async (tx) => {
     await tx.query('SELECT id FROM persona WHERE id = $1 FOR UPDATE', [personaId]);
     const again = await tx.one<{ n: number }>(
-      `SELECT count(*)::int AS n FROM calendar_slot WHERE persona_id = $1 AND status <> 'skipped' AND (week_start = $2::date OR (slot_at >= $3 AND slot_at < $4))`,
+      `SELECT count(*)::int AS n FROM calendar_slot WHERE persona_id = $1 AND status <> 'skipped' AND ${WEEK_MEMBER_SQL}`,
       [personaId, isoDate(weekStart), weekStart, weekEnd],
     );
     if (again.n > 0) return [] as string[];
@@ -425,4 +425,75 @@ Recent titles (don't repeat):\n${recent.slice(0, 30).map((t) => `- ${t}`).join('
     return ids;
   });
   return { created: slotIds.length, existing: 0, slotIds, target };
+}
+
+// ─── Fast reactions into a week that is already planned (PRD §3.10.3, FR-23.2: publish within 24–72 h) ───
+
+/** A swapped slot needs this long to re-run hook-lab, script, Q1, Gate and media before it posts. */
+export const REACTION_LEAD_MS = 6 * 3_600_000;
+/** Stages a slot can still be re-titled in (nothing has gone to media yet). */
+const SWAPPABLE = ['planned', 'scripted', 'q1'];
+
+export interface BookedReaction {
+  readonly personaId: string;
+  readonly ideaId: string;
+  readonly slotId: string;
+  readonly slotAt: Date;
+}
+
+/**
+ * planWeek only books News Desk reaction ideas into a week it is planning, and reaction ideas expire 48 h after the
+ * briefing, so in steady state they never reach a week that is already planned. This swaps the freshest unexpired
+ * reaction idea (one per persona per run) into the best reach/trust slot that posts before the idea expires: an
+ * unscripted slot first, else the earliest one not yet past Q1 (it goes back to 'planned' and is re-scripted). The
+ * slot's calendar idea goes back to the queue. At most one reaction a day per persona. Cheap: no model calls.
+ */
+export async function bookReactionIdeas(services: StudioServices, opts: { now?: Date; personaId?: string } = {}): Promise<BookedReaction[]> {
+  const { db } = services;
+  const now = opts.now ?? services.now();
+  const earliest = new Date(now.getTime() + REACTION_LEAD_MS);
+  const ideas = await db.query<{ id: string; persona_id: string; title: string; pillar: string | null; format: PostFormat | null; expires_at: Date }>(
+    `SELECT i.id, i.persona_id, i.title, i.pillar, i.format, (i.source->>'expires_at')::timestamptz AS expires_at
+       FROM idea i JOIN persona p ON p.id = i.persona_id
+      WHERE i.status = 'new' AND i.source->>'type' = 'news' AND i.source->>'expires_at' IS NOT NULL
+        AND (i.source->>'expires_at')::timestamptz > $1 AND p.state = ANY($2::text[]) AND ($3::uuid IS NULL OR i.persona_id = $3)
+      ORDER BY i.persona_id, i.created_at DESC`,
+    [earliest, [...PUBLISHING_STATES], opts.personaId ?? null],
+  );
+  const out: BookedReaction[] = [];
+  const done = new Set<string>();
+  for (const idea of ideas) {
+    if (done.has(idea.persona_id)) continue;
+    const booked = await db.transaction(async (tx) => {
+      await tx.query('SELECT id FROM persona WHERE id = $1 FOR UPDATE', [idea.persona_id]);
+      const fresh = await tx.maybeOne(`SELECT 1 FROM idea WHERE id = $1 AND status = 'new'`, [idea.id]);
+      if (!fresh) return null;
+      const slot = await tx.maybeOne<{ id: string; slot_at: Date; idea_id: string | null }>(
+        `SELECT s.id, s.slot_at, s.idea_id FROM calendar_slot s LEFT JOIN idea old ON old.id = s.idea_id
+          WHERE s.persona_id = $1 AND s.status = ANY($2::text[]) AND s.purpose IN ('reach','trust') AND s.product_id IS NULL
+            AND s.slot_at >= $3 AND s.slot_at <= $4 AND COALESCE(old.source->>'type', '') <> 'news'
+            AND NOT EXISTS (SELECT 1 FROM job j WHERE j.kind = 'pipeline.slot' AND j.payload->>'slotId' = s.id::text AND j.status = 'running')
+            AND NOT EXISTS (SELECT 1 FROM calendar_slot o JOIN idea oi ON oi.id = o.idea_id
+                             WHERE o.persona_id = s.persona_id AND o.id <> s.id AND o.status <> 'skipped' AND oi.source->>'type' = 'news'
+                               AND o.slot_at::date = s.slot_at::date)
+          ORDER BY (s.status = 'planned') DESC, (s.format = $5) DESC, s.slot_at
+          LIMIT 1`,
+        [idea.persona_id, SWAPPABLE, earliest, idea.expires_at, idea.format ?? 'talking'],
+      );
+      if (!slot) return null;
+      if (slot.idea_id) await tx.query(`UPDATE idea SET status = 'new' WHERE id = $1 AND status IN ('booked','scripted') AND COALESCE(source->>'type', '') <> 'slot'`, [slot.idea_id]);
+      await tx.query(`UPDATE idea SET status = 'booked' WHERE id = $1`, [idea.id]);
+      await tx.query(
+        `UPDATE calendar_slot SET title = $2, idea_id = $3, pillar = COALESCE($4, pillar), status = 'planned', block_reason = NULL, stage_changed_at = $5,
+                meta = meta || $6::jsonb WHERE id = $1`,
+        [slot.id, idea.title, idea.id, idea.pillar, now, json({ reaction: true, replaced_idea_id: slot.idea_id })],
+      );
+      return { personaId: idea.persona_id, ideaId: idea.id, slotId: slot.id, slotAt: new Date(slot.slot_at) };
+    });
+    if (booked) {
+      out.push(booked);
+      done.add(idea.persona_id);
+    }
+  }
+  return out;
 }

@@ -17,6 +17,7 @@ async function studio() {
   const lose = await makeTestPersona(s, { name: 'Loser' });
   await addWeeklyHistory(s.db, s.studioId, win.id, { weeks: 6, gross: 20_000, cost: 1_000, growth: 1.03 });
   await addWeeklyHistory(s.db, s.studioId, lose.id, { weeks: 6, gross: 0, cost: 4_000 });
+  await s.db.query('UPDATE persona SET launched_at = $2 WHERE id = $1', [lose.id, daysAgo(60)]); // past the Day-30 checkpoint
   await addDebit(s.db, s.studioId, null, { amount: 3, at: daysAgo(1), refType: 'studio' });
   return { s, win, lose };
 }

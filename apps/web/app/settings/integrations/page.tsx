@@ -1,5 +1,6 @@
 import { defaultBackend, integrationStates, SECRETS } from '@ios/secrets';
 import Link from 'next/link';
+import { requireOwnerPage } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Integrations' };
@@ -10,7 +11,8 @@ const STATUS = {
   fake_mode: { label: 'Fake mode', cls: 'bg-surface-3 text-muted' },
 } as const;
 
-export default function Integrations() {
+export default async function Integrations() {
+  await requireOwnerPage();
   // Presence only: values never leave the Keychain or the environment.
   const states = integrationStates(defaultBackend());
   const connected = states.filter((s) => s.status === 'connected').length;

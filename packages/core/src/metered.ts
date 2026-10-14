@@ -25,7 +25,7 @@ export interface MeterContext {
  * Runs a paid provider call under the governor: reserve the estimate first (refused if it would pass a cap, and
  * serialised with every other reservation, so concurrent calls can't all fit in the same headroom), then settle
  * the hold to the actual cost (recorded even if it overshoots the estimate, since it was incurred), or release it
- * if the call fails.
+ * if the call fails (debiting what a failed call reports it spent, `err.costUsd`).
  */
 export async function metered<T>(
   db: Db,
@@ -49,7 +49,14 @@ export async function metered<T>(
   try {
     result = await call();
   } catch (err) {
-    await releaseHold(db, holdId);
+    // A provider that spent money before failing reports it as `err.costUsd` (e.g. web research that ran several
+    // streams and then returned unusable output): debit that, since it was incurred. Otherwise nothing was spent.
+    const spent = (err as { costUsd?: unknown } | null)?.costUsd;
+    if (typeof spent === 'number' && Number.isFinite(spent) && spent > 0) {
+      await settleHold(db, holdId, { ...base, amount: spent, meta: { ...base.meta, failed: true } }).catch(() => releaseHold(db, holdId));
+    } else {
+      await releaseHold(db, holdId);
+    }
     throw err;
   }
   await settleHold(db, holdId, { ...base, amount: actual(result) });

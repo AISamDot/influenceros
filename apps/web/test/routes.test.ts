@@ -1,4 +1,7 @@
-import { createSession } from '@ios/auth';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createSession, revokeSession } from '@ios/auth';
 import { findThread, payloadHash, proposeKill, STUDIO_MANAGER } from '@ios/core';
 import type { Db } from '@ios/db';
 import { createTestDb } from '@ios/db/testing';
@@ -128,5 +131,36 @@ describe('chat API', () => {
       { params: Promise.resolve({ threadId: thread.id }) },
     );
     expect(anon.status).toBe(401);
+  });
+});
+
+describe('session revocation reaches every non-public route and page', () => {
+  it('a revoked session gets 401 from the pipeline, knowledge and profit routes', async () => {
+    const { POST: pipelinePost, GET: pipelineGet } = await import('../app/api/pipeline/route');
+    const { POST: buildPost } = await import('../app/api/knowledge/build/route');
+    const { GET: profitGet } = await import('../app/api/profit/[view]/route');
+    const issued = await createSession(db, { method: 'password', secret: SECRET });
+    const revoked = `ios_session=${issued.token}`;
+    const card = () => profitGet(new Request(`${BASE}/api/profit/card`, { headers: { cookie: revoked } }), { params: Promise.resolve({ view: 'card' }) });
+    expect((await card()).status).toBe(200);
+    await revokeSession(db, issued.sid);
+    expect((await card()).status).toBe(401);
+    expect((await pipelineGet(new Request(`${BASE}/api/pipeline`, { headers: { cookie: revoked } }))).status).toBe(401);
+    const json = { 'content-type': 'application/json', cookie: revoked };
+    expect((await pipelinePost(new Request(`${BASE}/api/pipeline`, { method: 'POST', headers: json, body: '{"action":"plan_week","week":"this"}' }))).status).toBe(401);
+    expect((await buildPost(new Request(`${BASE}/api/knowledge/build`, { method: 'POST', headers: json, body: '{"niche":"wealth"}' }))).status).toBe(401);
+  });
+
+  it('every API route except the public ones, and every page except /login, checks the session row', () => {
+    const root = fileURLToPath(new URL('../app', import.meta.url));
+    const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(dir, e.name)) : [join(dir, e.name)]));
+    const all = files(root).map((f) => relative(root, f).split(sep).join('/'));
+    const PUBLIC_API = /^api\/(auth|cron|webhooks|health)\//;
+    const routes = all.filter((f) => f.startsWith('api/') && f.endsWith('/route.ts') && !PUBLIC_API.test(f));
+    const pages = all.filter((f) => f.endsWith('page.tsx') && !f.startsWith('login/'));
+    expect(routes.length).toBeGreaterThan(10);
+    expect(pages.length).toBeGreaterThan(10);
+    expect(routes.filter((f) => !readFileSync(join(root, f), 'utf8').includes('requireOwner('))).toEqual([]);
+    expect(pages.filter((f) => !readFileSync(join(root, f), 'utf8').includes('requireOwnerPage()'))).toEqual([]);
   });
 });

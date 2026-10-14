@@ -5,7 +5,7 @@ import { loadPersonaContext } from '../src/persona';
 import { q1WithFixes } from '../src/pipeline';
 import { alignWords, checkScript, diffTokens, gradeVoice, voiceCheck } from '../src/qc';
 import { attachSampleBible } from '../src/sample';
-import { fakeScript, type ScriptBrief, type ScriptDraft } from '../src/script';
+import { enforceScript, fakeScript, type ScriptBrief, type ScriptDraft } from '../src/script';
 import { numberToWords, ttsNormalize, yearToWords } from '../src/tts';
 
 const VOICE = { voice: { wpm: 160, lexicon: [], avoid: ['hustle'], catchphrases: [], energy: '' } };
@@ -49,6 +49,22 @@ describe('QC Q1: script checks', () => {
     expect(failed(talking(), [], 'SHEET')).toContain('cta_keyword');
     expect(failed(talking({ body: 'Your paycheck is gone by the 20th? Comment PLAN.' }))).toContain('length');
     expect(failed(talking({ body: `${talking().body} ${'Keep going and keep it simple every single week. '.repeat(8)}` }))).toEqual(expect.arrayContaining(['length', 'repeated_lines']));
+  });
+
+  it('accepts a two-sentence hook the script opens with, and the maker fix does not repeat it', async () => {
+    const hook = 'Stop. Your paycheck is gone by the 20th?';
+    const d = talking({ hook, body: `Stop. ${talking().body}`, onScreenText: [hook] });
+    expect(failed(d)).not.toContain('hook_first');
+    expect(failed(d)).not.toContain('repeated_lines');
+    const t = await createTestStudio();
+    const p = await makeTestPersona(t);
+    await attachSampleBible(t.db, p.id);
+    const ctx = await loadPersonaContext(t.db, p.id);
+    await t.db.close();
+    const fixed = enforceScript(d, { ctx, format: 'talking', purpose: 'trust', ctaKeyword: 'PLAN', ctaDelivers: 'the free starter', knowledge: [], title: 'Payday', pillar: null });
+    expect(fixed.body.startsWith(hook)).toBe(true);
+    expect(fixed.body.indexOf(hook, 1)).toBe(-1);
+    expect(failed(fixed)).not.toEqual(expect.arrayContaining(['hook_first']));
   });
 
   it('flags uncited factual claims and accepts cited ones', () => {
@@ -107,6 +123,8 @@ describe('TTS pronunciation normaliser', () => {
     );
     expect(risks.map((r) => r.kind)).toEqual(expect.arrayContaining(['money', 'percent', 'time', 'number', 'acronym', 'abbreviation', 'hashtag', 'url']));
     expect(ttsNormalize('Comment PLAN now').text).toBe('Comment PLAN now');
+    // UK pence (Dot): never "five zero p" or "zero pounds ninety-nine".
+    expect(ttsNormalize('A 50p tin, or £0.99 for two.').text).toBe('A fifty p tin, or ninety-nine p for two.');
   });
 });
 

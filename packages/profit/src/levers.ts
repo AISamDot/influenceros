@@ -322,7 +322,9 @@ export async function planAllocation(inp: LeverInputs, opts: { ignoreExisting?: 
   );
   const top = [...active].sort((a, b) => (scores.get(b.id) ?? 0) - (scores.get(a.id) ?? 0))[0]!;
   const name = (id: string | null) => (id ? (inp.personas.find((p) => p.id === id)?.name ?? id) : 'Studio reserve');
-  const reason = `Weekly pool ${Math.floor(pool.credits).toLocaleString('en-US')} credits and ${usd(pool.llm * 100)} LLM: ${Math.round(exploit * 100)}% by profit per credit (best: ${top.name}, ${usd(scores.get(top.id) ?? 0)}/credit), ${Math.round(explore * 100)}% spread for testing, ${Math.round(settings.allocation.reserve * 100)}% studio reserve.`;
+  // Plan only: nothing enforces budget_allocation yet (the governor enforces the monthly caps), so this lever logs no
+  // expected or measured impact; measureLevers skips it.
+  const reason = `Plan only: weekly pool ${Math.floor(pool.credits).toLocaleString('en-US')} credits and ${usd(pool.llm * 100)} LLM: ${Math.round(exploit * 100)}% by profit per credit (best: ${top.name}, ${usd(scores.get(top.id) ?? 0)}/credit), ${Math.round(explore * 100)}% spread for testing, ${Math.round(settings.allocation.reserve * 100)}% studio reserve. Caps still apply as set.`;
   return {
     lever: 'credit_reallocation',
     personaId: null,
@@ -330,13 +332,15 @@ export async function planAllocation(inp: LeverInputs, opts: { ignoreExisting?: 
     before: Object.fromEntries(prev.map((r) => [name(r.persona_id), r.credits])),
     after: Object.fromEntries(alloc.map((a) => [name(a.personaId), a.credits])),
     rationale: reason,
-    expectedImpactCents: expected,
+    expectedImpactCents: 0,
     confidence: positive.length >= 2 ? 'medium' : 'low',
     reviewDays: settings.reviewDays,
     baseline: {
       weeklyProfitCents: round((sum(rows.map((r) => r.profitCents)) / settings.leverWindowDays) * 7),
       windowDays: settings.leverWindowDays,
       scores: Object.fromEntries([...scores].map(([id, s]) => [id, Math.round(s * 10_000) / 10_000])),
+      advisory: true,
+      modelledImpactCents: expected,
     },
     effect: { type: 'allocation', weekStart, rows: alloc },
   };
@@ -516,23 +520,28 @@ export async function measureLevers(db: Db, studioId: string, now: Date): Promis
   const measured: LeverAction[] = [];
   const reverted: LeverAction[] = [];
 
-  // Routing step-downs: revert early when quality drops.
+  // Routing step-downs: revert whenever quality drops while the cheaper tier is still in force, measured or not
+  // (planRouting skips a persona that has an override, so nothing else would ever re-check it). Recent QC only.
   const routing = await db.query<LeverRow>(
-    `SELECT * FROM profit_lever_action WHERE studio_id = $1 AND lever = 'model_routing' AND status = 'applied' AND created_at <= $2`,
+    `SELECT a.* FROM profit_lever_action a
+      WHERE a.studio_id = $1 AND a.lever = 'model_routing' AND a.status IN ('applied','measured') AND a.created_at <= $2
+        AND EXISTS (SELECT 1 FROM profit_routing_override o WHERE o.lever_action_id = a.id AND o.active)`,
     [studioId, addDays(now, -3)],
   );
   for (const r of routing) {
     if (!r.persona_id) continue;
     const stage = String((r.meta.baseline as Record<string, unknown> | undefined)?.qcStage ?? 'Q1');
-    const qc = await qcPassRate(db, r.persona_id, stage, new Date(r.created_at), now);
+    const since = new Date(Math.max(new Date(r.created_at).getTime(), addDays(now, -14).getTime()));
+    const qc = await qcPassRate(db, r.persona_id, stage, since, now);
     const agent = String(r.after.agent ?? 'scriptwriter');
     if (qc.n >= 4 && qc.rate < settings.routingRevertRate) {
       const row = await db.transaction(async (tx) => {
         await tx.query(`UPDATE profit_routing_override SET active = false, ended_at = $2 WHERE lever_action_id = $1 AND active`, [r.id, now]);
         const u = await tx.one<LeverRow>(
-          `UPDATE profit_lever_action SET status = 'reverted', measured_impact_cents = 0, measured_at = $2,
+          `UPDATE profit_lever_action SET status = 'reverted',
+                  measured_impact_cents = CASE WHEN status = 'measured' THEN measured_impact_cents ELSE 0 END, measured_at = COALESCE(measured_at, $2),
                   meta = meta || $3::jsonb WHERE id = $1 RETURNING *`,
-          [r.id, now, json({ revert: { passRate: qc.rate, checks: qc.n, reason: `QC ${stage} pass rate fell to ${Math.round(qc.rate * 100)}%` } })],
+          [r.id, now, json({ revert: { passRate: qc.rate, checks: qc.n, at: now.toISOString(), after: r.status, reason: `QC ${stage} pass rate fell to ${Math.round(qc.rate * 100)}%` } })],
         );
         await audit(tx, {
           studioId,
@@ -550,7 +559,7 @@ export async function measureLevers(db: Db, studioId: string, now: Date): Promis
   }
 
   const due = await db.query<LeverRow>(
-    `SELECT * FROM profit_lever_action WHERE studio_id = $1 AND status = 'applied' AND review_at <= $2 ORDER BY created_at`,
+    `SELECT * FROM profit_lever_action WHERE studio_id = $1 AND status = 'applied' AND review_at <= $2 AND lever <> 'credit_reallocation' ORDER BY created_at`,
     [studioId, now],
   );
   for (const r of due) {

@@ -5,7 +5,9 @@ import {
   AuthError,
   authorize,
   hashPassword,
+  issueLoginLink,
   isPublicPath,
+  loginErrorMessage,
   loginWithMagicToken,
   loginWithPassword,
   readCookie,
@@ -74,6 +76,9 @@ describe('request guard (proxy)', () => {
     expect(safeNext('https://evil.com')).toBe('/');
     expect(safeNext('/login?next=/x')).toBe('/');
     expect(safeNext('/approvals')).toBe('/approvals');
+    // Browsers strip tab/newline and read "\\" as "/" in a Location: "/\t/evil.com" would leave the site.
+    for (const v of ['/\t/evil.com', '/\n/evil.com', '/\\evil.com', '/ /evil.com', '/\x00x']) expect(safeNext(v)).toBe('/');
+    expect(safeNext('/pipeline?persona=a#top')).toBe('/pipeline?persona=a#top');
   });
 });
 
@@ -99,8 +104,10 @@ describe('Owner sign-in', () => {
     await setOwnerPassword(db, 'a new long password');
     expect(await sessionActive(db, s2.sid)).toBe(false);
 
-    for (let i = 0; i < 10; i++) await expect(loginWithPassword(db, { password: `nope-${i}`, secret: SECRET })).rejects.toBeInstanceOf(AuthError);
-    await expect(loginWithPassword(db, { password: 'a new long password', secret: SECRET })).rejects.toMatchObject({ status: 429 });
+    for (let i = 0; i < 10; i++) await expect(loginWithPassword(db, { password: `nope-${i}`, secret: SECRET, ipHash: 'attacker' })).rejects.toBeInstanceOf(AuthError);
+    await expect(loginWithPassword(db, { password: 'a new long password', secret: SECRET, ipHash: 'attacker' })).rejects.toMatchObject({ status: 429 });
+    // Throttled per client: another client's failures don't lock the Owner out.
+    expect(await loginWithPassword(db, { password: 'a new long password', secret: SECRET, ipHash: 'owner-mac' })).toHaveProperty('sid');
     await db.close();
   });
 
@@ -129,9 +136,20 @@ describe('Owner sign-in', () => {
 
     // No owner email configured: nothing is ever sent.
     expect(await requestMagicLink(db, email, { ...base, ownerEmail: null, email: 'hossam@example.com' })).toEqual({ sent: false, link: null });
-    // Five requests in 15 minutes, then no more (whatever the address).
-    await requestMagicLink(db, email, { ...base, email: 'x@y.z' });
-    await expect(requestMagicLink(db, email, { ...base, email: 'x@y.z' })).rejects.toMatchObject({ status: 429 });
+    // Five requests for other addresses in 15 minutes from one client, then no more from that client; they never
+    // block the Owner's own link (which has its own limit).
+    for (let i = 0; i < 5; i++) await requestMagicLink(db, email, { ...base, email: 'x@y.z', ipHash: 'attacker' });
+    await expect(requestMagicLink(db, email, { ...base, email: 'x@y.z', ipHash: 'attacker' })).rejects.toMatchObject({ status: 429 });
+    expect((await requestMagicLink(db, email, { ...base, email: 'hossam@example.com', ipHash: 'owner-mac' })).sent).toBe(true);
+    // A deep link survives email sign-in; an off-site next is dropped.
+    expect(await issueLoginLink(db, { baseUrl: 'http://localhost:3000', next: '/approvals' })).toMatch(/&next=%2Fapprovals$/);
+    expect(await issueLoginLink(db, { baseUrl: 'http://localhost:3000', next: '/\t/evil.com' })).not.toMatch(/next=/);
+    // The sign-in alert shows fixed messages only.
+    expect(loginErrorMessage('bad_password')).toBe('Wrong password.');
+    expect(loginErrorMessage('Your session expired. Reset at evil.example')).toBeNull();
+    // CLI recovery: a one-time link without email.
+    const cli = await issueLoginLink(db, { baseUrl: 'http://localhost:3000' });
+    expect(await sessionActive(db, (await loginWithMagicToken(db, { token: new URL(cli).searchParams.get('token')!, secret: SECRET })).sid)).toBe(true);
     await db.close();
   });
 });

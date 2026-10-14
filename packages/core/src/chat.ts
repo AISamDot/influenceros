@@ -82,6 +82,18 @@ export async function listMessages(db: Db, threadId: string, limit = 100): Promi
     `SELECT * FROM chat_message WHERE thread_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2`,
     [threadId, limit],
   );
+  // Inline approval cards show the approval's current state (approved, rejected, withdrawn…), not the state when
+  // they were posted.
+  const ids = [...new Set(rows.map((r) => (r.meta as Record<string, unknown> | null)?.approvalId).filter((v): v is string => typeof v === 'string' && /^[0-9a-f-]{36}$/i.test(v)))];
+  if (ids.length) {
+    const st = new Map(
+      (await db.query<{ id: string; status: string }>('SELECT id, status FROM approval WHERE id = ANY($1::uuid[])', [ids])).map((a) => [a.id, a.status]),
+    );
+    for (const r of rows) {
+      const id = (r.meta as Record<string, unknown> | null)?.approvalId;
+      if (typeof id === 'string' && st.has(id)) r.meta = { ...r.meta, approvalStatus: st.get(id) };
+    }
+  }
   return rows.reverse();
 }
 

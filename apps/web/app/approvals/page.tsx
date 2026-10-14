@@ -7,6 +7,7 @@ import { SubmitButton } from '@/components/submit-button';
 import { IconCheck, IconClock, IconFlag, IconX } from '@/components/icons';
 import { relative } from '@/lib/format';
 import { studioContext } from '@/lib/server';
+import { requireOwnerPage } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Approvals' };
@@ -163,6 +164,7 @@ function Evidence({ payload }: { payload: Record<string, unknown> }) {
 }
 
 export default async function Approvals({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
+  await requireOwnerPage();
   const sp = await searchParams;
   const { db, studio } = await studioContext();
   const pending = (await listPendingApprovals(db, studio.id)) as Row[];
@@ -189,7 +191,7 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
         </h2>
         {kills.length === 0 ? <p className="text-[13px] text-muted">No kill proposals.</p> : null}
         {kills.map((a) => (
-          <article key={a.id} className="card overflow-hidden">
+          <article key={a.id} id={`approval-${a.id}`} className="scroll-mt-20 card overflow-hidden">
             <div className="h-1 bg-danger" />
             <div className="p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -216,7 +218,7 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
         <h2 className="eyebrow">Needs your approval · {explicit.length}</h2>
         {explicit.length === 0 ? <p className="text-[13px] text-muted">Nothing else needs you.</p> : null}
         {explicit.map((a) => (
-          <article key={a.id} className="card flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+          <article key={a.id} id={`approval-${a.id}`} className="scroll-mt-20 card flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
             {typeof a.payload.thumbnail_url === 'string' ? <img src={a.payload.thumbnail_url} alt="" className="h-24 w-[54px] shrink-0 rounded-lg object-cover" /> : null}
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
@@ -239,7 +241,7 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
         </p>
         <div className="grid gap-3 md:grid-cols-2">
           {timed.map((a) => (
-            <article key={a.id} className="card flex flex-col gap-3 p-4">
+            <article key={a.id} id={`approval-${a.id}`} className="scroll-mt-20 card flex flex-col gap-3 p-4">
               <div className="flex gap-3">
                 {typeof a.payload.thumbnail_url === 'string' ? <img src={a.payload.thumbnail_url} alt="" className="h-20 w-[45px] shrink-0 rounded-lg object-cover" /> : null}
                 <div className="min-w-0 flex-1">

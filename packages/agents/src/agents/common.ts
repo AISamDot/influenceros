@@ -24,11 +24,22 @@ export async function emitChunks(text: string, onText?: (delta: string) => void)
   }
 }
 
-/** The recent conversation as plain text for the prompt (oldest first, capped). */
+/** Wraps text that is not the Owner's (feeds, research, other agents' posts) as data: see STUDIO_RULES. */
+export function untrusted(source: string, text: string): string {
+  const safe = text.replace(/<\/?\s*untrusted\b[^>]*>/gi, '[tag removed]');
+  return `<untrusted source="${source.replace(/[^\w:. -]/g, '')}">\n${safe}\n</untrusted>`;
+}
+
+/**
+ * The recent conversation as plain text for the prompt (oldest first, capped). Only the Owner's messages are
+ * instructions; every other message (news briefings, notices, delegated answers, earlier agent replies) is fenced
+ * as untrusted data, so a feed title or a persona manager's post can't steer an agent holding mutating tools.
+ */
 export function transcript(messages: readonly ChatMessageRow[], maxChars = 6000): string {
   const lines = messages.map((m) => {
-    const who = m.role === 'owner' ? 'Owner' : m.author.replace(/^agent:/, '');
-    return `${who}: ${m.body}`;
+    if (m.role === 'owner') return `Owner: ${m.body}`;
+    const who = m.author.replace(/^agent:/, '');
+    return `${who}:\n${untrusted(who, m.body)}`;
   });
   let out = lines.join('\n\n');
   while (out.length > maxChars && lines.length > 1) {

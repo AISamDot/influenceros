@@ -1,4 +1,5 @@
-import { type AgentName, CADENCE_BOUNDS, type CadencePolicy, type CadenceTarget, DEFAULT_CADENCE, type RoutingPolicy, type ServiceBase } from '@ios/agents';
+import { type AgentName, baseCadence, CADENCE_BOUNDS, type CadencePolicy, type CadenceTarget, DEFAULT_CADENCE, type RoutingPolicy, type ServiceBase } from '@ios/agents';
+import type { PersonaState } from '@ios/core';
 import type { PostFormat, PostPurpose } from '@ios/core';
 import type { Db } from '@ios/db';
 import type { ModelTier } from '@ios/providers';
@@ -58,14 +59,21 @@ interface OverrideRow {
   reason: string | null;
 }
 
-/** The target in force for the week starting `weekStart` (latest override effective by then, else the default). */
+/**
+ * The target in force for the week starting `weekStart`: the latest override effective by then, else the base cadence
+ * for the persona's state (WINNER_CADENCE for SCALING / BRAND, DEFAULT_CADENCE otherwise), so the levers and the
+ * calendar share one starting point.
+ */
 export async function cadenceTarget(db: Db, personaId: string, weekStart: Date): Promise<CadenceTarget> {
   const row = await db.maybeOne<OverrideRow>(
     `SELECT posts_per_week, format_mix, purpose_mix, source, reason FROM profit_cadence_override
       WHERE persona_id = $1 AND effective_from <= $2::date ORDER BY effective_from DESC, seq DESC LIMIT 1`,
     [personaId, isoDate(weekStart)],
   );
-  if (!row) return DEFAULT_CADENCE;
+  if (!row) {
+    const p = await db.maybeOne<{ state: PersonaState }>('SELECT state FROM persona WHERE id = $1', [personaId]);
+    return baseCadence(p?.state);
+  }
   const t: CadenceTarget = {
     postsPerWeek: row.posts_per_week,
     formatMix: { ...DEFAULT_CADENCE.formatMix, ...row.format_mix },

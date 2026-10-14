@@ -58,6 +58,24 @@ interface Pattern {
   readonly message: string;
   readonly fix?: string;
   readonly when?: (i: GateInput, sentence: string) => boolean;
+  /**
+   * Cautionary education passes: the match is skipped when it is negated ("Never stop your medication…", "Don't buy
+   * Bitcoin with…") or attributed to someone being warned about ("Anyone who says returns are guaranteed is lying").
+   * 'inside' also checks the matched span itself, for subject…verb patterns ("Most supplements don't cure anything").
+   */
+  readonly negatable?: true | 'inside';
+}
+
+/** A negation governing the matched verb: "never", "don't", "not" … then at most three words, no comma. */
+const NEG_BEFORE = /\b(?:never|not|don'?t|do not|doesn'?t|does not|didn'?t|won'?t|will not|shouldn'?t|should not|can'?t|cannot|must not|mustn'?t|without|no one should|nobody should)\s+(?:[\w'’]+\s+){0,3}$/i;
+/** The claim is someone else's, quoted to warn against it: "if a course says…", "anyone who promises…". */
+const ATTRIB_BEFORE = /\b(?:if|when|anyone|someone|whoever|nobody|no one|people|beware(?: of)?|scammers?|gurus?)\b[^.!?,;]{0,40}\b(?:says?|said|claims?|claimed|tells? you|told you|promises?|promised|promising|sells?|selling|pitches|pitching)\b[^.!?]*$/i;
+const NEG_INSIDE = /\b(?:not|never|no|don'?t|do not|doesn'?t|does not|won'?t|will not|can'?t|cannot)\b|n't\b/i;
+
+/** True when a match in `sentence` at `index` is negated or attributed (see Pattern.negatable). */
+export function negatedMatch(sentence: string, index: number, matched: string, inside = false): boolean {
+  const prefix = sentence.slice(0, index);
+  return NEG_BEFORE.test(prefix) || ATTRIB_BEFORE.test(prefix) || (inside && NEG_INSIDE.test(matched));
 }
 
 const MONEY_OR_NUMBER = String.raw`(?:over\s+|about\s+|almost\s+|nearly\s+|more than\s+)?[$£€]?\d[\d,.]*\s*(?:k\b|K\b)?`;
@@ -71,6 +89,13 @@ const PATTERNS: readonly Pattern[] = [
     rule: 'fabricated_results',
     verdict: 'red',
     re: new RegExp(String.raw`\b(?:i|we|i've|we've|i have|we have)\s+(?:just\s+)?(?:lost|dropped|made|earned|paid off|saved|cleared|gained|grew|doubled|tripled|netted|banked)\s+${MONEY_OR_NUMBER}`, 'i'),
+    message: 'Fabricated personal result used to sell (an AI persona has no real results).',
+    fix: 'Teach the system instead: "Here is the system, step by step."',
+  },
+  {
+    rule: 'fabricated_results',
+    verdict: 'red',
+    re: new RegExp(String.raw`\b(?:helped|let|got|allowed)\s+(?:me|us)\s+(?:to\s+)?(?:lose|drop|make|earn|pay off|save|clear|gain|grow|double|bank|net)\s+${MONEY_OR_NUMBER}`, 'i'),
     message: 'Fabricated personal result used to sell (an AI persona has no real results).',
     fix: 'Teach the system instead: "Here is the system, step by step."',
   },
@@ -115,9 +140,10 @@ const PATTERNS: readonly Pattern[] = [
   {
     rule: 'medical_claims',
     verdict: 'red',
-    re: new RegExp(String.raw`\b(?:cures?|cured|curing|treats?(?!\s+(?:yourself|yo'self))|treating|reverses?|reversed|reversing|heals?|healed|healing|eliminates?|eradicates?|fixes)\b[^.!?]{0,40}\b(?:${DISEASES})\b`, 'i'),
+    re: new RegExp(String.raw`\b(?:cures?|cured|curing|treats?(?!\s+(?:yourself|yo'self))|treating|reverses?|reversed|reversing|heals?|healed|healing|eliminates?|eradicates?|fixes|beats?|fights?|kills?|prevents?|wipes? out)\b[^.!?]{0,40}\b(?:${DISEASES})\b`, 'i'),
     message: 'Claims to cure, treat or reverse a disease.',
     fix: 'Keep it to general wellness ("can support", "many people find") and suggest a doctor for conditions.',
+    negatable: true,
   },
   {
     rule: 'medical_claims',
@@ -125,6 +151,7 @@ const PATTERNS: readonly Pattern[] = [
     re: /\b(?:stop|quit|ditch|replace|skip|come off|get off|throw out|swap)\b[^.!?]{0,30}\b(?:medications?|meds|medicine|insulin|antidepressants?|prescriptions?|statins?|chemo(?:therapy)?|treatment|inhalers?)\b/i,
     message: 'Tells people to stop or replace medication or treatment.',
     fix: 'Never advise on medication; suggest talking to their doctor.',
+    negatable: true,
   },
   {
     rule: 'medical_claims',
@@ -136,26 +163,37 @@ const PATTERNS: readonly Pattern[] = [
   {
     rule: 'medical_claims',
     verdict: 'red',
-    re: /\b(?:supplements?|pills?|capsules?|powders?|teas?|gummies|drops)\b[^.!?]{0,40}\b(?:burns? fat|melts? fat|boosts? (?:your )?(?:immune system|immunity|metabolism|testosterone)|detox(?:es)?|cures?|prevents? (?:disease|illness|cancer))\b/i,
+    re: /\b(?:supplements?|pills?|capsules?|powders?|teas?|gummies|drops)\b[^.!?]{0,40}\b(?:burns? (?:\w+ )?fat|melts? (?:\w+ )?fat|boosts? (?:your )?(?:immune system|immunity|metabolism|testosterone)|detox(?:es)?|cures?|prevents? (?:disease|illness|cancer))\b/i,
     message: 'Supplement or efficacy claim without substantiation.',
     fix: 'Cite evidence or remove the efficacy claim.',
     when: (i) => !(i.evidenceIds && i.evidenceIds.length),
+    negatable: 'inside',
   },
   // ── Specific securities or crypto calls ──
   {
     rule: 'securities_calls',
     verdict: 'red',
-    re: new RegExp(String.raw`\b(?:buy|sell|short|load up on|grab|dump|go long(?: on)?|all in on|ape into|get into|hold onto|accumulate)\b[^.!?]{0,25}(?:${ASSETS})`, 'i'),
+    re: new RegExp(String.raw`\b(?:buy|buying|sell|selling|short|shorting|load up on|loading up on|grab|dump|dumping|go long(?: on)?|all in on|ape into|get into|get in on|hold onto|accumulate|accumulating|stack|stacking|add(?:ing)? (?:more|some)?)\b[^.!?]{0,25}(?:${ASSETS})`, 'i'),
     message: 'Specific buy/sell call on a security or crypto asset.',
     fix: 'Teach how to think about risk; no calls on specific assets.',
     when: (_i, s) => !QUESTION_FRAME.test(s),
+    negatable: true,
   },
   {
     rule: 'securities_calls',
     verdict: 'red',
-    re: new RegExp(String.raw`(?:${ASSETS})[^.!?]{0,30}\b(?:will|is going to|gonna|about to)\s+(?:10x|100x|moon|explode|skyrocket|double|triple|pump|hit \$?\d)`, 'i'),
+    re: new RegExp(String.raw`(?:${ASSETS})[^.!?]{0,30}\b(?:will|is going to|'s going to|gonna|about to|headed to|heading to)\s+(?:10x|100x|moon|explode|skyrocket|double|triple|pump|(?:hit|reach|touch|break)\s+\$?\d|\$?\d[\d,.]*\s?k\b|\$\d)`, 'i'),
     message: 'Price prediction on a specific asset.',
     fix: 'Remove the prediction.',
+    negatable: true,
+  },
+  {
+    rule: 'securities_calls',
+    verdict: 'red',
+    re: new RegExp(String.raw`(?:${ASSETS})[^.!?]*\b(?:get in (?:now|early|before)|you should too|don'?t miss (?:out|it)|before it (?:moons|pumps|explodes))\b`, 'i'),
+    message: 'Specific buy/sell call on a security or crypto asset.',
+    fix: 'Teach how to think about risk; no calls on specific assets.',
+    when: (_i, s) => !QUESTION_FRAME.test(s),
   },
   {
     rule: 'securities_calls',
@@ -168,10 +206,11 @@ const PATTERNS: readonly Pattern[] = [
   {
     rule: 'guaranteed_returns',
     verdict: 'red',
-    re: /\bguarantee(?:d|s)?\b[^.!?]{0,30}\b(?:returns?|income|profits?|results?|money|earnings|gains?|payouts?|\d+\s?%)|\b(?:returns?|income|profits?|results?)\b[^.!?]{0,15}\bguaranteed\b/i,
+    re: /\bguarantee(?:d|s)?\b[^.!?]{0,30}\b(?:returns?|income|profits?|results?|money|earnings|gains?|payouts?|\d+\s?%)|\b(?:returns?|income|profits?|results?|money|earnings|gains?|payouts?|you'?ll make|will make you)\b[^.!?]{0,20}\bguaranteed\b/i,
     message: 'Guaranteed returns, income or results.',
     fix: 'Remove the guarantee.',
     when: (_i, s) => !/\b(?:not|never|no)\b[^.!?]{0,20}guarantee|n't\s+(?:be\s+)?guaranteed/i.test(s),
+    negatable: true,
   },
   {
     rule: 'guaranteed_returns',
@@ -186,6 +225,7 @@ const PATTERNS: readonly Pattern[] = [
     re: /\b(?:make|earn|making|earning|bring in|pull in|generate|clear)\s+(?:an extra\s+|up to\s+|over\s+|at least\s+|easily\s+)?[$£€]\s?\d[\d,.]*\s?(?:k\b|K\b)?[^.!?]{0,20}?(?:\b(?:a|per|every|each)\s+(?:day|week|month|year|hour)\b|\/\s?(?:day|week|month|mo|wk|year|yr|hour|hr)\b)|\b(?:passive income|financial freedom|six figures)\s+(?:in|within)\s+\d+\s+(?:days|weeks|months)\b/i,
     message: 'Income claim ("make $5K a month").',
     fix: 'Talk about the method, not an income figure.',
+    negatable: true,
   },
   // ── Undisclosed sponsorships / affiliate links ──
   {
@@ -260,6 +300,7 @@ export function gateRules(input: GateInput): GateCheck[] {
     for (const s of parts) {
       const m = s.match(p.re);
       if (!m || (p.when && !p.when(input, s))) continue;
+      if (p.negatable && negatedMatch(s, m.index ?? 0, m[0], p.negatable === 'inside')) continue;
       if (found.some((f) => f.rule === p.rule && f.span === s && f.verdict === p.verdict)) continue;
       found.push({ rule: p.rule, verdict: p.verdict, message: p.message, span: s, ...(p.fix ? { fix: p.fix } : {}) });
     }

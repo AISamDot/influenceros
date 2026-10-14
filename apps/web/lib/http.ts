@@ -1,3 +1,5 @@
+import { sameOriginPath } from '@ios/auth/guard';
+
 /** Small helpers shared by the API routes. */
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -8,9 +10,9 @@ export const isFormPost = (req: Request) => {
 };
 export const isJson = (req: Request) => (req.headers.get('content-type') ?? '').includes('application/json');
 
-/** Same-origin path only (no open redirects). */
+/** Same-origin path only (no open redirects; control characters, whitespace and backslashes refused). */
 export function safePath(v: unknown, fallback: string): string {
-  return typeof v === 'string' && v.startsWith('/') && !v.startsWith('//') && !v.startsWith('/\\') ? v : fallback;
+  return sameOriginPath(v) ?? fallback;
 }
 
 /** 303 to a same-origin path. A relative Location keeps the browser on the host it used (127.0.0.1 vs localhost). */

@@ -82,7 +82,15 @@ const planWeekTool: ToolDef<{ persona_id: string; week_start?: string; run_pipel
     return { persona_id: uuid(r, 'persona_id')!, week_start: date(r, 'week_start'), run_pipeline: r.run_pipeline !== false };
   },
   async run(ctx, i) {
-    const ws = i.week_start ? new Date(`${i.week_start}T00:00:00Z`) : new Date(mondayUtc(ctx.services.now()).getTime() + 7 * 86_400_000);
+    const thisWeek = mondayUtc(ctx.services.now());
+    const nextWeek = new Date(thisWeek.getTime() + 7 * 86_400_000);
+    const ws = i.week_start ? new Date(`${i.week_start}T00:00:00Z`) : nextWeek;
+    // Agents plan only this week or next (as the Owner's own route does); later weeks are the daily schedule's job,
+    // so one turn can't queue months of paid script, Gate and QC runs.
+    const monday = mondayUtc(ws).getTime();
+    if (ctx.caller !== 'owner' && monday !== thisWeek.getTime() && monday !== nextWeek.getTime()) {
+      throw new Error('week_start must be in this week or next week');
+    }
     const res = await planWeek(ctx.services, i.persona_id, ws);
     let queued = 0;
     if (i.run_pipeline) for (const id of res.slotIds) if (await enqueueSlot(ctx.services, id, i.persona_id)) queued += 1;

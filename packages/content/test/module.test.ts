@@ -31,6 +31,8 @@ describe('StudioModule exports', () => {
     expect(planned).toMatchObject({ created: 10, queued: 10 });
     await expect(t.services.tools.invoke(asManager, 'calendar.plan_week', { persona_id: b.id })).rejects.toBeInstanceOf(ToolPermissionError);
     await expect(t.services.tools.invoke(asManager, 'calendar.plan_week', { persona_id: a.id, extra: 1 })).rejects.toThrow(/unknown input/);
+    // Agents can't plan (and queue paid work for) weeks beyond next week.
+    await expect(t.services.tools.invoke(asManager, 'calendar.plan_week', { persona_id: a.id, week_start: '2026-12-07' })).rejects.toThrow(/this week or next week/);
     // A persona manager can't run Q2 (QC is independent of the makers).
     await expect(t.services.tools.invoke(asManager, 'qc.voice_check', { persona_id: a.id, script_id: a.id, audio_url: 'https://x/a.mp3' })).rejects.toBeInstanceOf(ToolPermissionError);
 
@@ -75,6 +77,12 @@ describe('StudioModule exports', () => {
     expect(advance.due(NOW, new Date(NOW.getTime() - 10 * 60_000))).toBe(false);
     expect(await advance.run(t.services, NOW)).toEqual({ queued: 1 });
     expect(await advance.run(t.services, NOW)).toEqual({ queued: 0 });
+
+    // A slot whose job died is blocked with the error, not re-queued every 30 minutes.
+    await t.db.query(`UPDATE job SET status = 'dead', last_error = 'every hook was excluded' WHERE kind = 'pipeline.slot'`);
+    expect(await advance.run(t.services, NOW)).toEqual({ queued: 0 });
+    const slot = await t.db.one<{ status: string; block_reason: string }>(`SELECT status, block_reason FROM calendar_slot WHERE title = 'seeded slot'`);
+    expect(slot).toEqual({ status: 'blocked', block_reason: 'pipeline failed: every hook was excluded' });
     await t.db.close();
   });
 });

@@ -81,6 +81,7 @@ describe('kill candidates', () => {
     const fresh = await makeTestPersona(t, { name: 'Newbie' });
     await addWeeklyHistory(t.db, t.studioId, lose.id, { weeks: 6, gross: 0, cost: 5_000 });
     await addWeeklyHistory(t.db, t.studioId, fresh.id, { weeks: 1, gross: 0, cost: 5_000 });
+    await t.db.query(`UPDATE persona SET launched_at = $2 WHERE id = ANY($1::uuid[])`, [[lose.id, fresh.id], new Date(NOW.getTime() - 60 * 86_400_000)]);
     const f = await forecastStudio(t.db, { studioId: t.studioId, now: NOW, runs: 300, seed: 7 });
 
     const first = await proposeKillCandidates(t.db, t.studioId, f.personas, NOW);
@@ -100,6 +101,29 @@ describe('kill candidates', () => {
     expect(approvals[0]!.payload.evidence.negative_weeks).toBeGreaterThanOrEqual(4);
     expect((await t.db.one<{ state: string }>('SELECT state FROM persona WHERE id = $1', [lose.id])).state).toBe('TESTING');
     expect((await t.db.one<{ n: number }>(`SELECT count(*)::int AS n FROM kill_scale_proposal WHERE persona_id = $1`, [lose.id])).n).toBe(1);
+  });
+
+  it('never proposes a kill before launch or before the Day-30 checkpoint', async () => {
+    t = await createTestStudio();
+    const setup = await makeTestPersona(t, { name: 'Prelaunch', state: 'SETUP' });
+    const young = await makeTestPersona(t, { name: 'Young' });
+    for (const p of [setup, young]) await addWeeklyHistory(t.db, t.studioId, p.id, { weeks: 4, gross: 0, cost: 5_000 });
+    await t.db.query(`UPDATE persona SET launched_at = $2 WHERE id = $1`, [young.id, new Date(NOW.getTime() - 21 * 86_400_000)]);
+    const f = await forecastStudio(t.db, { studioId: t.studioId, now: NOW, runs: 300, seed: 7 });
+    const out = await proposeKillCandidates(t.db, t.studioId, f.personas, NOW);
+    expect(out.find((k) => k.personaId === setup.id)?.skipped).toMatch(/not launched/);
+    expect(out.find((k) => k.personaId === young.id)?.skipped).toMatch(/21 days live/);
+    expect(await t.db.query(`SELECT 1 FROM approval WHERE kind = 'persona_kill'`)).toEqual([]);
+  });
+
+  it('does not read lumpy but profitable sales as a loss, whichever week the history ends on', () => {
+    const week = (i: number, sale: boolean) => ({ weekStart: `w${i}`, grossCents: sale ? 20_000 : 0, feesCents: sale ? 1_000 : 0, refundsCents: 0, costCents: 7_000, profitCents: 0, posts: 10, views: 0 });
+    for (const endsOnSale of [true, false]) {
+      const weeks = Array.from({ length: 8 }, (_, i) => week(i, (i % 2 === 0) !== endsOnSale));
+      const fit = fitSeries(weeks);
+      expect(Math.abs(fit.growth)).toBeLessThan(0.05);
+      expect(fit.grossLevelCents).toBe(10_000);
+    }
   });
 
   it('proposes retirement for a BRAND persona and waits after the Owner rejects', async () => {

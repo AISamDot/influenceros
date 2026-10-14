@@ -3,6 +3,7 @@ import { listThreads } from '@ios/core';
 import Link from 'next/link';
 import { ChatPanel } from '@/components/chat-panel';
 import { loadChat, studioContext } from '@/lib/server';
+import { requireOwnerPage } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Chat' };
@@ -15,6 +16,7 @@ const SUBTITLE: Record<string, string> = {
 };
 
 export default async function Chat({ searchParams }: { searchParams: Promise<{ t?: string }> }) {
+  await requireOwnerPage();
   const { t } = await searchParams;
   const { db, studio } = await studioContext();
   const threads = await listThreads(db, studio.id);

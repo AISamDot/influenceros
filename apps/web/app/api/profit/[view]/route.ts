@@ -1,3 +1,4 @@
+import { requireOwner } from '@/lib/auth';
 import { forecastStudio, latestForecast, listLeverActions, type PnlGrain, periodRange, pnlWithTotals, profitCard, rankActions } from '@ios/profit';
 import { UUID_RE } from '@/lib/http';
 import { studioContext } from '@/lib/server';
@@ -14,6 +15,8 @@ type Period = (typeof PERIODS)[number];
  * schedule, and anything that needs the Owner goes through Approvals.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ view: string }> }) {
+  const denied = await requireOwner(req);
+  if (denied) return denied;
   const { view } = await params;
   const url = new URL(req.url);
   const persona = url.searchParams.get('persona');

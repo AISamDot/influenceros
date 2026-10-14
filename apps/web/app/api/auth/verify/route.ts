@@ -1,4 +1,4 @@
-import { authSecret, AuthError, hashIp, loginWithMagicToken } from '@ios/auth';
+import { authSecret, AuthError, hashIp, loginWithMagicToken, safeNext } from '@ios/auth';
 import { getDb } from '@ios/db';
 import { clientIp, redirectWithSession } from '@/lib/auth';
 import { isFormPost } from '@/lib/http';
@@ -13,8 +13,9 @@ export async function POST(req: Request) {
   if (!isFormPost(req)) return new Response('send the sign-in form', { status: 415 });
   const f = await req.formData();
   const secret = authSecret();
-  const fail = (error: string) => new Response(null, { status: 303, headers: { Location: `/login?error=${encodeURIComponent(error)}` } });
-  if (!secret) return fail('Sign-in is not configured: set AUTH_SECRET.');
+  const next = safeNext(f.get('next'));
+  const fail = (code: string) => new Response(null, { status: 303, headers: { Location: `/login?error=${code}${next === '/' ? '' : `&next=${encodeURIComponent(next)}`}` } });
+  if (!secret) return fail('config');
   try {
     const s = await loginWithMagicToken(await getDb(), {
       token: String(f.get('token') ?? ''),
@@ -22,9 +23,9 @@ export async function POST(req: Request) {
       userAgent: req.headers.get('user-agent'),
       ipHash: hashIp(clientIp(req), secret),
     });
-    return redirectWithSession('/', s.token, req);
+    return redirectWithSession(next, s.token, req);
   } catch (err) {
-    if (err instanceof AuthError) return fail(err.message);
+    if (err instanceof AuthError) return fail(err.status === 429 ? 'throttled' : 'link_invalid');
     throw err;
   }
 }

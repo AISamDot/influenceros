@@ -1,5 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 import { BOARD_COLUMNS, type BoardItem, columnOf, pipelineBoard } from '@ios/content';
+import { PUBLISHING_STATES } from '@ios/core';
 import Link from 'next/link';
 import { Empty } from '@/components/stub';
 import { Flash } from '@/components/flash';
@@ -8,6 +9,7 @@ import { PipelineCard } from '@/components/pipeline-card';
 import { SubmitButton } from '@/components/submit-button';
 import { shortDate } from '@/lib/format';
 import { studioContext } from '@/lib/server';
+import { requireOwnerPage } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Pipeline' };
@@ -35,14 +37,17 @@ function range(view: View, now: Date): { from: Date; to: Date } {
 type SP = { view?: string; persona?: string; error?: string; ok?: string };
 
 export default async function Pipeline({ searchParams }: { searchParams: Promise<SP> }) {
+  await requireOwnerPage();
   const sp = await searchParams;
   const view: View = VIEWS.some((v) => v.key === sp.view) ? (sp.view as View) : 'upcoming';
   const { db, studio } = await studioContext();
-  const personas = await db.query<{ id: string; slug: string; name: string; portrait_url: string | null }>(
-    `SELECT id, slug, name, portrait_url FROM persona WHERE studio_id = $1 AND state NOT IN ('KILLED','RETIRED','PROPOSED') ORDER BY name`,
+  const personas = await db.query<{ id: string; slug: string; name: string; portrait_url: string | null; state: string }>(
+    `SELECT id, slug, name, portrait_url, state FROM persona WHERE studio_id = $1 AND state NOT IN ('KILLED','RETIRED','PROPOSED') ORDER BY name`,
     [studio.id],
   );
   const selected = personas.find((p) => p.slug === sp.persona) ?? null;
+  // Only publishing personas get weeks planned; personas in SETUP have their launch posts already on the calendar.
+  const plannable = (selected ? [selected] : personas).some((p) => (PUBLISHING_STATES as readonly string[]).includes(p.state));
   const now = new Date();
   const { from, to } = range(view, now);
   const items = await pipelineBoard(db, studio.id, { from, to, personaId: selected?.id ?? null });
@@ -80,8 +85,16 @@ export default async function Pipeline({ searchParams }: { searchParams: Promise
           <input type="hidden" name="action" value="plan_week" />
           <input type="hidden" name="week" value={view === 'this' ? 'this' : 'next'} />
           {selected ? <input type="hidden" name="persona_id" value={selected.id} /> : null}
-          <SubmitButton className="btn btn-ink">Plan {view === 'this' ? 'this' : 'next'} week now</SubmitButton>
-          <span className="text-[11.5px] text-muted">Runs on its own every day; this just does it now.</span>
+          {plannable ? (
+            <>
+              <SubmitButton className="btn btn-ink">Plan {view === 'this' ? 'this' : 'next'} week now</SubmitButton>
+              <span className="text-[11.5px] text-muted">Runs on its own every day; this just does it now.</span>
+            </>
+          ) : (
+            <span className="max-w-[260px] text-right text-[12px] text-muted">
+              {selected ? `${selected.name} is in ${selected.state}` : 'No persona is publishing yet'}: weeks are planned once publishing starts. The launch posts are already on the calendar.
+            </span>
+          )}
         </form>
       </div>
       <Flash error={sp.error} ok={sp.ok ? `Done: ${sp.ok}.` : undefined} />

@@ -1,6 +1,7 @@
 import { authSecret, isDeployed, readCookie, SESSION_COOKIE, sessionActive, sessionCookie, verifySession } from '@ios/auth';
 import { getDb } from '@ios/db';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 
 /**
  * Server-side session checks. The proxy already verified the cookie's signature and expiry on every protected
@@ -13,9 +14,12 @@ export async function currentSession(): Promise<{ sid: string } | null> {
   return (await sessionActive(await getDb(), claims.sid)) ? { sid: claims.sid } : null;
 }
 
-/** For stream A's API routes: null when the Owner's session is valid, else a 401 response. */
+/** Local development with IOS_AUTH=off: never honoured when deployed (Vercel or IOS_DEPLOYED=1). */
+export const authOff = (): boolean => process.env.IOS_AUTH === 'off' && !isDeployed();
+
+/** For every non-public API route: null when the Owner's session is valid, else a 401 response. */
 export async function requireOwner(req: Request): Promise<Response | null> {
-  if (process.env.IOS_AUTH === 'off' && !isDeployed()) return null;
+  if (authOff()) return null;
   const claims = verifySession(readCookie(req.headers.get('cookie')), authSecret());
   if (claims && (await sessionActive(await getDb(), claims.sid))) return null;
   return Response.json({ error: 'sign in first' }, { status: 401 });
@@ -41,4 +45,15 @@ export function clientIp(req: Request): string | null {
 /** 303 to `location`, setting (or clearing) the session cookie. */
 export function redirectWithSession(location: string, token: string | null, req: Request): Response {
   return new Response(null, { status: 303, headers: { Location: location, 'Set-Cookie': sessionCookie(token, { secure: isHttps(req) }) } });
+}
+
+/**
+ * For every page except /login: checks the session row (sign-out and revocation), not only the cookie signature the
+ * proxy checks. The root layout is not re-rendered on client-side navigation, so each page calls this itself.
+ */
+export async function requireOwnerPage(): Promise<void> {
+  if (authOff()) return;
+  if (await currentSession().catch(() => null)) return;
+  const path = (await headers()).get('x-ios-path') ?? '/';
+  redirect(path && path !== '/' && path.startsWith('/') && !path.startsWith('//') ? `/login?next=${encodeURIComponent(path)}` : '/login');
 }

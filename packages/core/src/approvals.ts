@@ -1,5 +1,6 @@
 import { type Db, json } from '@ios/db';
 import { audit } from './audit';
+import { addMessage, findThread } from './chat';
 import { capFor, creditPeriod, type Unit } from './governor';
 import { ApprovalError, NotFoundError } from './errors';
 import { canTransition, transition } from './lifecycle';
@@ -269,11 +270,86 @@ async function execute(tx: Db, a: ApprovalRow, actor: Actor): Promise<unknown> {
       );
       return { disclosure_text: text };
     }
+    case 'legal_text_change': {
+      // A persona's identity / compliance / disclosure bible text (from the feedback loop): the Owner's approval
+      // writes Bible vN+1 and confirms in the persona chat. Without a section it is a recorded decision.
+      const section = typeof a.payload.section === 'string' ? a.payload.section : '';
+      const text = typeof a.payload.text === 'string' ? a.payload.text.trim() : '';
+      if (!section || !text || !a.persona_id) return { recorded: true };
+      const version = await writeOwnerBibleRule(tx, { studioId: a.studio_id, personaId: a.persona_id, section, rule: text, approvalId: a.id, actor });
+      const feedbackId = typeof a.payload.feedback_id === 'string' ? a.payload.feedback_id : null;
+      if (feedbackId) {
+        await tx.query(`UPDATE feedback SET applied_change = applied_change || $2::jsonb WHERE id = $1 AND persona_id = $3`, [
+          feedbackId,
+          json({ result: { approvalId: a.id, bibleVersion: version }, live_at: new Date().toISOString() }),
+          a.persona_id,
+        ]);
+      }
+      const thread = await findThread(tx, a.studio_id, 'persona', a.persona_id);
+      await addMessage(tx, {
+        threadId: thread.id,
+        role: 'agent',
+        author: 'agent:persona-manager',
+        personaId: a.persona_id,
+        body: `Approved: Bible v${version} is live with the new ${section} text. New scripts use it from the next batch.`,
+        meta: { kind: 'notice', approvalId: a.id, bibleVersion: version },
+      });
+      return { bibleVersion: version, section };
+    }
     case 'plan_upgrade':
-    case 'legal_text_change':
-      // Recorded decision; the Owner makes the purchase / the legal page update lands with its feature.
+      // Recorded decision; the Owner makes the purchase.
       return { recorded: true };
   }
+}
+
+/**
+ * Bible vN+1 with an Owner-approved rule in an Owner-only section (identity, compliance, disclosure): the previous
+ * version's content plus the rule in the section's `owner_rules` and a changelog entry. Mirrors the agents'
+ * reviseBible, which refuses these sections; only an approved legal_text_change reaches this.
+ */
+async function writeOwnerBibleRule(
+  tx: Db,
+  input: { studioId: string; personaId: string; section: string; rule: string; approvalId: string; actor: Actor },
+): Promise<number> {
+  await tx.query('SELECT id FROM persona WHERE id = $1 FOR UPDATE', [input.personaId]);
+  const cur = await tx.maybeOne<{ content: Record<string, unknown> }>(
+    `SELECT content FROM persona_bible WHERE persona_id = $1 AND status = 'approved' ORDER BY version DESC LIMIT 1`,
+    [input.personaId],
+  );
+  const max = await tx.one<{ v: number }>('SELECT COALESCE(MAX(version), 0)::int AS v FROM persona_bible WHERE persona_id = $1', [input.personaId]);
+  const version = max.v + 1;
+  const content = structuredClone(cur?.content ?? {});
+  const sec = content[input.section];
+  if (sec && typeof sec === 'object' && !Array.isArray(sec)) {
+    const s = sec as Record<string, unknown>;
+    s.owner_rules = [...(Array.isArray(s.owner_rules) ? s.owner_rules : []), input.rule];
+  } else if (sec === undefined) {
+    content[input.section] = { owner_rules: [input.rule] };
+  } else {
+    content.owner_rules = [...(Array.isArray(content.owner_rules) ? content.owner_rules : []), { section: input.section, rule: input.rule }];
+  }
+  content.changelog = [
+    ...(Array.isArray(content.changelog) ? content.changelog : []),
+    { version, section: input.section, change: input.rule, by: 'owner', approval_id: input.approvalId },
+  ];
+  const by = actorRef(input.actor);
+  await tx.query(`UPDATE persona_bible SET status = 'superseded' WHERE persona_id = $1 AND status = 'approved'`, [input.personaId]);
+  await tx.query(
+    `INSERT INTO persona_bible (persona_id, version, content, status, created_by, approved_by, approved_at)
+     VALUES ($1, $2, $3::jsonb, 'approved', 'agent:persona-manager', $4, now())`,
+    [input.personaId, version, json(content), by],
+  );
+  await tx.query('UPDATE persona SET current_bible_version = $2, updated_at = now() WHERE id = $1', [input.personaId, version]);
+  await audit(tx, {
+    studioId: input.studioId,
+    personaId: input.personaId,
+    actor: input.actor,
+    action: 'bible.revised',
+    entityType: 'persona_bible',
+    entityId: `${input.personaId}:v${version}`,
+    data: { section: input.section, rule: input.rule, approval_id: input.approvalId, to: version },
+  });
+  return version;
 }
 
 async function onReject(tx: Db, a: ApprovalRow): Promise<void> {
@@ -414,7 +490,7 @@ export async function sweepAutoApprovals(db: Db, opts: { now?: Date } = {}): Pro
         );
         if (!a || isOwnerOnly(a.kind) || a.auto_approve_at === null || a.auto_approve_at > now) return false;
         const settings = await getSettings(tx, a.studio_id);
-        if (a.mode === 'auto_after' && !settings.approvals.auto_approve_cards) {
+        if (a.mode === 'auto_after' && a.kind !== 'persona_launch' && !settings.approvals.auto_approve_cards) {
           await makeExplicit(tx, a, SYSTEM, 'approval.auto_disabled', {});
           return false;
         }

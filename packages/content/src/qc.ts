@@ -70,8 +70,9 @@ export function checkScript(
       : ok('english_only', 'blocker', 'English.'),
   );
 
-  // Hook in the first line.
-  const first = primary[0] ?? '';
+  // Hook in the first line (a hook can be several sentences: "Stop. Your savings account is losing money.").
+  const hookSentences = Math.max(1, sentences(d.hook).length);
+  const first = primary.slice(0, hookSentences).join(' ');
   checks.push(
     first && (first.startsWith(d.hook) || similarity(first, d.hook) >= 0.8)
       ? ok('hook_first', 'major', 'Opens with the hook.')

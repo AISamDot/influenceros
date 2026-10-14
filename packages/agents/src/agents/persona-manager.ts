@@ -165,8 +165,11 @@ export async function personaManagerTurn(services: StudioServices, input: Person
     classification = res.output;
     classifyRun = res.runId;
   }
-  if (pending && (classification.kind === 'confirm' || classification.kind === 'decline')) {
-    return settle(services, ctx, pending.id, classification.kind, input.onText);
+  // Applying a change carries the Owner's authority, so it needs the Owner's own explicit yes (the deterministic
+  // match above), never a model's reading of the message. A model "decline" only drops the proposal.
+  if (pending && classification.kind === 'decline') return settle(services, ctx, pending.id, 'decline', input.onText);
+  if (pending && classification.kind === 'confirm') {
+    return reply('To apply it, reply "yes" (or tap Apply on the proposal). Reply "no" to drop it.', { feedback: { id: pending.id, status: 'proposed' } }, classifyRun);
   }
   if (classification.kind === 'feedback' && classification.proposal) {
     const p = classification.proposal;

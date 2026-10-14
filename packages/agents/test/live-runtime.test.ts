@@ -177,6 +177,29 @@ describe('live runtime: Messages API engine', () => {
     await t.db.close();
   });
 
+  it('debits a run whose structured output is truncated, invalid JSON', async () => {
+    const t = await liveStudio([{ text: '{"ideas": [{"slot": 1, "title": "Half a', stop: 'max_tokens', usage: { input_tokens: 20_000, output_tokens: 2_000 } }]);
+    const p = await makeTestPersona(t);
+    await expect(
+      t.services.runtime.run({
+        agent: 'persona-manager',
+        scope: { studioId: t.studioId, personaId: p.id },
+        label: 'json',
+        system: 's',
+        prompt: 'p',
+        jsonSchema: { type: 'object' },
+        parse: (v) => v,
+        fake: () => ({}),
+      }),
+    ).rejects.toThrow(/expected JSON output/);
+    const run = await t.db.one<{ outcome: string; cost_usd: number }>('SELECT outcome, cost_usd FROM agent_run');
+    expect(run.outcome).toBe('error');
+    const debit = await t.db.one<{ n: number; amount: number }>(`SELECT count(*)::int AS n, COALESCE(sum(amount), 0)::float AS amount FROM credit_ledger WHERE entry_type = 'debit'`);
+    expect(debit.n).toBe(1);
+    expect(debit.amount).toBeGreaterThan(0);
+    await t.db.close();
+  });
+
   it('refuses before calling Claude when the cap is reached', async () => {
     const t = await liveStudio([{ text: 'never' }]);
     const p = await makeTestPersona(t, { budget: { llm_usd_month: 0 } });
@@ -218,6 +241,32 @@ describe('live runtime: Claude Agent SDK engine', () => {
     };
     return { sdk, seen };
   }
+
+  it('debits an Agent SDK run that fails after spending (error subtype, refusal)', async () => {
+    for (const result of [
+      { type: 'result', subtype: 'error_during_execution', errors: ['boom'], stop_reason: null, usage: { input_tokens: 8000, output_tokens: 900 }, modelUsage: { 'claude-opus-5-5': {} } },
+      { type: 'result', subtype: 'success', result: '', stop_reason: 'refusal', usage: { input_tokens: 8000, output_tokens: 10 }, modelUsage: { 'claude-opus-5-5': {} } },
+    ]) {
+      const sdk: AgentSdk = {
+        SYSTEM_PROMPT_DYNAMIC_BOUNDARY: '__BOUNDARY__',
+        tool: (name) => ({ name }),
+        createSdkMcpServer: (o) => ({ type: 'sdk', name: o.name, tools: o.tools }),
+        async *query() {
+          yield result as never;
+        },
+      };
+      const t = await liveStudio([], sdk);
+      await expect(
+        runAgent(t.services, { agent: 'studio-manager', scope: { studioId: t.studioId, personaId: null }, label: 'chat', system: 's', skills: ['kill-scale-analyst'], prompt: 'p', fake: () => '' }),
+      ).rejects.toThrow();
+      const run = await t.db.one<{ outcome: string; engine: string | null }>('SELECT outcome, engine FROM agent_run');
+      expect(run.outcome).toBe('error');
+      const debit = await t.db.one<{ n: number; amount: number }>(`SELECT count(*)::int AS n, COALESCE(sum(amount), 0)::float AS amount FROM credit_ledger WHERE entry_type = 'debit'`);
+      expect(debit.n).toBe(1);
+      expect(debit.amount).toBeGreaterThan(0);
+      await t.db.close();
+    }
+  });
 
   it('runs with hard tool limits, project skills, cached system prefix and registry-checked MCP tools', async () => {
     let refused: unknown;

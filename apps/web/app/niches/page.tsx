@@ -1,10 +1,12 @@
 import { Empty, StubHeader } from '@/components/stub';
 import { studioContext } from '@/lib/server';
+import { requireOwnerPage } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Niches' };
 
 export default async function Niches() {
+  await requireOwnerPage();
   const { db, studio } = await studioContext();
   const rows = await db.query<{ niche: string; personas: string; nodes: number }>(
     `SELECT p.niche, string_agg(p.name, ', ' ORDER BY p.name) AS personas,

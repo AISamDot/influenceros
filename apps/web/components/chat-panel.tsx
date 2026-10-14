@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import { IconFlag, IconSend } from './icons';
 
 export interface ChatMsg {
@@ -12,6 +12,9 @@ export interface ChatMsg {
   author?: string;
   meta?: Record<string, unknown>;
 }
+
+/** The chat API refuses longer messages (postOwnerMessage). */
+export const MAX_MESSAGE_CHARS = 4000;
 
 interface FeedbackMeta {
   id: string;
@@ -71,7 +74,8 @@ export function ChatPanel({
     setText('');
     const now = new Date().toISOString();
     const replyId = `pending-${Date.now()}`;
-    setMsgs((m) => [...m, { id: `owner-${Date.now()}`, role: 'owner', body, created_at: now }, { id: replyId, role: 'agent', body: '', created_at: now }]);
+    const ownerId = `owner-${Date.now()}`;
+    setMsgs((m) => [...m, { id: ownerId, role: 'owner', body, created_at: now }, { id: replyId, role: 'agent', body: '', created_at: now }]);
     try {
       const res = await fetch(`/api/chat/${threadId}/messages`, {
         method: 'POST',
@@ -95,8 +99,10 @@ export function ChatPanel({
       }
       await reload();
     } catch (err) {
+      // Not saved: drop the optimistic bubbles and give the text back so nothing typed is lost.
       setError(err instanceof Error ? err.message : 'Failed to send');
-      setMsgs((m) => m.filter((x) => x.id !== replyId));
+      setMsgs((m) => m.filter((x) => x.id !== replyId && x.id !== ownerId));
+      setText((t) => t || body);
     } finally {
       setBusy(false);
     }
@@ -163,7 +169,16 @@ export function ChatPanel({
             );
           }
           const kind = m.meta?.kind;
-          if (kind === 'approval_card') return <ChatApprovalCard key={m.id} body={m.body} />;
+          if (kind === 'approval_card') {
+            return (
+              <ChatApprovalCard
+                key={m.id}
+                body={m.body}
+                approvalId={typeof m.meta?.approvalId === 'string' ? m.meta.approvalId : null}
+                status={typeof m.meta?.approvalStatus === 'string' ? m.meta.approvalStatus : 'pending'}
+              />
+            );
+          }
           const feedback = m.meta?.feedback as FeedbackMeta | undefined;
           const open = feedback?.status === 'proposed' && !settled.has(feedback.id);
           const via = typeof m.meta?.personaName === 'string' && m.author === 'agent:persona-manager' ? `${m.meta.personaName}'s manager` : null;
@@ -175,7 +190,9 @@ export function ChatPanel({
                 }`}
               >
                 {via ? <div className="mb-1 text-[11.5px] font-semibold text-muted">{via}</div> : null}
-                {m.body || (
+                {m.body ? (
+                  <RichText text={m.body} />
+                ) : (
                   <span className="inline-flex gap-1 py-1">
                     <Dot />
                     <Dot d={150} />
@@ -215,10 +232,16 @@ export function ChatPanel({
             }
           }}
           rows={1}
+          maxLength={MAX_MESSAGE_CHARS}
           placeholder={placeholder}
           aria-label={`Message ${title}`}
           className="max-h-32 min-h-[38px] flex-1 resize-none rounded-xl border border-line-strong bg-surface px-3 py-2 text-[16px] outline-none sm:text-[13.5px] focus:border-accent"
         />
+        {text.length > MAX_MESSAGE_CHARS - 500 ? (
+          <span className={`shrink-0 self-center text-[11px] tabular-nums ${text.length >= MAX_MESSAGE_CHARS ? 'text-danger' : 'text-muted'}`} aria-live="polite">
+            {text.length.toLocaleString('en-US')}/{MAX_MESSAGE_CHARS.toLocaleString('en-US')}
+          </span>
+        ) : null}
         <button type="submit" disabled={busy || !text.trim()} className="btn btn-ink size-[38px] shrink-0 p-0 disabled:opacity-40" aria-label="Send">
           <IconSend size={16} />
         </button>
@@ -227,23 +250,68 @@ export function ChatPanel({
   );
 }
 
+const APPROVAL_STATE: Record<string, string> = {
+  approved: 'Approved',
+  auto_approved: 'Approved automatically',
+  rejected: 'Rejected',
+  withdrawn: 'Withdrawn',
+  expired: 'Expired',
+};
+
 /** An approval card inline in the chat (kill proposals and other Owner-only items are decided in Approvals). */
-function ChatApprovalCard({ body }: { body: string }) {
+function ChatApprovalCard({ body, approvalId, status }: { body: string; approvalId: string | null; status: string }) {
+  const pending = status === 'pending';
+  const href = approvalId ? `/approvals#approval-${approvalId}` : '/approvals';
   return (
     <div className="flex">
-      <div className="max-w-[92%] overflow-hidden rounded-2xl border border-danger/40 bg-danger-soft text-[13.5px]">
-        <div className="flex items-center gap-1.5 px-3.5 pt-2 text-[11.5px] font-semibold uppercase tracking-wide text-danger">
-          <IconFlag size={12} /> Needs your approval
+      <div className={`max-w-[92%] overflow-hidden rounded-2xl border text-[13.5px] ${pending ? 'border-danger/40 bg-danger-soft' : 'border-line bg-surface'}`}>
+        <div className={`flex items-center gap-1.5 px-3.5 pt-2 text-[11.5px] font-semibold uppercase tracking-wide ${pending ? 'text-danger' : 'text-muted'}`}>
+          <IconFlag size={12} /> {pending ? 'Needs your approval' : (APPROVAL_STATE[status] ?? status)}
         </div>
         <p className="whitespace-pre-wrap px-3.5 py-1.5 leading-relaxed">{body}</p>
-        <div className="border-t border-danger/30 px-3.5 py-2">
-          <Link href="/approvals" className="text-[12.5px] font-semibold text-danger underline-offset-2 hover:underline">
-            Review in Approvals →
-          </Link>
-        </div>
+        {pending ? (
+          <div className="border-t border-danger/30 px-3.5 py-2">
+            <Link href={href} className="text-[12.5px] font-semibold text-danger underline-offset-2 hover:underline">
+              Review in Approvals →
+            </Link>
+          </div>
+        ) : null}
       </div>
     </div>
   );
+}
+
+/** Dashboard paths an agent may link to; anything else stays plain text. */
+const SAME_ORIGIN_PATH = /^\/(?:approvals|personas\/[a-z0-9-]+|money|pipeline(?:\/[0-9a-f-]{36})?|knowledge|chat|notifications|settings|niches)(?:[?#][\w=&%#.-]*)?$/i;
+const TOKEN_RE = /\[([^\]\n]{1,120})\]\((\/[^)\s]{1,200})\)|\*\*([^*\n]{1,200})\*\*|(\/(?:approvals|personas\/[a-z0-9-]+|money|pipeline(?:\/[0-9a-f-]{36})?|knowledge|chat|notifications|settings|niches)\b(?:[?#][\w=&%#.-]*)?)/gi;
+
+/**
+ * Agent text with dashboard links and bold: markdown links to same-origin paths and bare paths (/approvals,
+ * /personas/<slug>, /money, /pipeline…) become links, **bold** becomes bold, "### " headings lose their marks.
+ * Built from React elements only (no HTML), so nothing in the text can inject markup.
+ */
+export function RichText({ text }: { text: string }) {
+  const clean = text.replace(/^#{1,6}\s+/gm, '');
+  const out: ReactNode[] = [];
+  let last = 0;
+  let k = 0;
+  for (const m of clean.matchAll(TOKEN_RE)) {
+    const at = m.index ?? 0;
+    if (at > last) out.push(clean.slice(last, at));
+    const [whole, label, linkPath, bold, bare] = m;
+    if (label && linkPath && SAME_ORIGIN_PATH.test(linkPath)) {
+      out.push(<Link key={k++} href={linkPath} className="font-medium text-accent underline-offset-2 hover:underline">{label}</Link>);
+    } else if (bold) {
+      out.push(<strong key={k++}>{bold}</strong>);
+    } else if (bare && SAME_ORIGIN_PATH.test(bare)) {
+      out.push(<Link key={k++} href={bare} className="font-medium text-accent underline-offset-2 hover:underline">{bare}</Link>);
+    } else {
+      out.push(label ?? whole);
+    }
+    last = at + whole.length;
+  }
+  if (last < clean.length) out.push(clean.slice(last));
+  return <Fragment>{out}</Fragment>;
 }
 
 function Dot({ d = 0 }: { d?: number }) {

@@ -1,8 +1,8 @@
-import { CADENCE_BOUNDS, DEFAULT_CADENCE } from '@ios/agents';
+import { CADENCE_BOUNDS, DEFAULT_CADENCE, WINNER_CADENCE } from '@ios/agents';
 import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
 import { json } from '@ios/db';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createCadencePolicy, createRoutingPolicy, leverInputs, listLeverActions, measureLevers, planCadence, runLevers, scaleTarget, validTarget } from '../src';
+import { createCadencePolicy, createRoutingPolicy, leverInputs, listLeverActions, measureLevers, planCadence, planFormatMix, runLevers, scaleTarget, validTarget } from '../src';
 import { addDebit, addOrder, addPost, addWeeklyHistory, DAY, daysAgo, NOW } from './fixtures';
 
 let t: TestStudio | null = null;
@@ -53,6 +53,32 @@ describe('Profit Engine levers', () => {
     expect((await t.db.one<{ n: number }>(`SELECT count(*)::int AS n FROM audit_log WHERE action = 'profit.lever_applied'`)).n).toBe(applied.length);
     expect(await runLevers(t.db, t.studioId, NOW)).toEqual([]);
     expect((await listLeverActions(t.db, t.studioId)).length).toBe(applied.length);
+  });
+
+  it('builds winner levers on the 17-a-week winner cadence, never on the 10-post default', async () => {
+    t = await createTestStudio({ cadence: createCadencePolicy, now: () => NOW });
+    const win = await makeTestPersona(t, { name: 'Scaler', state: 'SCALING' });
+    expect(await t.services.cadence.target(win.id, NEXT_MONDAY)).toEqual(WINNER_CADENCE);
+    await addWeeklyHistory(t.db, t.studioId, win.id, { weeks: 3, gross: 20_000, cost: 1_000 });
+    const applied = await runLevers(t.db, t.studioId, NOW);
+    const raise = applied.find((a) => a.lever === 'cadence' && a.personaId === win.id)!;
+    expect(raise.before).toMatchObject({ postsPerWeek: 17 });
+    const after = await t.services.cadence.target(win.id, NEXT_MONDAY);
+    expect(after.postsPerWeek).toBeGreaterThan(17);
+    expect(validTarget(after)).toBe(true);
+
+    // A format-mix shift alone keeps the winner at 17.
+    const fmtOnly = await makeTestPersona(t, { name: 'Brand', state: 'BRAND' });
+    for (let i = 0; i < 4; i++) {
+      const talk = await addPost(t.db, fmtOnly.id, { format: 'talking', at: daysAgo(3 + i * 5), views: 2000 });
+      await addOrder(t.db, fmtOnly.id, { amount: 5_000, fee: 250, at: daysAgo(2 + i * 5), postId: talk.postId });
+      const act = await addPost(t.db, fmtOnly.id, { format: 'activity_text', at: daysAgo(4 + i * 5), views: 500 });
+      await addDebit(t.db, t.studioId, fmtOnly.id, { amount: 10, at: daysAgo(4 + i * 5), refType: 'post', refId: act.postId });
+    }
+    const fmt = await planFormatMix(await leverInputs(t.db, t.studioId, NOW), fmtOnly.id, { ignoreCooldown: true });
+    expect(fmt).not.toBeNull();
+    expect(sumOf(fmt!.after.formatMix as Record<string, number>)).toBe(17);
+    expect((fmt!.effect as { target: { postsPerWeek: number } }).target.postsPerWeek).toBe(17);
   });
 
   it('keeps cadence inside 7–21 a week', async () => {
@@ -134,6 +160,25 @@ describe('Profit Engine levers', () => {
     expect(await t.services.routing.tierFor({ studioId: t.studioId, personaId: p.id, agent: 'scriptwriter' })).toBeNull();
   });
 
+  it('still reverts a routing step-down after it was measured, keeping the measured impact', async () => {
+    t = await createTestStudio({ routing: createRoutingPolicy, now: () => NOW });
+    const p = await makeTestPersona(t, { name: 'Router' });
+    await qc(t.db, p.id, 8, true, daysAgo(2));
+    for (let i = 0; i < 2; i++) {
+      await t.db.query(`INSERT INTO agent_run (studio_id, persona_id, agent, model, cost_usd, outcome, started_at) VALUES ($1, $2, 'scriptwriter', 'claude-sonnet-5-5', 0.6, 'ok', $3)`, [t.studioId, p.id, daysAgo(3 + i)]);
+    }
+    const route = (await runLevers(t.db, t.studioId, NOW)).find((a) => a.lever === 'model_routing')!;
+    await qc(t.db, p.id, 10, true, new Date(NOW.getTime() + 5 * DAY));
+    const m1 = await measureLevers(t.db, t.studioId, new Date(NOW.getTime() + 15 * DAY));
+    const measured = m1.measured.find((x) => x.id === route.id)!;
+    expect(measured.status).toBe('measured');
+    await qc(t.db, p.id, 20, false, new Date(NOW.getTime() + 18 * DAY));
+    const m2 = await measureLevers(t.db, t.studioId, new Date(NOW.getTime() + 20 * DAY));
+    expect(m2.reverted.map((r) => r.id)).toEqual([route.id]);
+    expect(m2.reverted[0]!.measuredImpactCents).toBe(measured.measuredImpactCents);
+    expect(await t.services.routing.tierFor({ studioId: t.studioId, personaId: p.id, agent: 'scriptwriter' })).toBeNull();
+  });
+
   it('reallocates next week\'s credits by profit per credit (70/20/10) without touching caps', async () => {
     t = await createTestStudio({ now: () => NOW });
     const win = await makeTestPersona(t, { name: 'Winner', state: 'MONETISING', budget: { hf_credits_month: 1200 } });
@@ -143,6 +188,8 @@ describe('Profit Engine levers', () => {
     const applied = await runLevers(t.db, t.studioId, NOW);
     const alloc = applied.find((a) => a.lever === 'credit_reallocation')!;
     expect(alloc.personaId).toBeNull();
+    expect(alloc.expectedImpactCents).toBe(0);
+    expect(alloc.rationale).toMatch(/^Plan only/);
     const rows = await t.db.query<{ persona_id: string | null; credits: number; source: string; lever_action_id: string }>(
       `SELECT persona_id, credits, source, lever_action_id FROM budget_allocation WHERE week_start = '2026-10-19'`,
     );
@@ -168,7 +215,8 @@ describe('Profit Engine levers', () => {
     expect((await measureLevers(t.db, t.studioId, new Date(NOW.getTime() + 5 * DAY))).measured).toEqual([]); // too early
     const later = new Date(NOW.getTime() + 30 * DAY);
     const { measured } = await measureLevers(t.db, t.studioId, later);
-    expect(measured.map((m) => m.id).sort()).toEqual(applied.map((a) => a.id).sort());
+    // The credit allocation is plan only (nothing enforces it), so it is never measured.
+    expect(measured.map((m) => m.id).sort()).toEqual(applied.filter((a) => a.lever !== 'credit_reallocation').map((a) => a.id).sort());
     const cadence = measured.find((m) => m.lever === 'cadence')!;
     expect(cadence.status).toBe('measured');
     expect(cadence.measuredImpactCents).toBeGreaterThan(0);

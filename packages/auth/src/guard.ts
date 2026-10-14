@@ -126,9 +126,41 @@ export function authorize(
   return { action: 'redirect', location: next === '/' ? '/login' : `/login?next=${encodeURIComponent(next)}` };
 }
 
+/**
+ * A same-origin path, or null. Browsers strip tab/newline and treat `\` as `/` when parsing a Location, so any
+ * control character, whitespace or backslash is refused; the value is then resolved against a dummy origin and
+ * must stay on it. Returns the normalised path, search and hash.
+ */
+export function sameOriginPath(v: unknown): string | null {
+  if (typeof v !== 'string' || !v.startsWith('/') || v.startsWith('//') || /[\x00-\x20\x7f\\]/.test(v)) return null;
+  try {
+    const u = new URL(v, 'http://x');
+    return u.origin === 'http://x' ? `${u.pathname}${u.search}${u.hash}` : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The sign-in page shows only these fixed messages, picked by code (`/login?error=<code>`): free text in the URL
+ * could put anything into the official sign-in alert.
+ */
+export const LOGIN_ERRORS = {
+  config: 'Sign-in is not configured on this server: set AUTH_SECRET (32+ random characters).',
+  bad_password: 'Wrong password.',
+  throttled: 'Too many attempts: try again in 15 minutes.',
+  link_throttled: 'Too many sign-in links requested: try again in 15 minutes.',
+  link_invalid: 'This sign-in link is invalid, used or expired: request a new one.',
+  signed_out: 'Your session ended. Sign in again.',
+} as const;
+export type LoginErrorCode = keyof typeof LOGIN_ERRORS;
+export const loginErrorMessage = (code: unknown): string | null =>
+  typeof code === 'string' && Object.prototype.hasOwnProperty.call(LOGIN_ERRORS, code) ? LOGIN_ERRORS[code as LoginErrorCode] : null;
+
 /** Same-origin path only, for ?next= (no open redirects). */
 export function safeNext(v: unknown, fallback = '/'): string {
-  return typeof v === 'string' && v.startsWith('/') && !v.startsWith('//') && !v.startsWith('/\\') && !v.startsWith('/login') ? v : fallback;
+  const p = sameOriginPath(v);
+  return p && !p.startsWith('/login') ? p : fallback;
 }
 
 /** The Set-Cookie value for a new session (or a clearing one when `token` is null). */

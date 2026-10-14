@@ -65,6 +65,37 @@ describe('Field Brain (Knowledge Builder on FakeWebResearch)', () => {
     expect(again.nodes).toBe(6);
   });
 
+  it('refreshes weekly only the volatile levels plus a capped slice, and skips nodes that keep failing', async () => {
+    const t = await knowledgeStudio();
+    await buildFieldBrain(t.services, { studioId: t.studioId, niche: 'sleep', inline: true });
+    const age = (days: number) => t.db.query(`UPDATE knowledge_node SET researched_at = $2 WHERE studio_id = $1`, [t.studioId, new Date(t.services.now().getTime() - days * 86_400_000)]);
+    await age(8);
+    expect((await buildFieldBrain(t.services, { studioId: t.studioId, niche: 'sleep', inline: true })).researched).toBe(2); // debate + frontier
+    for (let i = 0; i < 20; i++) {
+      await t.db.query(`INSERT INTO knowledge_node (studio_id, niche, path, title, level, origin) VALUES ($1, 'sleep', $2, $3, 'fundamental', 'map')`, [t.studioId, `extra/n${i}`, `extra ${i}`]);
+    }
+    await age(61);
+    expect((await buildFieldBrain(t.services, { studioId: t.studioId, niche: 'sleep', inline: true })).researched).toBe(12); // REFRESH_CAP
+    // A node that failed research three times is left out until forced.
+    await t.db.query(`UPDATE knowledge_node SET researched_at = NULL, notes = notes || '{"research_failures": 3}'::jsonb WHERE studio_id = $1`, [t.studioId]);
+    expect((await buildFieldBrain(t.services, { studioId: t.studioId, niche: 'sleep', inline: true })).researched).toBe(0);
+  });
+
+  it('debits what a failed research call already spent', async () => {
+    const t = await knowledgeStudio();
+    await buildFieldBrain(t.services, { studioId: t.studioId, niche: 'sleep' });
+    const node = await t.db.one<{ id: string }>(`SELECT id FROM knowledge_node WHERE studio_id = $1 LIMIT 1`, [t.studioId]);
+    t.providers.webResearch.researchTopic = async () => {
+      throw Object.assign(new Error('research answer was not valid JSON'), { costUsd: 0.84 });
+    };
+    await expect(researchNode(t.services, node.id)).rejects.toThrow(/not valid JSON/);
+    const d = await t.db.one<{ amount: number }>(`SELECT amount FROM credit_ledger WHERE entry_type = 'debit' AND operation = 'research_topic'`);
+    expect(d.amount).toBeCloseTo(0.84);
+    expect(await t.db.one(`SELECT count(*)::int AS n FROM credit_ledger WHERE entry_type = 'hold'`)).toEqual({ n: 0 });
+    const n = await t.db.one<{ notes: { research_failures?: number } }>('SELECT notes FROM knowledge_node WHERE id = $1', [node.id]);
+    expect(n.notes.research_failures).toBe(1);
+  });
+
   it('defers research instead of failing when the studio LLM cap is used up', async () => {
     const t = await knowledgeStudio();
     await buildFieldBrain(t.services, { studioId: t.studioId, niche: 'sleep' });

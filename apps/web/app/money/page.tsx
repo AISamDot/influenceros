@@ -3,10 +3,11 @@ import { type Forecast, forecastStudio, isSyntheticRow, latestForecast, listLeve
 import Link from 'next/link';
 import { Kpi } from '@/components/kpi';
 import { ForecastFan } from '@/components/money-forecast';
-import { ActionList, Band, Impact, LEVER_LABEL, money } from '@/components/profit-bits';
+import { ActionList, Band, centsMoney, Impact, LEVER_LABEL, money } from '@/components/profit-bits';
 import { Empty } from '@/components/stub';
 import { compact, money as unitMoney, shortDate } from '@/lib/format';
 import { studioContext } from '@/lib/server';
+import { requireOwnerPage } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Money' };
@@ -43,7 +44,7 @@ function Tabs<T extends string>({ items, active, href, label }: { items: Readonl
   );
 }
 
-const perPost = (cents: number, posts: number) => (posts ? money(cents / posts) : '—');
+const perPost = (cents: number, posts: number) => (posts ? centsMoney(cents / posts) : '—');
 
 function PnlTable({ rows, totals, grain }: { rows: PnlRow[]; totals: PnlTotals; grain: PnlGrain }) {
   const head = 'px-3 py-2 text-right font-semibold';
@@ -85,9 +86,9 @@ function PnlTable({ rows, totals, grain }: { rows: PnlRow[]; totals: PnlTotals; 
                 <td className={num}>{money(r.costCents)}</td>
                 <td className={`${num} font-semibold ${r.profitCents < 0 ? 'text-danger' : r.profitCents > 0 ? 'text-ok' : ''}`}>{money(r.profitCents)}</td>
                 <td className={`${num} text-muted`}>{r.posts || '—'}</td>
-                <td className={num}>{r.posts ? money(r.revenuePerPostCents) : '—'}</td>
-                <td className={num}>{r.posts ? money(r.costPerPostCents) : '—'}</td>
-                <td className="px-5 py-2 text-right tabular-nums text-muted">{r.views ? money(r.rpmCents) : '—'}</td>
+                <td className={num}>{r.posts ? centsMoney(r.revenuePerPostCents) : '—'}</td>
+                <td className={num}>{r.posts ? centsMoney(r.costPerPostCents) : '—'}</td>
+                <td className="px-5 py-2 text-right tabular-nums text-muted">{r.views ? centsMoney(r.rpmCents) : '—'}</td>
               </tr>
             );
           })}
@@ -100,7 +101,7 @@ function PnlTable({ rows, totals, grain }: { rows: PnlRow[]; totals: PnlTotals; 
             <td className={num}>{totals.posts}</td>
             <td className={num}>{perPost(totals.revenueCents - totals.feesCents - totals.refundsCents, totals.posts)}</td>
             <td className={num}>{perPost(totals.costCents, totals.posts)}</td>
-            <td className="px-5 py-2.5 text-right tabular-nums">{totals.views ? money((totals.revenueCents / totals.views) * 1000) : '—'}</td>
+            <td className="px-5 py-2.5 text-right tabular-nums">{totals.views ? centsMoney((totals.revenueCents / totals.views) * 1000) : '—'}</td>
           </tr>
         </tbody>
       </table>
@@ -123,6 +124,7 @@ function changeText(before: Record<string, unknown>, after: Record<string, unkno
 }
 
 export default async function Money({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  await requireOwnerPage();
   const sp = await searchParams;
   const period: PeriodKey = PERIODS.some((p) => p.key === sp.period) ? (sp.period as PeriodKey) : 'mtd';
   const grain: PnlGrain = GRAINS.some((g) => g.key === sp.grain) ? (sp.grain as PnlGrain) : 'persona';
@@ -286,7 +288,7 @@ export default async function Money({ searchParams }: { searchParams: Promise<Re
                     </td>
                     <td className="px-5 py-2.5 text-right">
                       <span className={`pill ${l.status === 'measured' ? 'bg-ok-soft text-ok' : l.status === 'reverted' ? 'bg-warn-soft text-warn' : 'bg-surface-2 text-muted'}`}>
-                        {l.status === 'applied' ? 'Measuring' : l.status === 'measured' ? 'Measured' : 'Reverted'}
+                        {l.lever === 'credit_reallocation' ? 'Plan only' : l.status === 'applied' ? 'Measuring' : l.status === 'measured' ? 'Measured' : 'Reverted'}
                       </span>
                     </td>
                   </tr>

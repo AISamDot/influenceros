@@ -1,7 +1,7 @@
 import type { JobContext, JobHandlerMap, ScheduledTask, StudioServices } from '@ios/agents';
 import { BudgetExceededError, DeferJob, enqueue, PUBLISHING_STATES } from '@ios/core';
 import { json } from '@ios/db';
-import { planWeek } from './calendar';
+import { bookReactionIdeas, planWeek, WEEK_MEMBER_SQL } from './calendar';
 import { runMonetizationCycle } from './monetization';
 import { processSlot } from './pipeline';
 import { voiceCheck } from './qc';
@@ -123,7 +123,7 @@ async function activePersonas(services: StudioServices): Promise<Array<{ id: str
 
 async function weekHasSlots(services: StudioServices, personaId: string, ws: Date): Promise<boolean> {
   const row = await services.db.maybeOne(
-    `SELECT 1 FROM calendar_slot WHERE persona_id = $1 AND status <> 'skipped' AND (week_start = $2::date OR (slot_at >= $3 AND slot_at < $4)) LIMIT 1`,
+    `SELECT 1 FROM calendar_slot WHERE persona_id = $1 AND status <> 'skipped' AND ${WEEK_MEMBER_SQL} LIMIT 1`,
     [personaId, isoDate(ws), ws, new Date(ws.getTime() + 7 * DAY_MS)],
   );
   return !!row;
@@ -149,10 +149,26 @@ export const schedules: readonly ScheduledTask[] = [
     },
   },
   {
-    /** Every 30 min: any planned slot in the next 8 days without a pipeline job gets one (catches deferrals and seeds). */
+    /**
+     * Every 30 min: fresh News Desk reaction ideas are swapped into this week's slots (they expire before the next
+     * week is planned), then any planned slot in the next 8 days without a pipeline job gets one (catches deferrals,
+     * swaps and seeds).
+     */
     name: 'pipeline.advance',
     due: (now, last) => !last || now.getTime() - last.getTime() >= 30 * 60_000,
     async run(services, now) {
+      // A slot whose pipeline job died (it used up its attempts on a deterministic failure) is blocked with the
+      // error instead of getting a fresh job every 30 minutes until it posts (each attempt can be paid work).
+      await services.db.query(
+        `UPDATE calendar_slot s SET status = 'blocked', stage_changed_at = $3,
+                block_reason = left('pipeline failed: ' || COALESCE((SELECT j.last_error FROM job j WHERE j.kind = $1 AND j.payload->>'slotId' = s.id::text AND j.status = 'dead'
+                                                                     ORDER BY j.updated_at DESC LIMIT 1), 'unknown error'), 500)
+          WHERE s.status = ANY($2::text[])
+            AND EXISTS (SELECT 1 FROM job j WHERE j.kind = $1 AND j.payload->>'slotId' = s.id::text AND j.status = 'dead')
+            AND NOT EXISTS (SELECT 1 FROM job j WHERE j.kind = $1 AND j.payload->>'slotId' = s.id::text AND j.status IN ('queued','running'))`,
+        [JOB.slot, ['planned', 'scripted', 'q1', 'gate'], now],
+      );
+      const reactions = (await bookReactionIdeas(services, { now })).length;
       const slots = await services.db.query<{ id: string; persona_id: string }>(
         `SELECT s.id, s.persona_id FROM calendar_slot s JOIN persona p ON p.id = s.persona_id
           WHERE s.status IN ('planned','scripted','q1','gate') AND s.slot_at > $1 AND s.slot_at < $2 AND p.state = ANY($3::text[])
@@ -162,7 +178,7 @@ export const schedules: readonly ScheduledTask[] = [
       );
       let queued = 0;
       for (const s of slots) if (await enqueueSlot(services, s.id, s.persona_id)) queued += 1;
-      return { queued };
+      return reactions ? { queued, reactions } : { queued };
     },
   },
   {

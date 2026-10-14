@@ -1,4 +1,4 @@
-import { authSecret, AuthError, hashIp, isDeployed, requestMagicLink } from '@ios/auth';
+import { authSecret, AuthError, hashIp, isDeployed, requestMagicLink, safeNext } from '@ios/auth';
 import { getDb } from '@ios/db';
 import { clientIp, publicOrigin } from '@/lib/auth';
 import { isFormPost } from '@/lib/http';
@@ -13,10 +13,10 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
   if (!isFormPost(req)) return new Response('send the sign-in form', { status: 415 });
   const f = await req.formData();
-  const next = typeof f.get('next') === 'string' ? String(f.get('next')) : '/';
+  const next = safeNext(f.get('next'));
   const go = (q: string) => new Response(null, { status: 303, headers: { Location: `/login?${q}&next=${encodeURIComponent(next)}` } });
   const secret = authSecret();
-  if (!secret) return go(`error=${encodeURIComponent('Sign-in is not configured: set AUTH_SECRET.')}`);
+  if (!secret) return go('error=config');
   const services = await getServices();
   try {
     const r = await requestMagicLink(await getDb(), services.providers.email, {
@@ -25,13 +25,14 @@ export async function POST(req: Request) {
       from: process.env.AUTH_EMAIL_FROM || 'Influencer OS <onboarding@resend.dev>',
       baseUrl: publicOrigin(req),
       ipHash: hashIp(clientIp(req), secret),
+      next,
     });
     // Local development without a Resend key: the email goes to the fake provider, so print the link here.
     if (r.link && services.providers.email.name.startsWith('fake') && !isDeployed() && process.env.NODE_ENV !== 'production') {
       console.info(`[auth] email is in fake mode; sign-in link: ${r.link}`);
     }
   } catch (err) {
-    if (err instanceof AuthError) return go(`error=${encodeURIComponent(err.message)}`);
+    if (err instanceof AuthError) return go(`error=${err.status === 429 ? 'link_throttled' : 'link_invalid'}`);
     throw err;
   }
   return go('sent=1');

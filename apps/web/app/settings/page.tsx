@@ -5,6 +5,7 @@ import { IconPause, IconPlug } from '@/components/icons';
 import { SubmitButton } from '@/components/submit-button';
 import { studioContext } from '@/lib/server';
 import { savePersonaControls, saveStudioSettings } from './actions';
+import { requireOwnerPage } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Settings' };
@@ -47,6 +48,7 @@ function SwitchForm({ scope, on, personaId, platform, label }: { scope: string; 
 }
 
 export default async function Settings({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
+  await requireOwnerPage();
   const sp = await searchParams;
   const { db, studio } = await studioContext();
   const s = studio.resolved;

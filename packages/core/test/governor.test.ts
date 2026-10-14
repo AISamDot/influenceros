@@ -1,6 +1,6 @@
 import { createFakeProviders } from '@ios/providers';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { budgetStatus, BudgetExceededError, debit, meteredProviders } from '../src';
+import { budgetStatus, BudgetExceededError, debit, meteredProviders, reserve, tick } from '../src';
 import { type Ctx, count, makePersona, setup } from './helpers';
 
 let ctx: Ctx;
@@ -96,5 +96,18 @@ describe('cost governor and credit ledger', () => {
     await expect(prov.imageVideo.generateStill({ prompt: 'desk' })).rejects.toThrow(/503/);
     expect((await budgetStatus(ctx.db, { studioId: ctx.studioId, personaId: p, unit: 'hf_credits' })).persona?.used).toBe(0);
     expect(await count(ctx.db, 'SELECT 1 FROM credit_ledger')).toBe(0);
+  });
+});
+
+describe('orphaned holds', () => {
+  it('a hold left by a dead process stops counting after 30 minutes, and is audited', async () => {
+    const p = await makePersona(ctx);
+    await reserve(ctx.db, { studioId: ctx.studioId, personaId: p, unit: 'llm_usd', amount: 3, provider: 'anthropic', operation: 'run:strong' });
+    expect((await budgetStatus(ctx.db, { studioId: ctx.studioId, personaId: p, unit: 'llm_usd' })).studio.used).toBe(3);
+    expect((await tick(ctx.db)).holds).toBe(0); // still in flight
+    const r = await tick(ctx.db, { now: new Date(Date.now() + 31 * 60_000) });
+    expect(r.holds).toBe(1);
+    expect((await budgetStatus(ctx.db, { studioId: ctx.studioId, personaId: p, unit: 'llm_usd' })).studio.used).toBe(0);
+    expect(await count(ctx.db, `SELECT 1 FROM audit_log WHERE action = 'budget.hold_reaped'`)).toBe(1);
   });
 });

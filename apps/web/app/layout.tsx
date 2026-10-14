@@ -7,7 +7,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { Nav } from '@/components/nav';
-import { currentSession } from '@/lib/auth';
+import { authOff, currentSession } from '@/lib/auth';
 import { studioContext } from '@/lib/server';
 
 export const metadata: Metadata = {
@@ -32,15 +32,16 @@ async function counts() {
 }
 
 /**
- * The proxy has already checked the session cookie's signature; here the session row is checked too, so a page
- * never renders for a signed-out or revoked session. Sign-in pages render without the nav.
+ * The proxy has already checked the session cookie's signature; here the session row is checked too on a full page
+ * load. Layouts don't re-render on client-side navigation, so every page also calls requireOwnerPage(). Sign-in
+ * pages render without the nav.
  */
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const path = (await headers()).get('x-ios-path') ?? '';
   const signInPage = path === '/login' || path.startsWith('/login/');
-  const authOff = process.env.IOS_AUTH === 'off' && !process.env.VERCEL;
-  const session = signInPage || authOff ? null : await currentSession().catch(() => null);
-  if (!signInPage && !authOff && !session) redirect('/login');
+  const off = authOff();
+  const session = signInPage || off ? null : await currentSession().catch(() => null);
+  if (!signInPage && !off && !session) redirect(path && path !== '/' && path.startsWith('/') && !path.startsWith('//') ? `/login?next=${encodeURIComponent(path)}` : '/login');
   const c = signInPage ? null : await counts();
   return (
     <html lang="en" suppressHydrationWarning>

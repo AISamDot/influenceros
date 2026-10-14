@@ -98,17 +98,21 @@ async function refreshPersona(db: Db, studioId: string, personaId: string, versi
   let bibleVersion = version;
   let updated = false;
   if (prevHash !== nextHash) {
-    bibleVersion = version + 1;
     updated = true;
-    await db.transaction(async (tx) => {
+    bibleVersion = await db.transaction(async (tx) => {
+      await tx.query('SELECT id FROM persona WHERE id = $1 FOR UPDATE', [personaId]);
+      const max = await tx.one<{ v: number }>('SELECT COALESCE(MAX(version), 0)::int AS v FROM persona_bible WHERE persona_id = $1', [personaId]);
+      const next = Math.max(version, max.v) + 1;
+      const content = carryOverRules(latest?.content ?? null, lp.bible, { version: next, label: lp.bibleLabel ?? null });
       await tx.query(`UPDATE persona_bible SET status = 'superseded' WHERE persona_id = $1 AND status = 'approved'`, [personaId]);
       await tx.query(
         `INSERT INTO persona_bible (persona_id, version, content, status, created_by, approved_by, approved_at)
          VALUES ($1, $2, $3::jsonb, 'approved', 'agent:studio-manager', 'agent:studio-manager', $4)`,
-        [personaId, bibleVersion, json(lp.bible), now],
+        [personaId, next, json(content), now],
       );
-      await tx.query('UPDATE persona SET current_bible_version = $2, updated_at = now() WHERE id = $1', [personaId, bibleVersion]);
-      await audit(tx, { studioId, personaId, actor: IMPORTER, action: 'bible.imported', entityType: 'persona', entityId: personaId, data: { version: bibleVersion } });
+      await tx.query('UPDATE persona SET current_bible_version = $2, updated_at = now() WHERE id = $1', [personaId, next]);
+      await audit(tx, { studioId, personaId, actor: IMPORTER, action: 'bible.imported', entityType: 'persona', entityId: personaId, data: { version: next } });
+      return next;
     });
     await notify(db, {
       studioId,
@@ -122,6 +126,47 @@ async function refreshPersona(db: Db, studioId: string, personaId: string, versi
   await upsertProducts(db, personaId, lp);
   const nodes = await upsertFieldBrainSeed(db, studioId, lp.niche, lp.fieldBrain, lp.slug);
   return { slug: lp.slug, personaId, created: false, updated, bibleVersion, slots: 0, nodes };
+}
+
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const uniq = <T>(xs: readonly T[]): T[] => {
+  const seen = new Set<string>();
+  return xs.filter((x) => {
+    const k = JSON.stringify(x);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+};
+
+/**
+ * A re-imported bible keeps what the feedback loop added on top of the documents: each section's `owner_rules` and
+ * `agent_rules`, the top-level ones and the `changelog` (plus an entry for this import). Without this, a doc edit would silently
+ * drop rules the Owner was told are live.
+ */
+export function carryOverRules(prev: Record<string, unknown> | null, next: Record<string, unknown>, at: { version: number; label: string | null }): Record<string, unknown> {
+  const content = structuredClone(next);
+  for (const field of ['owner_rules', 'agent_rules'] as const) {
+    const topRules: unknown[] = Array.isArray(content[field]) ? [...(content[field] as unknown[])] : [];
+    if (prev) {
+      for (const [key, sec] of Object.entries(prev)) {
+        const rules = isObj(sec) ? sec[field] : undefined;
+        if (!Array.isArray(rules) || !rules.length) continue;
+        const target = content[key];
+        if (isObj(target)) target[field] = uniq([...(Array.isArray(target[field]) ? (target[field] as unknown[]) : []), ...rules]);
+        else if (target === undefined) content[key] = { [field]: [...rules] };
+        else topRules.push(...rules.map((rule) => ({ section: key, rule })));
+      }
+      if (Array.isArray(prev[field])) topRules.push(...(prev[field] as unknown[]));
+    }
+    if (topRules.length) content[field] = uniq(topRules);
+  }
+  content.changelog = [
+    ...(prev && Array.isArray(prev.changelog) ? prev.changelog : []),
+    ...(Array.isArray(next.changelog) ? next.changelog : []),
+    { version: at.version, section: 'all', change: `Persona Architect documents re-imported${at.label ? ` (${at.label})` : ''}; earlier rules kept` },
+  ];
+  return content;
 }
 
 async function upsertProducts(db: Db, personaId: string, lp: LaunchPersona): Promise<void> {
@@ -144,6 +189,13 @@ function monthlyMilestones(seasonal: LaunchPersona['seasonal']): Array<{ month: 
   return [...byMonth.entries()].slice(0, 8).map(([month, moments]) => ({ month, goal: moments.filter(Boolean).join('; ').slice(0, 280) }));
 }
 
+/** The Monday (YYYY-MM-DD) of a YYYY-MM-DD calendar date. */
+function mondayOfDate(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
 /** The content plan's launch fortnight as planned slots (future ones only), each with its idea. */
 async function seedSlots(db: Db, personaId: string, lp: LaunchPersona, now: Date): Promise<number> {
   let n = 0;
@@ -162,10 +214,12 @@ async function seedSlots(db: Db, personaId: string, lp: LaunchPersona, now: Date
         json({ type: 'content_plan', post: s.n, cta: s.cta, local: `${s.localDate} ${s.localTime}`, file: `${lp.slug}/content-plan.md` }),
       ],
     );
+    // week_start is the Monday of the post's local date (the calendar's week membership), so a Sunday-evening post
+    // west of UTC stays in its own week instead of making the next week look planned.
     await db.query(
-      `INSERT INTO calendar_slot (persona_id, slot_at, format, purpose, pillar, title, status, idea_id, thumbnail_url)
-       VALUES ($1, $2, $3, $4, $5, $6, 'planned', $7, $8)`,
-      [personaId, s.slotAt, s.format, s.purpose, s.pillar, s.title, idea.id, thumbnailUri(s.title, lp.hue, s.format, s.n)],
+      `INSERT INTO calendar_slot (persona_id, slot_at, format, purpose, pillar, title, status, idea_id, thumbnail_url, week_start)
+       VALUES ($1, $2, $3, $4, $5, $6, 'planned', $7, $8, $9::date)`,
+      [personaId, s.slotAt, s.format, s.purpose, s.pillar, s.title, idea.id, thumbnailUri(s.title, lp.hue, s.format, s.n), mondayOfDate(s.localDate)],
     );
     n += 1;
   }

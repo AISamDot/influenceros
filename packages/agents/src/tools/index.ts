@@ -319,7 +319,12 @@ export const approvalsWithdrawTool = tool({
   mutates: true,
   input: { approval_id: { type: 'string', uuid: true } },
   run: async (ctx, i) => {
-    const a = await ctx.services.db.maybeOne('SELECT 1 FROM approval WHERE id = $1 AND studio_id = $2', [i.approval_id, ctx.studioId]);
+    // A persona manager may only withdraw its own persona's approvals (every persona manager shares one agent id).
+    const a = await ctx.services.db.maybeOne('SELECT 1 FROM approval WHERE id = $1 AND studio_id = $2 AND ($3::uuid IS NULL OR persona_id = $3)', [
+      i.approval_id,
+      ctx.studioId,
+      ctx.personaId,
+    ]);
     if (!a) throw new ToolInputError('no such approval');
     await withdraw(ctx.services.db, i.approval_id, { type: 'agent', id: ctx.caller });
     return { status: 'withdrawn' };
@@ -354,6 +359,17 @@ export const approvalsDecideTool = tool({
   },
 });
 
+/** Same rule as @ios/auth's sameOriginPath (no control characters, whitespace or backslashes; stays on origin). */
+function sameOriginPath(v: unknown): string | null {
+  if (typeof v !== 'string' || !v.startsWith('/') || v.startsWith('//') || /[\x00-\x20\x7f\\]/.test(v)) return null;
+  try {
+    const u = new URL(v, 'http://x');
+    return u.origin === 'http://x' ? `${u.pathname}${u.search}${u.hash}` : null;
+  } catch {
+    return null;
+  }
+}
+
 export const chatNotifyOwnerTool = tool({
   name: 'chat.notify_owner',
   description:
@@ -363,7 +379,7 @@ export const chatNotifyOwnerTool = tool({
   input: { title: { type: 'string', maxLength: 140 }, body: { type: 'string', maxLength: 1500 }, link: { type: 'string', maxLength: 200, optional: true } },
   run: async (ctx, i) => {
     const db = ctx.services.db;
-    const link = i.link && i.link.startsWith('/') && !i.link.startsWith('//') ? i.link : undefined;
+    const link = sameOriginPath(i.link) ?? undefined;
     const id = await notify(db, { studioId: ctx.studioId, personaId: ctx.personaId, kind: 'digest', severity: 'info', title: i.title, body: i.body, link });
     const thread = await findThread(db, ctx.studioId, 'studio');
     await addMessage(db, {

@@ -7,10 +7,12 @@ import { ProfitCard } from '@/components/profit-card';
 import { SetupHint } from '@/components/setup-hint';
 import { compact, usd } from '@/lib/format';
 import { loadChat, studioContext } from '@/lib/server';
+import { requireOwnerPage } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function StudioWall() {
+  await requireOwnerPage();
   let ctx;
   try {
     ctx = await studioContext();

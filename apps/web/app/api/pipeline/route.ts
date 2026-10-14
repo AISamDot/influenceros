@@ -1,3 +1,4 @@
+import { requireOwner } from '@/lib/auth';
 import { enqueueSlot, pipelineBoard, planWeek } from '@ios/content';
 import { PUBLISHING_STATES } from '@ios/core';
 import { createStudioServices } from '@ios/wiring';
@@ -15,6 +16,8 @@ const monday = (d: Date) => {
 
 /** GET /api/pipeline?persona=<id>&days=8: the Pipeline board as JSON. */
 export async function GET(req: Request) {
+  const denied = await requireOwner(req);
+  if (denied) return denied;
   const url = new URL(req.url);
   const persona = url.searchParams.get('persona');
   const days = Math.min(21, Math.max(1, Number(url.searchParams.get('days') ?? 8) || 8));
@@ -32,6 +35,8 @@ export async function GET(req: Request) {
  * - {action: "run_slot", slot_id}: queues one slot for the pipeline.
  */
 export async function POST(req: Request) {
+  const denied = await requireOwner(req);
+  if (denied) return denied;
   const isForm = isFormPost(req);
   if (!isForm && !isJson(req)) return Response.json({ error: 'send JSON or a form' }, { status: 415 });
   const input: Record<string, string> = isForm
@@ -49,7 +54,15 @@ export async function POST(req: Request) {
       `SELECT id FROM persona WHERE studio_id = $1 AND state = ANY($2::text[]) AND ($3::uuid IS NULL OR id = $3) ORDER BY name`,
       [studio.id, [...PUBLISHING_STATES], input.persona_id || null],
     );
-    if (input.persona_id && !personas.length) return fail('that persona is not publishing');
+    if (!personas.length) {
+      // Personas in SETUP (the launch wave) aren't planned until they publish: say so instead of a false "done".
+      const setup = await db.query<{ name: string; state: string }>(
+        `SELECT name, state FROM persona WHERE studio_id = $1 AND ($2::uuid IS NULL OR id = $2) AND state NOT IN ('KILLED','RETIRED') ORDER BY name`,
+        [studio.id, input.persona_id || null],
+      );
+      const who = input.persona_id ? (setup[0] ? `${setup[0].name} is in ${setup[0].state}` : 'that persona is not publishing') : 'No persona is publishing yet';
+      return fail(`${who}: weeks are planned once a persona starts publishing (the launch posts are already on the calendar).`, 409);
+    }
     const ws = input.week === 'this' ? monday(new Date()) : new Date(monday(new Date()).getTime() + 7 * DAY);
     let created = 0;
     let queued = 0;

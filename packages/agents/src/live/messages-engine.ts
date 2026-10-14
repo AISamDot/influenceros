@@ -155,7 +155,8 @@ export function createMessagesEngine(client: MessagesClient, opts: { fallbacks?:
         try {
           structured = JSON.parse(text);
         } catch {
-          throw new AgentOutputError(`expected JSON output, got: ${text.slice(0, 120)}`);
+          // Truncated or non-JSON output was still paid for: the runtime debits err.usage.
+          throw Object.assign(new AgentOutputError(`expected JSON output, got: ${text.slice(0, 120)}`), { usage: { ...usage } });
         }
       }
       return { text, structured, model, usage, toolCalls, stopReason, engine: 'messages' };

@@ -92,14 +92,27 @@ function Value({ v, depth = 0 }: { v: unknown; depth?: number }): ReactNode {
   );
 }
 
-export function Profile({ content, version, approvedAt }: { content: Record<string, unknown>; version: number; approvedAt: Date | null }) {
+/** Who approved a bible version, in words (persona creative decisions are delegated to the Studio Manager). */
+export function approverLabel(approvedBy: string | null | undefined): string {
+  if (!approvedBy) return 'Approved';
+  if (approvedBy.startsWith('owner:')) return 'Approved by you';
+  if (approvedBy === 'agent:studio-manager') return 'Approved by the Studio Manager';
+  if (approvedBy === 'agent:persona-manager') return 'Approved by the persona manager';
+  return `Approved by ${approvedBy.replace(/^(agent|system):/, '').replace(/-/g, ' ')}`;
+}
+
+export function Profile({ content, version, approvedAt, approvedBy }: { content: Record<string, unknown>; version: number; approvedAt: Date | null; approvedBy?: string | null }) {
   const groups = [...new Set(SECTIONS.map((s) => s.group))];
   const extra = Object.keys(content).filter((k) => !SECTIONS.some((s) => s.key === k));
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
         <span className="pill bg-ok-soft text-ok">Bible v{version}</span>
-        {approvedAt ? <span>Owner-approved {new Date(approvedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span> : null}
+        {approvedAt ? (
+          <span>
+            {approverLabel(approvedBy)} {new Date(approvedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+          </span>
+        ) : null}
         <span>· Edit by chatting with the persona manager (IOS-2)</span>
       </div>
       {groups.map((g) => (

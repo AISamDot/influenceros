@@ -1,4 +1,4 @@
-import { canTransition, type PersonaState, proposeKill, STUDIO_MANAGER } from '@ios/core';
+import { addMessage, canTransition, findThread, type PersonaState, proposeKill, STUDIO_MANAGER } from '@ios/core';
 import type { Db } from '@ios/db';
 import { getProfitSettings } from './settings';
 import type { Forecast } from './types';
@@ -14,6 +14,9 @@ import { addDays } from './util';
  * it waits `killCooldownDays` before proposing again. A BRAND persona can't be killed, so it is proposed for
  * retirement instead.
  */
+
+/** A TESTING persona is judged by the Day-30 checkpoint (≥ 1 sale) before the Profit Engine may propose a kill. */
+export const MIN_DAYS_LIVE = 30;
 
 export interface KillCandidate {
   personaId: string;
@@ -31,12 +34,25 @@ export async function proposeKillCandidates(db: Db, studioId: string, forecasts:
   const out: KillCandidate[] = [];
   for (const f of forecasts) {
     if (!f.personaId || f.negativeWeeks < settings.killNegativeWeeks) continue;
-    const p = await db.maybeOne<{ id: string; name: string; state: PersonaState }>('SELECT id, name, state FROM persona WHERE id = $1 AND studio_id = $2', [f.personaId, studioId]);
+    const p = await db.maybeOne<{ id: string; name: string; state: PersonaState; launched_at: Date | null; created_at: Date }>(
+      'SELECT id, name, state, launched_at, created_at FROM persona WHERE id = $1 AND studio_id = $2',
+      [f.personaId, studioId],
+    );
     if (!p) continue;
     const action: 'kill' | 'retire' | null = canTransition(p.state, 'KILLED') ? 'kill' : canTransition(p.state, 'RETIRED') ? 'retire' : null;
     const base: KillCandidate = { personaId: p.id, name: p.name, action: action ?? 'kill', negativeWeeks: f.negativeWeeks, forecastTotalCents: f.totalCents.median, approvalId: null, proposalId: null };
     if (!action) {
       out.push({ ...base, skipped: `${p.state} can't be killed or retired` });
+      continue;
+    }
+    // Not launched yet, or still before the PRD's Day-30 checkpoint: the lifecycle checkpoints judge young personas.
+    if (p.state === 'SETUP') {
+      out.push({ ...base, skipped: 'not launched yet (SETUP)' });
+      continue;
+    }
+    const daysLive = Math.floor((now.getTime() - new Date(p.launched_at ?? p.created_at).getTime()) / 86_400_000);
+    if (p.state === 'TESTING' && daysLive < MIN_DAYS_LIVE) {
+      out.push({ ...base, skipped: `only ${daysLive} days live (the Day-30 checkpoint decides first)` });
       continue;
     }
     if ((f.weeksOfHistory ?? 0) < settings.minWeeksBeforeKill) {
@@ -80,6 +96,16 @@ export async function proposeKillCandidates(db: Db, studioId: string, forecasts:
           generated_at: f.generatedAt.toISOString(),
         },
         now,
+      });
+      // The kill card also shows inline in the Studio chat (PRD 3.9), like a Studio Manager tool proposal.
+      const thread = await findThread(db, studioId, 'studio');
+      await addMessage(db, {
+        threadId: thread.id,
+        role: 'agent',
+        author: 'agent:studio-manager',
+        body: `${approval.title}: ${rationale}`,
+        personaId: p.id,
+        meta: { kind: 'approval_card', approvalId: approval.id, source: 'profit-engine' },
       });
       out.push({ ...base, approvalId: approval.id, proposalId });
     } catch (err) {

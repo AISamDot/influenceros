@@ -1,6 +1,7 @@
 import { listNotifications } from '@ios/core';
 import { relative } from '@/lib/format';
 import { studioContext } from '@/lib/server';
+import { requireOwnerPage } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Notifications' };
@@ -8,6 +9,7 @@ export const metadata = { title: 'Notifications' };
 const TONE = { critical: 'bg-danger', warn: 'bg-warn', info: 'bg-accent' } as const;
 
 export default async function Notifications() {
+  await requireOwnerPage();
   const { db, studio } = await studioContext();
   const items = await listNotifications(db, studio.id, 100);
   const unread = items.filter((n) => !n.read_at).length;

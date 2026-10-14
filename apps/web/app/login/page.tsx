@@ -1,4 +1,4 @@
-import { authSecret, safeNext } from '@ios/auth';
+import { authSecret, LOGIN_ERRORS, loginErrorMessage, safeNext } from '@ios/auth';
 import { redirect } from 'next/navigation';
 import { AuthNotice } from '@/components/auth-notice';
 import { SubmitButton } from '@/components/submit-button';
@@ -27,10 +27,10 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
         </div>
       </div>
 
-      {sp.error === 'config' || !configured ? (
-        <AuthNotice tone="error">Sign-in is not configured on this server: set AUTH_SECRET (32+ random characters).</AuthNotice>
-      ) : sp.error ? (
-        <AuthNotice tone="error">{sp.error}</AuthNotice>
+      {!configured ? (
+        <AuthNotice tone="error">{LOGIN_ERRORS.config}</AuthNotice>
+      ) : loginErrorMessage(sp.error) ? (
+        <AuthNotice tone="error">{loginErrorMessage(sp.error)}</AuthNotice>
       ) : null}
       {sp.sent ? <AuthNotice tone="ok">If that is the Owner&apos;s address, a sign-in link is on its way. It works once, for 15 minutes.</AuthNotice> : null}
       {sp.ok === 'signed-out' ? <AuthNotice tone="ok">Signed out.</AuthNotice> : null}

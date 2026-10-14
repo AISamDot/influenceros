@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
-import { type BudgetStatus, personaPage } from '@ios/core';
+import { type BudgetStatus, localDayKey, personaPage } from '@ios/core';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { AutonomyBadge, KillFlag, LifecycleBadge } from '@/components/badges';
@@ -7,8 +7,9 @@ import { ChatPanel } from '@/components/chat-panel';
 import { FormatIcon, PlatformMark } from '@/components/icons';
 import { Profile } from '@/components/profile';
 import { Sparkline } from '@/components/sparkline';
-import { compact, daysSince, FORMAT_LABEL, money, shortDate, time, usd, weekday } from '@/lib/format';
+import { compact, daysSince, FORMAT_LABEL, localTime, money, shortDate, usd, weekday, zoneLabel } from '@/lib/format';
 import { loadChat, studioContext } from '@/lib/server';
+import { requireOwnerPage } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,6 +57,7 @@ function Stat({ label, value, values, color }: { label: string; value: string; v
 }
 
 export default async function PersonaPage({ params, searchParams }: Props) {
+  await requireOwnerPage();
   const [{ slug }, { tab }] = await Promise.all([params, searchParams]);
   const { db, studio } = await studioContext();
   const page = await personaPage(db, slug);
@@ -64,7 +66,7 @@ export default async function PersonaPage({ params, searchParams }: Props) {
   const p = card.persona;
   const accent = p.accent_color ?? 'var(--accent)';
   const chat = await loadChat(db, studio.id, 'persona', p.id);
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = localDayKey(new Date(), page.card.persona.timezone);
   const profileTab = tab === 'profile';
   const day = daysSince(p.launched_at);
 
@@ -146,7 +148,7 @@ export default async function PersonaPage({ params, searchParams }: Props) {
 
       {profileTab ? (
         bible ? (
-          <Profile content={bible.content} version={bible.version} approvedAt={bible.approved_at} />
+          <Profile content={bible.content} version={bible.version} approvedAt={bible.approved_at} approvedBy={bible.approved_by} />
         ) : (
           <p className="text-muted">No bible yet.</p>
         )
@@ -158,7 +160,7 @@ export default async function PersonaPage({ params, searchParams }: Props) {
               <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
                 <h2 className="font-[family-name:var(--font-display)] text-[26px] leading-none">This week</h2>
                 <span className="text-[12px] text-muted">
-                  {week.days.reduce((a, d) => a + d.slots.length, 0)} posts · week of {shortDate(new Date(week.start))} · times UTC
+                  {week.days.reduce((a, d) => a + d.slots.length, 0)} posts · week of {shortDate(new Date(week.start))} · times in {card.persona.timezone || 'UTC'} ({zoneLabel(new Date(), card.persona.timezone)})
                 </span>
               </div>
               <div className="scroll-x -mx-1 px-1 pb-1">
@@ -181,7 +183,7 @@ export default async function PersonaPage({ params, searchParams }: Props) {
                             </div>
                             <div className="space-y-1 p-1.5">
                               <div className="flex items-center justify-between gap-1">
-                                <span className="text-[11px] font-semibold tabular-nums">{time(new Date(s.slot_at))}</span>
+                                <span className="text-[11px] font-semibold tabular-nums">{localTime(new Date(s.slot_at), card.persona.timezone)}</span>
                                 <span className={`rounded-full px-1.5 py-px text-[9.5px] font-bold uppercase ${PURPOSE[s.purpose]?.cls ?? ''}`}>{PURPOSE[s.purpose]?.label}</span>
                               </div>
                               <p className="line-clamp-2 text-[11.5px] leading-snug">{s.title}</p>

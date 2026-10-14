@@ -1,5 +1,5 @@
 import type { StudioServices } from '@ios/agents';
-import { metered } from '@ios/core';
+import { BudgetExceededError, metered } from '@ios/core';
 import { json } from '@ios/db';
 import type { FieldMap, TopicResearch } from '@ios/providers';
 import { embedNodes } from './embed';
@@ -19,7 +19,19 @@ import { deferOnBudget, enqueueOnce, hostOf, shortQuote, trimText } from './util
 
 export const DEFAULT_MAX_NODES = 120;
 export const DEFAULT_MAX_SOURCES = 40;
+/** Volatile levels (frontier, debate) are re-verified weekly… */
 export const REFRESH_DAYS = 7;
+/** …fundamentals, methods and myths every two months. */
+export const STABLE_REFRESH_DAYS = 60;
+/** At most this many already-researched nodes are re-researched per niche per build (stalest first), so the weekly
+ *  refresh rolls over the Field Brain inside the PRD's ~$5–8 per persona per month instead of rebuilding it. */
+export const REFRESH_CAP = 12;
+/** A node that failed research this many times is left out of builds until someone forces it. */
+export const MAX_RESEARCH_FAILURES = 3;
+/** Holds for one paid research call, sized to its worst case (up to 4 streams of 16k output tokens on the standard
+ *  tier, fetched pages, searches and a repair call), so concurrent workers can't overshoot a cap. */
+export const RESEARCH_ESTIMATE_USD = { map: 1.5, topic: 1.2 } as const;
+const VOLATILE_LEVELS = ['frontier', 'debate'];
 
 export const KNOWLEDGE_JOBS = {
   build: 'knowledge.build',
@@ -72,7 +84,7 @@ export async function buildFieldBrain(services: StudioServices, opts: BuildOptio
       map = await metered(
         db,
         meterCtx(opts.studioId),
-        { unit: 'llm_usd', estimate: 0.6, provider: providers.webResearch.name, operation: 'map_field' },
+        { unit: 'llm_usd', estimate: RESEARCH_ESTIMATE_USD.map, provider: providers.webResearch.name, operation: 'map_field' },
         () => providers.webResearch.mapField({ niche, maxSources: opts.maxSources ?? DEFAULT_MAX_SOURCES, maxNodes }),
         (r) => r.costUsd,
       );
@@ -86,13 +98,26 @@ export async function buildFieldBrain(services: StudioServices, opts: BuildOptio
     const planned = await planCurriculum(services, opts.studioId, niche, maxNodes);
     cost += planned.costUsd;
 
-    const refreshBefore = new Date(services.now().getTime() - (opts.refreshDays ?? REFRESH_DAYS) * 86_400_000);
-    const stale = await db.query<{ id: string }>(
-      `SELECT id FROM knowledge_node
-        WHERE studio_id = $1 AND lower(niche) = $2 AND (researched_at IS NULL OR researched_at < $3)
-        ORDER BY array_position($4::text[], level), path LIMIT $5`,
-      [opts.studioId, niche, refreshBefore, [...LEVELS], maxNodes],
+    // Never-researched nodes first (a new niche), then a capped slice of the stalest researched ones: volatile levels
+    // after REFRESH_DAYS, the rest after STABLE_REFRESH_DAYS (or `refreshDays` for both, when given).
+    const day = 86_400_000;
+    const now = services.now().getTime();
+    const volatileBefore = new Date(now - (opts.refreshDays ?? REFRESH_DAYS) * day);
+    const stableBefore = new Date(now - (opts.refreshDays ?? STABLE_REFRESH_DAYS) * day);
+    const healthy = `COALESCE((notes->>'research_failures')::int, 0) < ${MAX_RESEARCH_FAILURES}`;
+    const fresh = await db.query<{ id: string }>(
+      `SELECT id FROM knowledge_node WHERE studio_id = $1 AND lower(niche) = $2 AND researched_at IS NULL AND ${healthy}
+        ORDER BY array_position($3::text[], level), path LIMIT $4`,
+      [opts.studioId, niche, [...LEVELS], maxNodes],
     );
+    const refresh = await db.query<{ id: string }>(
+      `SELECT id FROM knowledge_node
+        WHERE studio_id = $1 AND lower(niche) = $2 AND researched_at IS NOT NULL AND ${healthy}
+          AND researched_at < CASE WHEN level = ANY($3::text[]) THEN $4::timestamptz ELSE $5::timestamptz END
+        ORDER BY researched_at, path LIMIT $6`,
+      [opts.studioId, niche, VOLATILE_LEVELS, volatileBefore, stableBefore, Math.min(REFRESH_CAP, maxNodes)],
+    );
+    const stale = [...fresh, ...refresh];
     let queued = 0;
     let researched = 0;
     for (const n of stale) {
@@ -100,7 +125,7 @@ export async function buildFieldBrain(services: StudioServices, opts: BuildOptio
         const r = await researchNode(services, n.id, { refreshDays: opts.refreshDays });
         cost += r.costUsd;
         if (r.status === 'researched') researched += 1;
-      } else if (await enqueueOnce(db, { kind: KNOWLEDGE_JOBS.researchNode, key: `node:${n.id}`, payload: { nodeId: n.id, buildId: build.id }, studioId: opts.studioId, priority: 120 })) {
+      } else if (await enqueueOnce(db, { kind: KNOWLEDGE_JOBS.researchNode, key: `node:${n.id}`, payload: { nodeId: n.id, buildId: build.id }, studioId: opts.studioId, priority: 120, maxAttempts: 2 })) {
         queued += 1;
       }
     }
@@ -265,27 +290,35 @@ interface NodeRow {
   niche: string;
   path: string;
   title: string;
+  level: string;
   questions: string[];
   researched_at: Date | null;
 }
 
 export async function researchNode(services: StudioServices, nodeId: string, opts: { refreshDays?: number; force?: boolean } = {}): Promise<ResearchResult> {
   const { db, providers } = services;
-  const node = await db.maybeOne<NodeRow>('SELECT id, studio_id, niche, path, title, questions, researched_at FROM knowledge_node WHERE id = $1', [nodeId]);
+  const node = await db.maybeOne<NodeRow>('SELECT id, studio_id, niche, path, title, level, questions, researched_at FROM knowledge_node WHERE id = $1', [nodeId]);
   if (!node) return { nodeId, status: 'skipped', costUsd: 0 };
-  const fresh = node.researched_at && services.now().getTime() - new Date(node.researched_at).getTime() < (opts.refreshDays ?? REFRESH_DAYS) * 86_400_000;
+  const minAgeDays = opts.refreshDays ?? (VOLATILE_LEVELS.includes(node.level) ? REFRESH_DAYS : STABLE_REFRESH_DAYS);
+  const fresh = node.researched_at && services.now().getTime() - new Date(node.researched_at).getTime() < minAgeDays * 86_400_000;
   if (fresh && !opts.force) return { nodeId, status: 'skipped', costUsd: 0 };
   let r: TopicResearch;
   try {
     r = await metered(
       db,
       meterCtx(node.studio_id),
-      { unit: 'llm_usd', estimate: 0.35, provider: providers.webResearch.name, operation: 'research_topic' },
+      { unit: 'llm_usd', estimate: RESEARCH_ESTIMATE_USD.topic, provider: providers.webResearch.name, operation: 'research_topic' },
       () => providers.webResearch.researchTopic({ niche: node.niche, path: node.path, title: node.title, questions: node.questions, maxSources: 8 }),
       (x) => x.costUsd,
     );
   } catch (err) {
-    await db.query('UPDATE knowledge_node SET research_error = $2 WHERE id = $1', [nodeId, err instanceof Error ? err.message.slice(0, 500) : String(err)]);
+    // Real failures count up (a budget deferral doesn't); after MAX_RESEARCH_FAILURES the node leaves the builds.
+    await db.query(
+      `UPDATE knowledge_node SET research_error = $2,
+              notes = CASE WHEN $3 THEN notes || jsonb_build_object('research_failures', COALESCE((notes->>'research_failures')::int, 0) + 1) ELSE notes END
+        WHERE id = $1`,
+      [nodeId, err instanceof Error ? err.message.slice(0, 500) : String(err), !(err instanceof BudgetExceededError)],
+    );
     deferOnBudget(err, `research ${node.path}`);
   }
   const sourceIds = await registerSources(services, node.studio_id, node.niche, r.sources);
@@ -296,7 +329,7 @@ export async function researchNode(services: StudioServices, nodeId: string, opt
   const now = services.now();
   await db.query(
     `UPDATE knowledge_node SET synthesis = $2, facts = $3::jsonb, frameworks = $4::jsonb, questions = $5::jsonb,
-            last_verified_at = $6, researched_at = $6, research_error = NULL, updated_at = $6
+            last_verified_at = $6, researched_at = $6, research_error = NULL, notes = notes - 'research_failures', updated_at = $6
       WHERE id = $1`,
     [nodeId, trimText(r.synthesis, 4000), json(facts), json(r.frameworks.slice(0, 8)), json(r.questions.slice(0, 10)), now],
   );

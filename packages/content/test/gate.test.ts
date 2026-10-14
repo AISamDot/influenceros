@@ -52,6 +52,31 @@ describe('Compliance Gate v1: the red lines (contract §1)', () => {
     }
   });
 
+  it('passes cautionary education that negates or attributes the claim', () => {
+    for (const text of [
+      'Never stop taking your medication without talking to your doctor.',
+      "Don't buy Bitcoin with money you can't afford to lose.",
+      "Most supplements don't cure anything.",
+      'Anyone who says returns are guaranteed is lying.',
+      "If a course says you'll make $5,000 a month, run.",
+      "This tea doesn't cure diabetes, whatever the label says.",
+    ]) {
+      expect(verdict(text), text).toBe('green');
+    }
+  });
+
+  it.each([
+    ['Bitcoin is going to 100k this year, get in now.', 'securities_calls'],
+    ["I'm buying more Solana this week and you should too.", 'securities_calls'],
+    ['This method will make you money, guaranteed.', 'guaranteed_returns'],
+    ['This tea melts belly fat and beats diabetes.', 'medical_claims'],
+    ['This planner helped me pay off $12,000 of debt.', 'fabricated_results'],
+    ["Don't wait, buy Bitcoin now.", 'securities_calls'],
+    ['Stop taking your meds without telling your doctor.', 'medical_claims'],
+  ])('reds the real violation: %s', (text, rule) => {
+    expect(reds(text)).toContain(rule);
+  });
+
   it('allows deadline language only with a real deadline', () => {
     expect(verdict('Last call: the launch code ends Sunday.', { kind: 'launch' })).toBe('red');
     const ok = gateRules({ kind: 'launch', text: 'Last call: the launch code ends Sunday.', realDeadline: new Date('2026-10-25T23:59:00Z') });

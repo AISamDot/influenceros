@@ -10,6 +10,7 @@ import { SubmitButton } from '@/components/submit-button';
 import { FORMAT_LABEL } from '@/lib/format';
 import { UUID_RE } from '@/lib/http';
 import { studioContext } from '@/lib/server';
+import { requireOwnerPage } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Pipeline · post' };
@@ -44,6 +45,7 @@ function Section({ title, children, aside }: { title: string; children: ReactNod
 }
 
 export default async function SlotPage({ params }: { params: Promise<{ slotId: string }> }) {
+  await requireOwnerPage();
   const { slotId } = await params;
   if (!UUID_RE.test(slotId)) notFound();
   const { db, studio } = await studioContext();

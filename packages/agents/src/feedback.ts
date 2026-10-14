@@ -226,7 +226,7 @@ export async function applyFeedback(db: Db, input: { feedbackId: string; actor: 
         kind: 'legal_text_change',
         title: `${persona.name}: change ${section} text`,
         summary: p.restated,
-        payload: { section, text: p.rule, before: p.before, after: p.after },
+        payload: { section, text: p.rule, before: p.before, after: p.after, feedback_id: f.id },
         proposedBy: { type: 'agent', id: 'persona-manager' },
       });
       result = { approvalId: a.id };
@@ -314,18 +314,20 @@ export async function reviseBible(
     const max = await tx.one<{ v: number }>('SELECT COALESCE(MAX(version), 0)::int AS v FROM persona_bible WHERE persona_id = $1', [input.personaId]);
     const version = max.v + 1;
     const content = structuredClone(cur?.content ?? {}) as Record<string, unknown>;
+    // Only the Owner's confirmed feedback becomes an Owner rule; an agent's own change is labelled as such.
+    const key = input.actor.type === 'owner' ? 'owner_rules' : 'agent_rules';
     const sec = content[input.section];
     if (sec && typeof sec === 'object' && !Array.isArray(sec)) {
       const s = sec as Record<string, unknown>;
-      s.owner_rules = [...(Array.isArray(s.owner_rules) ? s.owner_rules : []), input.rule];
+      s[key] = [...(Array.isArray(s[key]) ? (s[key] as unknown[]) : []), input.rule];
     } else if (sec === undefined) {
-      content[input.section] = { owner_rules: [input.rule] };
+      content[input.section] = { [key]: [input.rule] };
     } else {
-      content.owner_rules = [...(Array.isArray(content.owner_rules) ? content.owner_rules : []), { section: input.section, rule: input.rule }];
+      content[key] = [...(Array.isArray(content[key]) ? (content[key] as unknown[]) : []), { section: input.section, rule: input.rule }];
     }
     content.changelog = [
       ...(Array.isArray(content.changelog) ? content.changelog : []),
-      { version, section: input.section, change: input.rule, ...(input.feedbackId ? { feedback_id: input.feedbackId } : {}) },
+      { version, section: input.section, change: input.rule, by: input.actor.type === 'owner' ? 'owner' : 'agent', ...(input.feedbackId ? { feedback_id: input.feedbackId } : {}) },
     ];
     await tx.query(`UPDATE persona_bible SET status = 'superseded' WHERE persona_id = $1 AND status = 'approved'`, [input.personaId]);
     const by = actorRef(input.actor);

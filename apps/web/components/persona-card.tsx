@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 import type { PersonaCard as Card } from '@ios/core';
 import Link from 'next/link';
-import { compact, daysSince, FORMAT_LABEL, time, usd, weekday } from '@/lib/format';
+import { compact, daysSince, FORMAT_LABEL, localTime, localWeekday, usd, zoneLabel } from '@/lib/format';
 import { AutonomyBadge, KillFlag, LifecycleBadge } from './badges';
 import { FormatIcon, IconChat, PlatformMark } from './icons';
 import { Sparkline } from './sparkline';
@@ -67,7 +67,7 @@ export function PersonaCard({ card }: { card: Card }) {
       </div>
 
       <div className="mt-3 px-4">
-        <div className="eyebrow mb-1.5">Next up</div>
+        <div className="eyebrow mb-1.5">Next up{next[0] ? ` · ${zoneLabel(new Date(next[0].slot_at), p.timezone)}` : ''}</div>
         <div className="grid grid-cols-3 gap-2">
           {next.map((s) => (
             <Link href={`/personas/${p.slug}#calendar`} key={s.id} className="group/t block" title={`${s.title} · ${FORMAT_LABEL[s.format]}`}>
@@ -78,7 +78,7 @@ export function PersonaCard({ card }: { card: Card }) {
                 </span>
               </span>
               <span className="mt-1 block text-[11px] font-medium tabular-nums text-muted">
-                {weekday(new Date(s.slot_at))} {time(new Date(s.slot_at))}
+                {localWeekday(new Date(s.slot_at), p.timezone)} {localTime(new Date(s.slot_at), p.timezone)}
               </span>
             </Link>
           ))}
