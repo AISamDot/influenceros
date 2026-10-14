@@ -20,7 +20,7 @@ export * from './sample';
 export * from './script';
 export * from './tts';
 export { ElevenLabsTranscriber, STT_USD_PER_HOUR } from './live';
-export { enqueueMonetization, enqueuePlanWeek, enqueueSlot, JOB } from './jobs';
+export { enqueueMonetization, enqueuePlanWeek, enqueueSlot, JOB, reopenFailedSlot, runSlot, SLOT_DEAD_LIMIT } from './jobs';
 
 // StudioModule exports, composed by @ios/wiring.
 export const tools: ReadonlyArray<ToolDef<any, any>> = contentTools;

@@ -4,7 +4,7 @@ import type { StudioServices, ToolContext } from '../contracts';
 import { compact, studioOverview, type StudioOverview, usd } from '../data';
 import { errorMessage } from '../live/engine';
 import { runAgent } from '../runtime';
-import { type AgentReply, today, toolNamesFor, transcript } from './common';
+import { type AgentReply, today, toolNamesFor, transcript, turnTrust } from './common';
 import { STUDIO_MANAGER_SYSTEM, STUDIO_RULES_BLOCK } from './prompts';
 
 export interface StudioTurnInput {
@@ -85,7 +85,9 @@ async function fakeActions(services: StudioServices, input: StudioTurnInput, too
 
 /** One Studio Manager turn in the Studio chat (the Owner's main conversation). */
 export async function studioManagerTurn(services: StudioServices, input: StudioTurnInput): Promise<AgentReply> {
-  const toolCtx: ToolContext = { services, studioId: input.studioId, personaId: null, caller: 'studio-manager', actor: STUDIO_MANAGER };
+  // The Owner's message is this turn's instruction; third-party text in the thread gates mutating tools (registry).
+  const trust = turnTrust(input.history, 'studio-manager', input.text);
+  const toolCtx: ToolContext = { services, studioId: input.studioId, personaId: null, caller: 'studio-manager', actor: STUDIO_MANAGER, trust };
   const costRef: CostRef = { type: 'chat_thread', id: input.threadId };
   const actions = services.runtime.mode === 'fake' ? await fakeActions(services, input, toolCtx) : [];
   const overview = await studioOverview(services.db, input.studioId);
@@ -103,13 +105,14 @@ export async function studioManagerTurn(services: StudioServices, input: StudioT
       prompt: [
         `Today is ${today(services.now())}.`,
         `Studio snapshot: ${JSON.stringify(overview)}`,
-        `Conversation so far:\n${transcript(input.history)}`,
+        `Conversation so far:\n${transcript(input.history, 'studio-manager')}`,
         mentionNote,
         `The Owner says: ${input.text}`,
       ]
         .filter(Boolean)
         .join('\n\n'),
       tools: toolNamesFor(services, 'studio-manager'),
+      trust,
       maxTokens: 2000,
       fake: () =>
         [

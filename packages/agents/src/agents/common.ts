@@ -1,5 +1,5 @@
 import type { ChatMessageRow } from '@ios/core';
-import type { Caller, StudioServices } from '../contracts';
+import type { Caller, RunTrust, StudioServices } from '../contracts';
 
 /** What an agent turn produced, before it is saved as a chat message. */
 export interface AgentReply {
@@ -24,21 +24,37 @@ export async function emitChunks(text: string, onText?: (delta: string) => void)
   }
 }
 
-/** Wraps text that is not the Owner's (feeds, research, other agents' posts) as data: see STUDIO_RULES. */
+/** Wraps third-party text (feeds, research, comments, other agents' posts) as data: see STUDIO_RULES. */
 export function untrusted(source: string, text: string): string {
   const safe = text.replace(/<\/?\s*untrusted\b[^>]*>/gi, '[tag removed]');
   return `<untrusted source="${source.replace(/[^\w:. -]/g, '')}">\n${safe}\n</untrusted>`;
 }
 
+/** Message kinds that carry outside text even when an agent posts them (a News Desk briefing, a relayed comment or DM). */
+const THIRD_PARTY_KINDS = new Set(['briefing', 'news', 'comment', 'dm', 'research', 'web']);
+
 /**
- * The recent conversation as plain text for the prompt (oldest first, capped). Only the Owner's messages are
- * instructions; every other message (news briefings, notices, delegated answers, earlier agent replies) is fenced
- * as untrusted data, so a feed title or a persona manager's post can't steer an agent holding mutating tools.
+ * Whether a chat message is third-party text for `self` (the agent reading the thread): anything but the Owner's
+ * messages and this agent's own earlier replies, plus any message that relays outside text (briefings, comments, DMs,
+ * research). Other agents' posts count as third-party: they can relay a feed or a comment.
  */
-export function transcript(messages: readonly ChatMessageRow[], maxChars = 6000): string {
+export function isUntrustedMessage(m: Pick<ChatMessageRow, 'role' | 'author' | 'meta'>, self: string | null = null): boolean {
+  if (m.role === 'owner') return false;
+  const meta = (m.meta ?? {}) as Record<string, unknown>;
+  if (meta.untrusted === true || (typeof meta.kind === 'string' && THIRD_PARTY_KINDS.has(meta.kind))) return true;
+  return !self || m.author !== `agent:${self}`;
+}
+
+/**
+ * The recent conversation as plain text for the prompt (oldest first, capped). The Owner's messages are instructions
+ * and `self`'s own earlier replies are its own words (so the Owner's "yes" to its proposal reads as a yes); every
+ * third-party message (news briefings, comments, DMs, research, other agents' posts) is fenced as untrusted data.
+ */
+export function transcript(messages: readonly ChatMessageRow[], self: string | null = null, maxChars = 6000): string {
   const lines = messages.map((m) => {
     if (m.role === 'owner') return `Owner: ${m.body}`;
     const who = m.author.replace(/^agent:/, '');
+    if (!isUntrustedMessage(m, self)) return `You (${who}): ${m.body}`;
     return `${who}:\n${untrusted(who, m.body)}`;
   });
   let out = lines.join('\n\n');
@@ -47,6 +63,19 @@ export function transcript(messages: readonly ChatMessageRow[], maxChars = 6000)
     out = lines.join('\n\n');
   }
   return out || '(no earlier messages)';
+}
+
+/**
+ * The provenance of an Owner chat turn for `self`: untrusted when the thread holds third-party text; the Owner's
+ * message is the turn's instruction; `self`'s own reply just before it is what an Owner "yes" confirms.
+ */
+export function turnTrust(history: readonly ChatMessageRow[], self: string, ownerText: string): RunTrust {
+  const last = history.at(-1);
+  return {
+    untrusted: history.some((m) => isUntrustedMessage(m, self)),
+    ownerText,
+    proposal: last && last.role !== 'owner' && !isUntrustedMessage(last, self) ? last.body : null,
+  };
 }
 
 /** Names of the registry tools a caller may see, optionally limited to namespaces. */

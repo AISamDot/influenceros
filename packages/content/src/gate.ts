@@ -59,23 +59,46 @@ interface Pattern {
   readonly fix?: string;
   readonly when?: (i: GateInput, sentence: string) => boolean;
   /**
-   * Cautionary education passes: the match is skipped when it is negated ("Never stop your medication…", "Don't buy
-   * Bitcoin with…") or attributed to someone being warned about ("Anyone who says returns are guaranteed is lying").
-   * 'inside' also checks the matched span itself, for subject…verb patterns ("Most supplements don't cure anything").
+   * Cautionary education passes: the match is skipped when a negator governs the claim verb ("Never stop your
+   * medication…", "Most supplements don't cure anything", "No tea cures diabetes") or the claim is attributed to
+   * someone being warned about ("Anyone who says returns are guaranteed is lying"). The claim verb is the named
+   * group `v` when the pattern starts with its subject, else the start of the match.
    */
-  readonly negatable?: true | 'inside';
+  readonly negatable?: true;
 }
 
-/** A negation governing the matched verb: "never", "don't", "not" … then at most three words, no comma. */
-const NEG_BEFORE = /\b(?:never|not|don'?t|do not|doesn'?t|does not|didn'?t|won'?t|will not|shouldn'?t|should not|can'?t|cannot|must not|mustn'?t|without|no one should|nobody should)\s+(?:[\w'’]+\s+){0,3}$/i;
-/** The claim is someone else's, quoted to warn against it: "if a course says…", "anyone who promises…". */
-const ATTRIB_BEFORE = /\b(?:if|when|anyone|someone|whoever|nobody|no one|people|beware(?: of)?|scammers?|gurus?)\b[^.!?,;]{0,40}\b(?:says?|said|claims?|claimed|tells? you|told you|promises?|promised|promising|sells?|selling|pitches|pitching)\b[^.!?]*$/i;
-const NEG_INSIDE = /\b(?:not|never|no|don'?t|do not|doesn'?t|does not|won'?t|will not|can'?t|cannot)\b|n't\b/i;
+/** A negator that can govern a verb. Never "nothing"/"nobody" alone ("Nothing beats this tea for diabetes" is a claim). */
+const NEGATOR = String.raw`(?:never|not|no longer|don['’]?t|do not|doesn['’]?t|does not|didn['’]?t|did not|won['’]?t|will not|wouldn['’]?t|would not|shouldn['’]?t|should not|can['’]?t|cannot|can not|couldn['’]?t|could not|must not|mustn['’]?t|isn['’]?t|is not|aren['’]?t|are not|without|no one should|nobody should)`;
+/**
+ * Words that may sit between the negator and the claim verb and keep it governed: adverbs, articles, modals and
+ * auxiliaries. Never a verb of belief or speech ("I can't believe this tea cures…", "I never thought I'd make…"),
+ * and never "just"/"only" ("It doesn't just melt fat, it cures diabetes").
+ */
+const FILLER = String.raw`(?:ever|really|actually|even|necessarily|always|automatically|magically|suddenly|literally|truly|reliably|safely|a|an|the|any|will|would|can|could|should|may|might|must|is|are|be|been|do|does|has|have|going to|gonna|able to|supposed to|meant to|need to|have to|try to|trying to)`;
+const NEG_BEFORE = new RegExp(String.raw`\b${NEGATOR}\s+(?:${FILLER}\s+){0,3}$`, 'i');
+/** A negated subject: "No tea cures…", "No pill can cure…", "None of these teas cure…" (not "No doubt…", "No joke…"). */
+const NEG_SUBJECT_BEFORE = new RegExp(
+  String.raw`(?:\bno\s+(?!(?:doubt|wonder|joke|lie|cap|kidding|question|way|matter|surprise|exaggeration|really|seriously)\b)|\bnone of (?:these|those|the|them)\s+)(?:[\w'’-]+\s+){0,2}(?:${FILLER}\s+){0,2}$`,
+  'i',
+);
+/** Comparative verbs: "No tea beats this one for diabetes" is a superlative claim, not a denial. */
+const COMPARATIVE_VERB = /^(?:beats?|tops?|outperforms?|rivals?)\b/i;
+/**
+ * The claim is someone else's, quoted to warn against it: "if a course says…", "anyone who promises…", "influencers
+ * who say…". The attribution's scope ends at a comma, a "but" or a sentence break ("People say this, but I promise
+ * you'll make…"), and the speaker is never "I"/"we" ("When I tell you this tea cures…").
+ */
+const ATTRIB_BEFORE = new RegExp(
+  String.raw`\b(?:if|when|anyone|someone|whoever|people|beware(?: of)?|scammers?|gurus?|influencers?|ads?|adverts?|marketers?|sellers?|brands?|companies|labels?|courses?|who|that)\b(?:(?!\b(?:i|we|but)\b)[^.!?,;:—–]){0,40}\b(?:says?|said|claims?|claimed|claiming|tells? you|told you|promises?|promised|promising|sells?|selling|pitches|pitching|swears?|insists?)\b(?:(?!\bbut\b)[^.!?,;:—–])*$`,
+  'i',
+);
 
-/** True when a match in `sentence` at `index` is negated or attributed (see Pattern.negatable). */
-export function negatedMatch(sentence: string, index: number, matched: string, inside = false): boolean {
-  const prefix = sentence.slice(0, index);
-  return NEG_BEFORE.test(prefix) || ATTRIB_BEFORE.test(prefix) || (inside && NEG_INSIDE.test(matched));
+/** True when the claim whose verb starts at `verbIndex` in `sentence` is negated or attributed (see Pattern.negatable). */
+export function negatedMatch(sentence: string, verbIndex: number): boolean {
+  const toVerb = sentence.slice(0, verbIndex);
+  if (NEG_BEFORE.test(toVerb)) return true;
+  if (!COMPARATIVE_VERB.test(sentence.slice(verbIndex)) && NEG_SUBJECT_BEFORE.test(toVerb)) return true;
+  return ATTRIB_BEFORE.test(toVerb);
 }
 
 const MONEY_OR_NUMBER = String.raw`(?:over\s+|about\s+|almost\s+|nearly\s+|more than\s+)?[$£€]?\d[\d,.]*\s*(?:k\b|K\b)?`;
@@ -163,11 +186,11 @@ const PATTERNS: readonly Pattern[] = [
   {
     rule: 'medical_claims',
     verdict: 'red',
-    re: /\b(?:supplements?|pills?|capsules?|powders?|teas?|gummies|drops)\b[^.!?]{0,40}\b(?:burns? (?:\w+ )?fat|melts? (?:\w+ )?fat|boosts? (?:your )?(?:immune system|immunity|metabolism|testosterone)|detox(?:es)?|cures?|prevents? (?:disease|illness|cancer))\b/i,
+    re: /\b(?:supplements?|pills?|capsules?|powders?|teas?|gummies|drops)\b[^.!?]{0,40}\b(?<v>burns? (?:\w+ )?fat|melts? (?:\w+ )?fat|boosts? (?:your )?(?:immune system|immunity|metabolism|testosterone)|detox(?:es)?|cures?|prevents? (?:disease|illness|cancer))\b/i,
     message: 'Supplement or efficacy claim without substantiation.',
     fix: 'Cite evidence or remove the efficacy claim.',
     when: (i) => !(i.evidenceIds && i.evidenceIds.length),
-    negatable: 'inside',
+    negatable: true,
   },
   // ── Specific securities or crypto calls ──
   {
@@ -292,15 +315,35 @@ const AI_CONFIRM_RE = /\b(?:ai|a\.i\.|artificial intelligence|virtual (?:creator
 /** A sincere "are you AI / a bot / real?" question. */
 export const asksIfAi = (text: string): boolean => AI_QUESTION_RE.test(text);
 
+/**
+ * Whether `sentence` makes the pattern's claim. A negated or attributed match is set aside (its verb masked) and the
+ * pattern is tried again, so a denial elsewhere in the sentence never hides a real claim ("This tea melts belly fat
+ * and won't cure diabetes").
+ */
+function firstClaim(p: Pattern, sentence: string): boolean {
+  let s = sentence;
+  for (let tries = 0; tries < 6; tries++) {
+    const m = s.match(p.re);
+    if (!m) return false;
+    if (!p.negatable) return true;
+    const at = m.index ?? 0;
+    const v = m.groups?.v;
+    const verbAt = v ? at + m[0].lastIndexOf(v) : at;
+    if (!negatedMatch(s, verbAt)) return true;
+    const word = /^[\w'’]+/.exec(s.slice(verbAt))?.[0] ?? s.slice(verbAt, verbAt + 1);
+    s = s.slice(0, verbAt) + 'x'.repeat(word.length) + s.slice(verbAt + word.length);
+  }
+  return false;
+}
+
 /** The deterministic rule pass. Returns one check per rule family: green when clean, else each finding. */
 export function gateRules(input: GateInput): GateCheck[] {
   const found: GateCheck[] = [];
   const parts = sentences(input.text);
   for (const p of PATTERNS) {
     for (const s of parts) {
-      const m = s.match(p.re);
-      if (!m || (p.when && !p.when(input, s))) continue;
-      if (p.negatable && negatedMatch(s, m.index ?? 0, m[0], p.negatable === 'inside')) continue;
+      if (p.when && !p.when(input, s)) continue;
+      if (!firstClaim(p, s)) continue;
       if (found.some((f) => f.rule === p.rule && f.span === s && f.verdict === p.verdict)) continue;
       found.push({ rule: p.rule, verdict: p.verdict, message: p.message, span: s, ...(p.fix ? { fix: p.fix } : {}) });
     }

@@ -33,6 +33,38 @@ async function studioOf(services: StudioServices, personaId: string): Promise<st
   return (await services.db.one<{ studio_id: string }>('SELECT studio_id FROM persona WHERE id = $1', [personaId])).studio_id;
 }
 
+/**
+ * A slot's pipeline job can die on a transient outage (a provider down for an hour) as well as on a deterministic
+ * failure. pipeline.advance re-queues a slot after a dead job with a backoff (1h, then 2h) and blocks it only after
+ * SLOT_DEAD_LIMIT dead jobs since it was last reopened ("pipeline failed: <error>"); run_slot reopens it.
+ */
+export const SLOT_DEAD_LIMIT = 3;
+export const SLOT_RETRY_BACKOFF_MS = 3_600_000;
+/** SQL: dead pipeline.slot jobs of slot `s` since its last reopen ($1 = the job kind). */
+const DEAD_SINCE_REOPEN = `j.kind = $1 AND j.payload->>'slotId' = s.id::text AND j.status = 'dead'
+       AND COALESCE(j.finished_at, j.updated_at) > COALESCE((s.meta->>'pipeline_reset_at')::timestamptz, '-infinity'::timestamptz)`;
+
+/**
+ * Reopens a slot the pipeline blocked after repeated failures (block_reason "pipeline failed: …"): back to planned,
+ * with its dead-job count reset. Slots blocked by QC or the Gate are left alone. Returns whether it reopened.
+ */
+export async function reopenFailedSlot(services: StudioServices, slotId: string): Promise<boolean> {
+  const now = services.now();
+  const rows = await services.db.query(
+    `UPDATE calendar_slot SET status = 'planned', block_reason = NULL, stage_changed_at = $2,
+            meta = meta || jsonb_build_object('pipeline_reset_at', $3::text)
+      WHERE id = $1 AND status = 'blocked' AND block_reason LIKE 'pipeline failed:%' RETURNING id`,
+    [slotId, now, now.toISOString()],
+  );
+  return rows.length > 0;
+}
+
+/** Run one slot now (the Owner's button, pipeline.run_slot): reopens a pipeline-failed slot, then queues it. */
+export async function runSlot(services: StudioServices, slotId: string, personaId: string): Promise<{ jobId: string | null; reopened: boolean }> {
+  const reopened = await reopenFailedSlot(services, slotId);
+  return { jobId: await enqueueSlot(services, slotId, personaId), reopened };
+}
+
 /** Enqueues a slot for the pipeline unless one is already queued or running. Returns the job id, or null. */
 export async function enqueueSlot(services: StudioServices, slotId: string, personaId: string): Promise<string | null> {
   if (await hasActiveJob(services, JOB.slot, personaId, 'slotId', slotId)) return null;
@@ -157,24 +189,30 @@ export const schedules: readonly ScheduledTask[] = [
     name: 'pipeline.advance',
     due: (now, last) => !last || now.getTime() - last.getTime() >= 30 * 60_000,
     async run(services, now) {
-      // A slot whose pipeline job died (it used up its attempts on a deterministic failure) is blocked with the
-      // error instead of getting a fresh job every 30 minutes until it posts (each attempt can be paid work).
+      // A dead pipeline job is often transient (an outage), so the slot is re-queued below after a backoff; only a
+      // slot whose jobs died SLOT_DEAD_LIMIT times since it was last reopened is blocked with the last error, instead
+      // of getting a fresh (possibly paid) job every 30 minutes until it posts.
       await services.db.query(
         `UPDATE calendar_slot s SET status = 'blocked', stage_changed_at = $3,
-                block_reason = left('pipeline failed: ' || COALESCE((SELECT j.last_error FROM job j WHERE j.kind = $1 AND j.payload->>'slotId' = s.id::text AND j.status = 'dead'
-                                                                     ORDER BY j.updated_at DESC LIMIT 1), 'unknown error'), 500)
-          WHERE s.status = ANY($2::text[])
-            AND EXISTS (SELECT 1 FROM job j WHERE j.kind = $1 AND j.payload->>'slotId' = s.id::text AND j.status = 'dead')
+                block_reason = left('pipeline failed: ' || COALESCE(d.last_error, 'unknown error'), 500)
+           FROM (SELECT s.id, count(*)::int AS n, (array_agg(j.last_error ORDER BY COALESCE(j.finished_at, j.updated_at) DESC))[1] AS last_error
+                   FROM calendar_slot s JOIN job j ON ${DEAD_SINCE_REOPEN}
+                  WHERE s.status = ANY($2::text[])
+                  GROUP BY s.id) d
+          WHERE d.id = s.id AND d.n >= $4
             AND NOT EXISTS (SELECT 1 FROM job j WHERE j.kind = $1 AND j.payload->>'slotId' = s.id::text AND j.status IN ('queued','running'))`,
-        [JOB.slot, ['planned', 'scripted', 'q1', 'gate'], now],
+        [JOB.slot, ['planned', 'scripted', 'q1', 'gate'], now, SLOT_DEAD_LIMIT],
       );
       const reactions = (await bookReactionIdeas(services, { now })).length;
+      // Backoff after a dead job: 1h after the first, 2h after the second (counted since the slot was last reopened).
       const slots = await services.db.query<{ id: string; persona_id: string }>(
         `SELECT s.id, s.persona_id FROM calendar_slot s JOIN persona p ON p.id = s.persona_id
-          WHERE s.status IN ('planned','scripted','q1','gate') AND s.slot_at > $1 AND s.slot_at < $2 AND p.state = ANY($3::text[])
-            AND NOT EXISTS (SELECT 1 FROM job j WHERE j.kind = $4 AND j.payload->>'slotId' = s.id::text AND j.status IN ('queued','running'))
+          WHERE s.status IN ('planned','scripted','q1','gate') AND s.slot_at > $2 AND s.slot_at < $3 AND p.state = ANY($4::text[])
+            AND NOT EXISTS (SELECT 1 FROM job j WHERE j.kind = $1 AND j.payload->>'slotId' = s.id::text AND j.status IN ('queued','running'))
+            AND NOT EXISTS (SELECT 1 FROM (SELECT count(*)::int AS n, max(COALESCE(j.finished_at, j.updated_at)) AS last_at FROM job j WHERE ${DEAD_SINCE_REOPEN}) d
+                             WHERE d.n > 0 AND d.last_at > $2::timestamptz - make_interval(secs => $5::float8 * power(2, d.n - 1)))
           ORDER BY s.slot_at LIMIT 100`,
-        [now, new Date(now.getTime() + 8 * DAY_MS), [...PUBLISHING_STATES], JOB.slot],
+        [JOB.slot, now, new Date(now.getTime() + 8 * DAY_MS), [...PUBLISHING_STATES], SLOT_RETRY_BACKOFF_MS / 1000],
       );
       let queued = 0;
       for (const s of slots) if (await enqueueSlot(services, s.id, s.persona_id)) queued += 1;

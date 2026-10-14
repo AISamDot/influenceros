@@ -49,6 +49,7 @@ export const retrieveTool: ToolDef<{ niche: string; query: string; k?: number; k
   description:
     'Search the niche Field Brain (cited curriculum nodes) and recent news by meaning. Call it before writing any factual claim: every claim in a script, caption, product or reply must cite the id of a hit (store the ids as evidence). Returns up to k hits with text, citations, score and last-verified date.',
   scope: 'studio',
+  untrustedOutput: true, // news, web research or comment text: it taints the run (mutating tools then need the Owner's ask)
   inputSchema: {
     type: 'object',
     additionalProperties: false,
@@ -138,6 +139,7 @@ export const latestBriefingTool: ToolDef<{ persona_id: string }, unknown> = {
   name: 'news.latest_briefing',
   description: "The persona's latest morning briefing: scored stories with why they matter and the persona's take, plus fast-reaction ideas. Use it for daily plans and replies that touch the news.",
   scope: 'persona',
+  untrustedOutput: true, // news, web research or comment text: it taints the run (mutating tools then need the Owner's ask)
   inputSchema: { type: 'object', additionalProperties: false, required: ['persona_id'], properties: { persona_id: { type: 'string', format: 'uuid' } } },
   parse(raw) {
     return { persona_id: reqStr(obj(raw, ['persona_id']), 'persona_id', 40) };
@@ -152,6 +154,7 @@ export const reactionQueueTool: ToolDef<{ persona_id: string }, unknown> = {
   name: 'news.reaction_queue',
   description: 'Open fast-reaction ideas from the News Desk for this persona (not expired, not yet scripted). Each should publish within 24–72 hours of the news.',
   scope: 'persona',
+  untrustedOutput: true, // news, web research or comment text: it taints the run (mutating tools then need the Owner's ask)
   inputSchema: { type: 'object', additionalProperties: false, required: ['persona_id'], properties: { persona_id: { type: 'string', format: 'uuid' } } },
   parse(raw) {
     return { persona_id: reqStr(obj(raw, ['persona_id']), 'persona_id', 40) };

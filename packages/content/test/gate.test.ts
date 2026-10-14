@@ -77,6 +77,29 @@ describe('Compliance Gate v1: the red lines (contract §1)', () => {
     expect(reds(text)).toContain(rule);
   });
 
+  // Probe table for the negation/attribution guard: a negator counts only when it governs the claim verb (never
+  // believe/think/expect/tell), and an attribution's scope ends at a comma, "but" or a sentence break.
+  it.each([
+    ["I can't believe this supplement cures diabetes.", 'red', 'medical_claims'],
+    ['Nobody tells you this, but this tea cures diabetes.', 'red', 'medical_claims'],
+    ['Not financial advice but buy Solana now.', 'red', 'securities_calls'],
+    ["I never thought I'd make $5,000 a month from one planner.", 'red', 'guaranteed_returns'],
+    ["People say this, but I promise you'll make $5,000 a month.", 'red', 'guaranteed_returns'],
+    ["You won't believe how this tea melts belly fat.", 'red', 'medical_claims'],
+    ["This tea melts belly fat and won't cure diabetes.", 'red', 'medical_claims'],
+    ["It doesn't just melt fat, this tea cures diabetes.", 'red', 'medical_claims'],
+    ['No tea beats this one for diabetes.', 'red', 'medical_claims'],
+    ['When I tell you this tea cures diabetes, believe me.', 'red', 'medical_claims'],
+    ['No tea cures diabetes; see your doctor.', 'green', null],
+    ["This isn't a get-rich-quick scheme and nobody can promise returns.", 'green', null],
+    ['Influencers who say this tea melts fat are wrong.', 'green', null],
+    ['No pill can cure diabetes.', 'green', null],
+    ['Any tea that claims to cure diabetes is a scam.', 'green', null],
+  ] as const)('negation probe: %s → %s', (text, expected, rule) => {
+    expect(verdict(text)).toBe(expected);
+    if (rule) expect(reds(text)).toContain(rule);
+  });
+
   it('allows deadline language only with a real deadline', () => {
     expect(verdict('Last call: the launch code ends Sunday.', { kind: 'launch' })).toBe('red');
     const ok = gateRules({ kind: 'launch', text: 'Last call: the launch code ends Sunday.', realDeadline: new Date('2026-10-25T23:59:00Z') });

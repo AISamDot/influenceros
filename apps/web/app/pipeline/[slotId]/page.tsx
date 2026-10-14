@@ -86,11 +86,11 @@ export default async function SlotPage({ params }: { params: Promise<{ slotId: s
             </p>
           ) : null}
           {slot.waiting ? <p className="mt-3 rounded-xl border border-warn/40 bg-warn-soft px-3 py-2 text-[13px] text-warn">{slot.waiting}</p> : null}
-          {['idea', 'script', 'q1', 'gate'].includes(slot.stage ?? '') ? (
+          {['idea', 'script', 'q1', 'gate'].includes(slot.stage ?? '') || (slot.stage === 'blocked' && slot.blockReason?.startsWith('pipeline failed:')) ? (
             <form action="/api/pipeline" method="post" className="mt-3">
               <input type="hidden" name="action" value="run_slot" />
               <input type="hidden" name="slot_id" value={slot.slotId} />
-              <SubmitButton className="btn btn-sm">{slot.queued ? 'Queued' : 'Run the pipeline now'}</SubmitButton>
+              <SubmitButton className="btn btn-sm">{slot.queued ? 'Queued' : slot.stage === 'blocked' ? 'Reopen and run again' : 'Run the pipeline now'}</SubmitButton>
             </form>
           ) : null}
         </div>

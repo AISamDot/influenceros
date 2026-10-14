@@ -78,11 +78,56 @@ describe('StudioModule exports', () => {
     expect(await advance.run(t.services, NOW)).toEqual({ queued: 1 });
     expect(await advance.run(t.services, NOW)).toEqual({ queued: 0 });
 
-    // A slot whose job died is blocked with the error, not re-queued every 30 minutes.
-    await t.db.query(`UPDATE job SET status = 'dead', last_error = 'every hook was excluded' WHERE kind = 'pipeline.slot'`);
-    expect(await advance.run(t.services, NOW)).toEqual({ queued: 0 });
-    const slot = await t.db.one<{ status: string; block_reason: string }>(`SELECT status, block_reason FROM calendar_slot WHERE title = 'seeded slot'`);
-    expect(slot).toEqual({ status: 'blocked', block_reason: 'pipeline failed: every hook was excluded' });
+    await t.db.close();
+  });
+
+  it('re-queues a slot after a dead pipeline job with a backoff, blocks it after 3 dead jobs, and run_slot reopens it', async () => {
+    let clock = NOW;
+    const t = await createTestStudio({ tools, now: () => clock });
+    const a = await makeTestPersona(t);
+    const advance = schedules.find((s) => s.name === 'pipeline.advance')!;
+    const { id: slotId } = await t.db.one<{ id: string }>(
+      `INSERT INTO calendar_slot (persona_id, slot_at, format, purpose, title) VALUES ($1, $2, 'static', 'reach', 'seeded slot') RETURNING id`,
+      [a.id, new Date('2026-10-17T19:00:00Z')],
+    );
+    const at = (min: number) => new Date(NOW.getTime() + min * 60_000);
+    const die = (when: Date, error: string) =>
+      t.db.query(`UPDATE job SET status = 'dead', last_error = $2, finished_at = $1, updated_at = $1 WHERE kind = 'pipeline.slot' AND status IN ('queued','running')`, [when, error]);
+    const slot = () => t.db.one<{ status: string; block_reason: string | null }>('SELECT status, block_reason FROM calendar_slot WHERE id = $1', [slotId]);
+
+    expect(await advance.run(t.services, at(0))).toEqual({ queued: 1 });
+    // A transient outage kills the job: the slot stays open and gets a new job once the 1h backoff has passed.
+    await die(at(0), 'provider timeout');
+    expect(await advance.run(t.services, at(30))).toEqual({ queued: 0 });
+    expect(await slot()).toEqual({ status: 'planned', block_reason: null });
+    expect(await advance.run(t.services, at(61))).toEqual({ queued: 1 });
+    // The second dead job doubles the backoff (2h).
+    await die(at(61), 'provider timeout');
+    expect(await advance.run(t.services, at(61 + 90))).toEqual({ queued: 0 });
+    expect(await advance.run(t.services, at(61 + 121))).toEqual({ queued: 1 });
+    // The third dead job blocks the slot with the last error: no more paid retries every 30 minutes.
+    await die(at(182), 'every hook was excluded');
+    expect(await advance.run(t.services, at(182))).toEqual({ queued: 0 });
+    expect(await slot()).toEqual({ status: 'blocked', block_reason: 'pipeline failed: every hook was excluded' });
+    expect(await advance.run(t.services, at(600))).toEqual({ queued: 0 });
+
+    // run_slot reopens it (back to planned, dead-job count reset) and queues it; slots blocked by the Gate stay put.
+    clock = at(600);
+    const asManager = { services: t.services, studioId: t.studioId, personaId: a.id, caller: 'persona-manager' as const, actor: { type: 'agent' as const, id: 'persona-manager' } };
+    const ran = (await t.services.tools.invoke(asManager, 'pipeline.run_slot', { persona_id: a.id, slot_id: slotId })) as { job_id: string | null; reopened: boolean };
+    expect(ran.reopened).toBe(true);
+    expect(ran.job_id).toBeTruthy();
+    expect(await slot()).toEqual({ status: 'planned', block_reason: null });
+    // One more failure after the reopen is a fresh count: back off, don't block.
+    await die(at(601), 'provider timeout');
+    expect(await advance.run(t.services, at(601))).toEqual({ queued: 0 });
+    expect((await slot()).status).toBe('planned');
+    expect(await advance.run(t.services, at(662))).toEqual({ queued: 1 });
+
+    await t.db.query(`UPDATE calendar_slot SET status = 'blocked', block_reason = 'Gate: red (medical_claims)' WHERE id = $1`, [slotId]);
+    await die(at(663), 'x');
+    expect(((await t.services.tools.invoke(asManager, 'pipeline.run_slot', { persona_id: a.id, slot_id: slotId })) as { reopened: boolean }).reopened).toBe(false);
+    expect((await slot()).status).toBe('blocked');
     await t.db.close();
   });
 });

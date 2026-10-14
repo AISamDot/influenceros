@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { type ChatMessageRow, clearKillSwitch, OWNER, setKillSwitch } from '@ios/core';
 import type { LlmCacheBlock } from '@ios/providers';
 import type { CostRef } from '@ios/core';
-import type { StudioServices } from '../contracts';
+import type { RunTrust, StudioServices } from '../contracts';
 import { bibleText, compact, latestBible, personaStatus, type PersonaStatus, playbookRules, usd } from '../data';
 import {
   applyFeedback,
@@ -16,7 +16,7 @@ import {
   rejectFeedback,
 } from '../feedback';
 import { runAgent } from '../runtime';
-import { type AgentReply, emitChunks, today, toolNamesFor, transcript } from './common';
+import { type AgentReply, emitChunks, today, toolNamesFor, transcript, turnTrust } from './common';
 import { CLASSIFIER_SYSTEM, PERSONA_MANAGER_SYSTEM, STUDIO_RULES_BLOCK } from './prompts';
 
 export interface PersonaContext {
@@ -193,10 +193,11 @@ export async function personaManagerTurn(services: StudioServices, input: Person
       prompt: [
         `Today is ${today(services.now())}. You manage ${ctx.persona.name} (persona_id ${input.personaId}).`,
         `Current numbers: ${JSON.stringify(status)}`,
-        `Conversation so far:\n${transcript(input.history)}`,
+        `Conversation so far:\n${transcript(input.history, 'persona-manager')}`,
         `The Owner says: ${text}`,
       ].join('\n\n'),
       tools: toolNamesFor(services, 'persona-manager', { exclude: ['studio'] }),
+      trust: turnTrust(input.history, 'persona-manager', text),
       maxTokens: 1500,
       fake: () => `${statusText(status)}\n\nNoted: "${text.slice(0, 140)}".`,
       costRef,
@@ -236,12 +237,24 @@ async function settle(
  */
 export async function personaManagerAnswer(
   services: StudioServices,
-  input: { personaId: string; question: string; from: 'owner-mention' | 'studio-manager'; costRef: CostRef; onText?: (delta: string) => void },
+  input: {
+    personaId: string;
+    question: string;
+    from: 'owner-mention' | 'studio-manager';
+    costRef: CostRef;
+    onText?: (delta: string) => void;
+    /** For a delegation: the Studio Manager run's provenance (its Owner turn and taint carry over). */
+    trust?: RunTrust;
+  },
 ): Promise<AgentReply> {
   const ctx = await personaContext(services, input.personaId);
   const status = await personaStatus(services.db, ctx.persona.studio_id, input.personaId);
   if (!status) throw new Error('persona not found');
   const asker = input.from === 'owner-mention' ? 'The Owner mentioned you in the Studio chat' : 'The Studio Manager asks you';
+  // An @mention is the Owner's own message. A delegation is another agent's instruction: it inherits the Studio
+  // Manager run's provenance, and without one (no Owner turn behind it) it is untrusted.
+  const trust: RunTrust =
+    input.from === 'owner-mention' ? { untrusted: false, ownerText: input.question } : (input.trust ?? { untrusted: true, ownerText: null });
   const res = await runAgent(
     services,
     {
@@ -257,6 +270,7 @@ export async function personaManagerAnswer(
         'Answer for your persona only, in under 100 words.',
       ].join('\n\n'),
       tools: toolNamesFor(services, 'persona-manager', { exclude: ['studio'] }),
+      trust,
       maxTokens: 1000,
       fake: () => statusText(status),
       costRef: input.costRef,

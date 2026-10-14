@@ -1,5 +1,5 @@
 import { audit } from '@ios/core';
-import { type Caller, type ToolContext, type ToolDef, ToolPermissionError, type ToolRegistry } from './contracts';
+import { type Caller, type RunTrust, type ToolContext, type ToolDef, ToolPermissionError, type ToolRegistry } from './contracts';
 
 /**
  * Tool registry with permissions enforced in code (PRD §8.4), not in the prompt:
@@ -8,11 +8,28 @@ import { type Caller, type ToolContext, type ToolDef, ToolPermissionError, type 
  * - persona-scoped tools need `persona_id`: a persona-scoped caller may only pass its own, and the persona must
  *   belong to the caller's studio.
  * - the caller and the actor must agree on whether this is the Owner (an agent can't borrow Owner authority);
+ * - a run whose context holds untrusted content (news, comments, web research, non-Owner messages: ctx.trust) may
+ *   call a `mutates` tool only when the Owner asked for it in this turn (see ownerAsked); read-only tools stay;
  * - successful `mutates` calls are audited.
  * Stream A owns this file and may harden it; the ToolRegistry signature is frozen (contracts.ts).
  */
 const NAME_RE = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** An Owner's short yes to the agent's own proposal. */
+const CONFIRM_RE = /^\s*(?:yes|yep|yeah|yup|ok(?:ay)?|sure|confirm(?:ed)?|approved?|do it|go ahead|go for it|please do|sounds good)\b/i;
+
+/**
+ * Whether the Owner asked for this tool in the current turn: the Owner's own message (dashboard session) matches the
+ * tool's `ownerIntent`, or it is a "yes" to this agent's own proposal of it. Background and delegated runs carry no
+ * Owner message, so in an untrusted context they never pass.
+ */
+export function ownerAsked(def: Pick<ToolDef, 'ownerIntent'>, trust: RunTrust): boolean {
+  const owner = trust.ownerText?.trim();
+  if (!owner || !def.ownerIntent) return false;
+  if (def.ownerIntent.test(owner)) return true;
+  return CONFIRM_RE.test(owner) && Boolean(trust.proposal && def.ownerIntent.test(trust.proposal));
+}
 
 export function createToolRegistry(initial: ReadonlyArray<ToolDef<any, any>> = []): ToolRegistry {
   const defs = new Map<string, ToolDef<any, any>>();
@@ -47,6 +64,12 @@ export function createToolRegistry(initial: ReadonlyArray<ToolDef<any, any>> = [
         throw new ToolPermissionError(`${name} is an Owner-only action`);
       }
       if (def.callers && !def.callers.includes(ctx.caller)) throw new ToolPermissionError(`${ctx.caller} may not call ${name}`);
+      // Prompt injection: text from feeds, comments, the web or other agents can't drive a write. Enforced here, in code.
+      if (def.mutates && ctx.caller !== 'owner' && ctx.trust?.untrusted && !ownerAsked(def, ctx.trust)) {
+        throw new ToolPermissionError(
+          `${name} is blocked in this run: its context holds untrusted content (news, comments, web research or a non-Owner message) and the Owner didn't ask for it in this turn. Propose it to the Owner instead.`,
+        );
+      }
       const input = def.parse(raw);
       let personaId: string | null = null;
       if (def.scope === 'persona') {

@@ -1,5 +1,5 @@
 import { requireOwner } from '@/lib/auth';
-import { enqueueSlot, pipelineBoard, planWeek } from '@ios/content';
+import { enqueueSlot, pipelineBoard, planWeek, runSlot } from '@ios/content';
 import { PUBLISHING_STATES } from '@ios/core';
 import { createStudioServices } from '@ios/wiring';
 import { backTo, isFormPost, isJson, UUID_RE } from '@/lib/http';
@@ -32,7 +32,8 @@ export async function GET(req: Request) {
  * POST (JSON or form):
  * - {action: "plan_week", week: "this"|"next", persona_id?}: plans the week now for one or every active persona
  *   and queues each new slot for the pipeline (the scheduler does the same on its own every day);
- * - {action: "run_slot", slot_id}: queues one slot for the pipeline.
+ * - {action: "run_slot", slot_id}: queues one slot for the pipeline (a slot blocked by repeated pipeline failures is
+ *   reopened first).
  */
 export async function POST(req: Request) {
   const denied = await requireOwner(req);
@@ -81,8 +82,8 @@ export async function POST(req: Request) {
       [input.slot_id, studio.id],
     );
     if (!slot) return fail('slot not found', 404);
-    const jobId = await enqueueSlot(services, input.slot_id, slot.persona_id);
-    return done(jobId ? 'queued for the pipeline' : 'already queued', { jobId });
+    const { jobId, reopened } = await runSlot(services, input.slot_id, slot.persona_id);
+    return done(jobId ? (reopened ? 'reopened and queued for the pipeline' : 'queued for the pipeline') : 'already queued', { jobId, reopened });
   }
 
   return fail('action must be plan_week or run_slot');

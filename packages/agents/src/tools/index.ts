@@ -64,6 +64,7 @@ export const studioProposeKillTool = tool({
   scope: 'persona',
   callers: ['studio-manager'],
   mutates: true,
+  ownerIntent: /\b(?:kill|retire|shut (?:\w+ )?down)\b/i,
   input: {
     persona_id: PERSONA_ID,
     action: { type: 'string', enum: ['kill', 'retire'] },
@@ -97,6 +98,7 @@ export const studioPausePostingTool = tool({
   scope: 'studio',
   callers: ['studio-manager'],
   mutates: true,
+  ownerIntent: /\b(?:pause|halt|freeze|stop (?:all |the )?post(?:s|ing))\b/i,
   input: {
     scope: { type: 'string', enum: ['global', 'persona', 'platform'] },
     persona_id: { ...PERSONA_ID, optional: true },
@@ -127,6 +129,7 @@ export const studioDelegateTool = tool({
   scope: 'persona',
   callers: ['studio-manager'],
   mutates: true,
+  ownerIntent: /\b(?:ask|tell|have|get|delegate|check with|hand)\b|@\w/i,
   input: { persona_id: PERSONA_ID, instruction: { type: 'string', maxLength: 2000 } },
   run: async (ctx, i) => {
     const { personaManagerAnswer } = await import('../agents/persona-manager');
@@ -138,6 +141,7 @@ export const studioDelegateTool = tool({
       question: i.instruction,
       from: 'studio-manager',
       costRef: { type: 'chat_thread', id: thread.id },
+      trust: ctx.trust,
     });
     await addMessage(db, {
       threadId: thread.id,
@@ -157,6 +161,7 @@ export const studioAdoptRuleTool = tool({
   scope: 'studio',
   callers: ['studio-manager'],
   mutates: true,
+  ownerIntent: /\b(?:adopt|rules?)\b/i,
   input: { rule_id: { type: 'string', uuid: true }, adopt: { type: 'boolean' } },
   run: async (ctx, i) => {
     const rows = await ctx.services.db.query(
@@ -192,6 +197,7 @@ export const personaLowerControlsTool = tool({
   scope: 'persona',
   callers: ['studio-manager', 'persona-manager', 'profit-engine'],
   mutates: true,
+  ownerIntent: /\b(?:lower|reduce|cut|decrease|limit|autonomy|caps?|budget)\b/i,
   input: {
     persona_id: PERSONA_ID,
     autonomy: { type: 'string', enum: ['L0', 'L1', 'L2'], optional: true },
@@ -229,6 +235,7 @@ export const bibleReviseTool = tool({
   scope: 'persona',
   callers: MANAGERS,
   mutates: true,
+  ownerIntent: /\b(?:bible|voice|tone|style|hooks?|look|revise|rewrite|change|update)\b/i,
   input: {
     persona_id: PERSONA_ID,
     section: { type: 'string', enum: [...BIBLE_SECTIONS] },
@@ -253,6 +260,7 @@ export const playbookAddRuleTool = tool({
   scope: 'persona',
   callers: MANAGERS,
   mutates: true,
+  ownerIntent: /\b(?:rules?|playbook|always|never|from now on)\b/i,
   input: {
     persona_id: PERSONA_ID,
     rule: { type: 'string', maxLength: 500 },
@@ -317,6 +325,7 @@ export const approvalsWithdrawTool = tool({
   scope: 'studio',
   callers: MANAGERS,
   mutates: true,
+  ownerIntent: /\b(?:withdraw|cancel|retract|drop|pull)\b/i,
   input: { approval_id: { type: 'string', uuid: true } },
   run: async (ctx, i) => {
     // A persona manager may only withdraw its own persona's approvals (every persona manager shares one agent id).
@@ -376,6 +385,7 @@ export const chatNotifyOwnerTool = tool({
     'Tell the Owner about a decision you made (creative changes are yours to make; the Owner is notified, not asked). Posts to the notification centre and the Studio chat.',
   scope: 'studio',
   mutates: true,
+  ownerIntent: /\b(?:notify|remind|let me know|tell me|ping me|alert)\b/i,
   input: { title: { type: 'string', maxLength: 140 }, body: { type: 'string', maxLength: 1500 }, link: { type: 'string', maxLength: 200, optional: true } },
   run: async (ctx, i) => {
     const db = ctx.services.db;

@@ -10,6 +10,7 @@ import {
   MODEL_IDS,
   type ServiceBase,
   type StudioServices,
+  type RunTrust,
   type ToolCallRecord,
   type ToolDef,
 } from './contracts';
@@ -257,6 +258,9 @@ export function createLiveRuntime(services: StudioServices, opts: LiveRuntimeOpt
     const caller = task.agent;
     const visible: Array<ToolDef<any, any>> = task.tools?.length ? services.tools.list({ caller, names: task.tools }) : [];
     const engine = engines[runOpts.engine ?? pickEngine(task, opts.forceEngine)];
+    // The run's provenance: a tool whose result carries third-party text (news, comments, web) taints the rest of
+    // the run, so a later mutating call needs the Owner's own ask (the registry enforces it).
+    let trust: RunTrust | undefined = task.trust;
     const r: EngineResult = await engine.run({
       model: MODEL_IDS[tier],
       tier,
@@ -264,12 +268,15 @@ export function createLiveRuntime(services: StudioServices, opts: LiveRuntimeOpt
       system: task.system,
       prompt: task.prompt,
       tools: visible,
-      invokeTool: (name, input) =>
-        services.tools.invoke(
-          { services, studioId: task.scope.studioId, personaId: task.scope.personaId, caller, actor: { type: 'agent', id: caller } },
+      invokeTool: async (name, input) => {
+        const out = await services.tools.invoke(
+          { services, studioId: task.scope.studioId, personaId: task.scope.personaId, caller, actor: { type: 'agent', id: caller }, trust },
           name,
           input,
-        ),
+        );
+        if (services.tools.get(name)?.untrustedOutput && !trust?.untrusted) trust = { ...trust, untrusted: true };
+        return out;
+      },
       jsonSchema: task.parse ? (task.jsonSchema ?? { type: 'object' }) : undefined,
       skills: task.skills,
       maxTokens: task.maxTokens ?? (task.parse ? 2048 : 4096),

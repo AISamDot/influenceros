@@ -122,6 +122,25 @@ export interface AgentTask<T = string> {
   readonly fake: () => T;
   /** Ledger attribution for the run's cost (P&L). Defaults to the persona (or studio) as overhead. */
   readonly costRef?: CostRef;
+  /**
+   * (stream A, additive) Where the run's context and instructions came from. The registry gates mutating tools on it;
+   * a tool with `untrustedOutput` marks the rest of the run untrusted. Omitted = trusted context, no Owner turn.
+   */
+  readonly trust?: RunTrust;
+}
+
+/**
+ * The provenance of an agent run (stream A, additive). When `untrusted`, mutating tools run only when the Owner asked
+ * for them in this turn (`ToolDef.ownerIntent` matches the Owner's message, or the Owner's "yes" to the agent's own
+ * proposal); otherwise the registry refuses them. Read-only tools are never gated.
+ */
+export interface RunTrust {
+  /** The context holds third-party text: news, comments, web research, DMs, or messages from anyone but the Owner and this agent. */
+  readonly untrusted: boolean;
+  /** The Owner's own message (sent from the dashboard session) that started this turn; null/omitted for background and delegated runs. */
+  readonly ownerText?: string | null;
+  /** This agent's own message right before the Owner's turn: what an Owner "yes" confirms. */
+  readonly proposal?: string | null;
 }
 
 export interface ToolCallRecord {
@@ -162,6 +181,8 @@ export interface ToolContext {
   readonly personaId: string | null;
   readonly caller: Caller;
   readonly actor: Actor;
+  /** (stream A, additive) The calling run's provenance; the registry gates mutating tools on it (see RunTrust). */
+  readonly trust?: RunTrust;
 }
 
 /**
@@ -183,6 +204,13 @@ export interface ToolDef<I = Record<string, unknown>, O = unknown> {
   readonly callers?: readonly Caller[];
   /** Writes state; the registry audits every successful call. */
   readonly mutates?: boolean;
+  /**
+   * (stream A, additive) For a mutating tool: what the Owner's message has to ask for before a run whose context is
+   * untrusted may call it (e.g. /\bpause\b/ for pausing). Without it, untrusted runs can't call the tool at all.
+   */
+  readonly ownerIntent?: RegExp;
+  /** (stream A, additive) The result carries third-party text (news, comments, web research): it makes the run untrusted. */
+  readonly untrustedOutput?: boolean;
   /** JSON Schema for the input: type 'object', additionalProperties false. */
   readonly inputSchema: Readonly<Record<string, unknown>>;
   /** Validates and narrows the raw input (throw on invalid input). */

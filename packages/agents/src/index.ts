@@ -11,7 +11,7 @@ import { A_TOOLS } from './tools';
  */
 export * from './contracts';
 export * from './defaults';
-export { createToolRegistry } from './registry';
+export { createToolRegistry, ownerAsked } from './registry';
 export { createFakeRuntime, createLiveRuntime, createServices, pickEngine, RUN_CAP_USD, runAgent, type RunOptions, type StudioRuntime } from './runtime';
 export { AnthropicLlm, isAnthropicLlm } from './live/anthropic';
 export { ResendEmail } from './live/resend';
@@ -19,6 +19,7 @@ export { AgentOutputError, AgentRefusalError, type Engine, type EngineRequest, t
 export { createMessagesEngine, type MessagesClient, type MessageStreamLike } from './live/messages-engine';
 export { createAgentSdkEngine, DISALLOWED_BUILTINS, type AgentSdk } from './live/agent-sdk-engine';
 export { acceptOwnerMessage, newMessageId, type OwnerTurn, respondToOwner } from './chat';
+export { isUntrustedMessage, transcript, turnTrust } from './agents/common';
 export { personaManagerAnswer, personaManagerTurn, proposalText, statusText } from './agents/persona-manager';
 export { overviewText, studioManagerTurn } from './agents/studio-manager';
 export { STUDIO_RULES } from './agents/prompts';

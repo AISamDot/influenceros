@@ -11,7 +11,7 @@ import {
   postOwnerMessage,
 } from '@ios/core';
 import type { AgentName, StudioServices } from './contracts';
-import { type AgentReply, emitChunks, today, toolNamesFor, transcript } from './agents/common';
+import { type AgentReply, emitChunks, today, toolNamesFor, transcript, turnTrust } from './agents/common';
 import { personaManagerAnswer, personaManagerTurn } from './agents/persona-manager';
 import { STUDIO_RULES_BLOCK } from './agents/prompts';
 import { studioManagerTurn } from './agents/studio-manager';
@@ -134,8 +134,9 @@ async function threadAgentTurn(
       label: `chat: ${thread.kind}`,
       system: THREAD_SYSTEM[agent] ?? 'You are an agent of an AI influencer studio. Brief, numbers first, English only.',
       cached: [STUDIO_RULES_BLOCK],
-      prompt: [`Today is ${today(services.now())}.`, `Conversation so far:\n${transcript(history)}`, `The Owner says: ${text}`].join('\n\n'),
+      prompt: [`Today is ${today(services.now())}.`, `Conversation so far:\n${transcript(history, agent)}`, `The Owner says: ${text}`].join('\n\n'),
       tools: toolNamesFor(services, agent, { only: THREAD_TOOLS[agent] ?? [] }),
+      trust: turnTrust(history, agent, text),
       maxTokens: 1500,
       fake: () => fakeText,
       costRef: { type: 'chat_thread', id: thread.id },

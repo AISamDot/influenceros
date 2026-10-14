@@ -7,7 +7,7 @@ import { gateReply, gateRules, verdictOf, type GateSubjectKind } from './gate';
 import { runHookLab } from './hooks';
 import { addSignal, backlog, briefProduct, buildListingPack, planLaunch, type Rung } from './monetization';
 import { loadPersonaContext } from './persona';
-import { enqueueMonetization, enqueueSlot } from './jobs';
+import { enqueueMonetization, enqueueSlot, runSlot } from './jobs';
 import { voiceCheck } from './qc';
 
 /**
@@ -75,6 +75,7 @@ const planWeekTool: ToolDef<{ persona_id: string; week_start?: string; run_pipel
   description: "Plan a persona's week: 10 posts (more for winners) with the format and purpose mix, posting windows, CTA keywords and sell slots. Leaves an already-planned week alone. Optionally queues every new slot for the pipeline.",
   scope: 'persona',
   mutates: true,
+  ownerIntent: /\b(?:plan|schedule|calendar)\b/i,
   callers: MAKERS,
   inputSchema: schema({ persona_id: PID, week_start: { type: 'string', description: 'Any date in the week (YYYY-MM-DD); default next week.' }, run_pipeline: { type: 'boolean' } }, ['persona_id']),
   parse: (raw) => {
@@ -233,6 +234,7 @@ const backlogTool: ToolDef<{ persona_id: string }, unknown> = {
   name: 'monetization.backlog',
   description: "The persona's ranked product opportunity backlog (Product Opportunity Score 0–100 with its eight factors and evidence).",
   scope: 'persona',
+  untrustedOutput: true, // news, web research or comment text: it taints the run (mutating tools then need the Owner's ask)
   inputSchema: schema({ persona_id: PID }, ['persona_id']),
   parse: (raw) => ({ persona_id: uuid(obj(raw, ['persona_id']), 'persona_id')! }),
   run: async (ctx, i) => backlog(ctx.services.db, i.persona_id),
@@ -331,9 +333,11 @@ const boardTool: ToolDef<{ persona_id?: string; days?: number }, unknown> = {
 
 const runSlotTool: ToolDef<{ persona_id: string; slot_id: string }, unknown> = {
   name: 'pipeline.run_slot',
-  description: 'Queue one slot for the pipeline (idea → script → Q1 → Gate → media). Safe to repeat: a queued slot is not queued twice.',
+  description:
+    'Queue one slot for the pipeline (idea → script → Q1 → Gate → media). Reopens a slot blocked by repeated pipeline failures. Safe to repeat: a queued slot is not queued twice.',
   scope: 'persona',
   mutates: true,
+  ownerIntent: /\b(?:run|queue|retry|re-?run|redo|unblock|reopen|pipeline)\b/i,
   callers: MAKERS,
   inputSchema: schema({ persona_id: PID, slot_id: S }, ['persona_id', 'slot_id']),
   parse: (raw) => {
@@ -342,7 +346,8 @@ const runSlotTool: ToolDef<{ persona_id: string; slot_id: string }, unknown> = {
   },
   async run(ctx, i) {
     await ownedSlot(ctx, i.slot_id, i.persona_id);
-    return { job_id: await enqueueSlot(ctx.services, i.slot_id, i.persona_id) };
+    const r = await runSlot(ctx.services, i.slot_id, i.persona_id);
+    return { job_id: r.jobId, reopened: r.reopened };
   },
 };
 
