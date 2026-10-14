@@ -72,6 +72,41 @@ Each stream documents what it built inside its own block below (append only).
 <!-- <<< stream A architecture -->
 
 <!-- >>> stream B architecture -->
+### Content (stream B, `packages/content`)
+
+```
+calendar.ts      Weekly plan per persona: CadencePolicy target (winner cadence 17/wk for SCALING/BRAND when the policy is default),
+                 format × purpose mix, posting windows in the persona's zone (1/day, then 2–3 on the strongest days), a CTA
+                 keyword on every slot, sell slots booked from the Monetization Agent's sellQueue, News Desk ideas first,
+                 titles for the rest from the calendar-planner agent. Idempotent per week.
+hooks.ts         Hook-lab: 10 hooks across 10 types, scored in code (length, address, interrupt, persona words, fatigue,
+                 compliance/banned/duplicate exclusions); ship 1 + 2 A/B variants of other types.
+script.ts        Scriptwriter: 40–90 words / 15–30 s for the ear, caption, on-screen text, carousel copy, visual brief, claims
+                 (each factual claim cites a KnowledgeHit id). enforceScript = the maker's deterministic fixes.
+qc.ts            Q1 (English only, hook first, length/duration, CTA keyword, repeats, TTS pronunciation → `voiceover`, uncited
+                 claims, persona voice, spelling, caption, visual brief) and Q2 (TranscribeProvider re-transcription, word
+                 alignment, WER ≤ 8%, misheard key words, cut-off ending, pace, pauses, voice id). qc_report + qc_defect.
+gate.ts          Compliance Gate v1: deterministic red/amber rules (legal/platform lines only) + a fast-tier model second
+                 opinion that can only add findings. Script (pre_render), reply (never deny AI) and post (AI flag, profile label).
+monetization.ts  Demand intake (comments, DMs, refunds, sibling sales, market scan), Product Opportunity Score (8 weighted
+                 factors), honest validation (comment keyword, pass mark 50 or 2%), briefs (product row at 'brief'), listing
+                 packs (Lemon Squeezy + Etsy, Gate-checked), launch plans (real deadlines only), sellQueue for the calendar.
+pipeline.ts      processSlot: idea → script → Q1 (max 2 fix loops) → Gate → media.render (MediaRenderPayload); resumable from
+                 calendar_slot.status, never enqueues media twice; red → blocked with the reason + an Owner notification.
+jobs.ts          Jobs calendar.plan_week, pipeline.slot, monetization.cycle, qc.voice (budget refusals → DeferJob). Schedules
+                 calendar.weekly_plan (daily), pipeline.advance (30 min), monetization.weekly_cycle (Mon 06:00 UTC); enqueue only.
+tools.ts         16 agent tools in calendar.*, hooks.*, script.*, gate.*, qc.*, monetization.*, pipeline.* (persona-scoped).
+live.ts          `transcribe` live adapter: ElevenLabs Speech-to-Text (Scribe) on `elevenlabs.api_key`, live only when the
+                 ElevenLabs integration is live; otherwise FakeTranscriber.
+board.ts         Pipeline board and slot-detail read models (apps/web /pipeline and /pipeline/[slotId], /api/pipeline).
+```
+
+- **Migration `0005_b_content.sql`:** calendar_slot gains `week_start`, `posting_window`, `cta_keyword`, `product_id`, `script_id`,
+  `block_reason`, `meta` and the pipeline statuses (incl. IOS-3's); script gains `slot_id`, `format`, `hook`, `voiceover`,
+  `on_screen_text`, `carousel`, `visual_brief`, `evidence`, `claims`, `word_count`, `est_seconds`, `fix_loops`; demand_signal,
+  product_opportunity, product, validation_test and launch gain v1 fields; new `product_listing`.
+- **Cost refs:** slot work → `calendar_slot`; briefs and listing packs → `product`; calendar titles and replies → `persona`.
+- **Dry run:** `pnpm content dry-run [--winner] [--tz <zone>]` (in-memory, fakes). Real DB: `pnpm content plan|run|monetize <slug>`.
 <!-- <<< stream B architecture -->
 
 <!-- >>> stream C architecture -->
