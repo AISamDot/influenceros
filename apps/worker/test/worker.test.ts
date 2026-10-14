@@ -1,0 +1,49 @@
+import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
+import { enqueue } from '@ios/core';
+import { allJobs, allSchedules } from '@ios/wiring';
+import { afterEach, describe, expect, it } from 'vitest';
+import { parseArgs, runCommand } from '../src/app';
+
+let t: TestStudio | null = null;
+afterEach(async () => {
+  await t?.db.close();
+  t = null;
+});
+
+describe('pnpm worker', () => {
+  it('parses commands and switches', () => {
+    expect(parseArgs([], {})).toEqual({ command: 'run', tick: true, concurrency: null });
+    expect(parseArgs(['once', '--no-tick'], {})).toMatchObject({ command: 'once', tick: false });
+    expect(parseArgs(['--concurrency', '3', 'run'], {})).toMatchObject({ command: 'run', concurrency: 3 });
+    expect(parseArgs(['run'], { IOS_TICKER: 'off', IOS_WORKER_CONCURRENCY: '2' })).toMatchObject({ tick: false, concurrency: 2 });
+    expect(parseArgs(['bogus'], {}).command).toBe('help');
+  });
+
+  it('`once` runs every due job with the composed handlers; `tick` runs the schedules; `status` reports', async () => {
+    t = await createTestStudio();
+    const p = await makeTestPersona(t, { state: 'MONETISING' });
+    const lines: string[] = [];
+    const deps = { services: t.services, handlers: allJobs(), schedules: allSchedules(), workerId: 'test', defaultConcurrency: 1, log: (l: string) => void lines.push(l) };
+
+    const tick = await runCommand(parseArgs(['tick'], {}), deps);
+    expect(tick.code).toBe(0);
+    expect(lines.join('\n')).toMatch(/profit\.weekly_cycle/);
+
+    await enqueue(t.db, { kind: 'media.render', personaId: p.id }); // no handler until IOS-3
+    const once = await runCommand(parseArgs(['once'], {}), deps);
+    expect(once.code).toBe(0);
+    const jobs = await t.db.query<{ kind: string; status: string }>('SELECT kind, status FROM job ORDER BY kind');
+    expect(jobs).toEqual([
+      { kind: 'media.render', status: 'queued' },
+      { kind: 'profit.measure', status: 'succeeded' },
+      { kind: 'profit.weekly_cycle', status: 'succeeded' },
+    ]);
+    // The weekly cycle posted its report into the Studio chat.
+    expect((await t.db.one<{ n: number }>(`SELECT count(*)::int AS n FROM chat_message WHERE author = 'agent:profit-engine'`)).n).toBe(1);
+
+    lines.length = 0;
+    await runCommand(parseArgs(['status'], {}), deps);
+    expect(lines.join('\n')).toMatch(/media\.render\s+queued\s+1/);
+    expect(lines.join('\n')).toMatch(/schedule profit\.weekly_cycle/);
+  });
+});

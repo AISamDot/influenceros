@@ -1,18 +1,30 @@
-import { tick } from '@ios/core';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { getDb } from '@ios/db';
+import { studioTick } from '@ios/profit';
+import { allSchedules, createStudioServices } from '@ios/wiring';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 /**
- * Scheduler tick (Vercel Cron, see vercel.json; locally the dev ticker in instrumentation.ts): auto-approves due
- * 24 h cards and veto-window posts (never kill or other Owner-only kinds) and reaps jobs whose worker died.
- * Protected by CRON_SECRET; on Vercel the secret is required.
+ * Scheduler tick (Vercel Cron every minute, see vercel.json; on the Mac the ticker in instrumentation.ts and
+ * `pnpm worker`): the core tick (auto-approves due 24 h cards and veto-window posts, never kill or other Owner-only
+ * kinds; reaps jobs whose worker died), then every due ScheduledTask from every package (they only enqueue jobs).
+ * Protected by `Authorization: Bearer $CRON_SECRET`; on Vercel the secret is required.
  */
+const digest = (s: string) => createHash('sha256').update(s).digest();
+
+function authorized(req: Request, secret: string): boolean {
+  const got = req.headers.get('authorization') ?? '';
+  return timingSafeEqual(digest(got), digest(`Bearer ${secret}`));
+}
+
 async function handler(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret && process.env.VERCEL) return new Response('CRON_SECRET is not set', { status: 503 });
-  if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) return new Response('unauthorized', { status: 401 });
-  const result = await tick(await getDb());
+  if (secret && !authorized(req, secret)) return new Response('unauthorized', { status: 401 });
+  const db = await getDb();
+  const result = await studioTick(createStudioServices(db), allSchedules());
   return Response.json(result, { status: result.errors.length ? 500 : 200 });
 }
 
