@@ -26,8 +26,13 @@ export interface PnlRow {
   personaId: string | null;
   format?: PostFormat;
   platform?: Platform;
-  /** Gross sales attributed (orders.source_post_id, coupon, short link). */
+  /**
+   * Gross sales attributed (orders.source_post_id, coupon, short link). On post, format and platform rows this
+   * includes `allocatedRevenueCents`: the persona's unattributed sales spread over its posts by views.
+   */
   revenueCents: number;
+  /** Part of `revenueCents` allocated by views rather than attributed to the post directly. */
+  allocatedRevenueCents?: number;
   feesCents: number;
   refundsCents: number;
   /** LLM + media USD + Higgsfield credits at the credit price, from credit_ledger debits by ref. */
@@ -36,6 +41,7 @@ export interface PnlRow {
   profitCents: number;
   posts: number;
   views: number;
+  /** Net revenue (gross − fees − refunds) per post published in the window. */
   revenuePerPostCents: number;
   costPerPostCents: number;
   /** Revenue per 1,000 views. */
@@ -79,6 +85,10 @@ export interface Forecast {
   /** Consecutive forecast weeks with a negative median, from the next week. 4+ = kill candidate. */
   negativeWeeks: number;
   generatedAt: Date;
+  /** Profit from tomorrow to the end of the current month, cents (for "this month vs forecast"). */
+  monthRemainderCents?: ForecastBand;
+  /** Full weeks of history the model was fitted on. */
+  weeksOfHistory?: number;
 }
 
 export interface ProfitAction {
@@ -98,8 +108,21 @@ export interface ProfitAction {
 export interface ProfitCardData {
   /** YYYY-MM */
   month: string;
+  /** Month-to-date profit, cents. */
   profitCents: number;
+  /** Whole-month profit forecast: month to date plus the forecast for the rest of the month. */
   forecastCents: ForecastBand;
   topLevers: LeverAction[];
   opportunities: ProfitAction[];
+}
+
+/** Totals of a P&L view (every grain of the same window sums to the same totals). */
+export interface PnlTotals {
+  revenueCents: number;
+  feesCents: number;
+  refundsCents: number;
+  costCents: number;
+  profitCents: number;
+  posts: number;
+  views: number;
 }

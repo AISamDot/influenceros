@@ -6,9 +6,10 @@ import { reapStale } from './queue';
 export const STALE_JOB_MS = 15 * 60_000;
 
 /**
- * One scheduler tick: auto-approve due cards and veto-window posts, then reap dead workers' jobs. Each step runs
- * on its own, so a failing sweep never stops the reaper (and vice versa). Called by /api/cron/tick (Vercel Cron)
- * and by the dev ticker in apps/web/instrumentation.ts.
+ * The core part of a scheduler tick: auto-approve due cards and veto-window posts, then reap dead workers' jobs.
+ * Each step runs on its own, so a failing sweep never stops the reaper (and vice versa). The full tick is
+ * `studioTick` in @ios/profit (this, then every package's due schedules), called by /api/cron/tick (Vercel Cron),
+ * the ticker in apps/web/instrumentation.ts and `pnpm worker`.
  */
 export async function tick(db: Db, opts: { now?: Date } = {}): Promise<{ approved: string[]; reaped: number; errors: string[] }> {
   const errors: string[] = [];

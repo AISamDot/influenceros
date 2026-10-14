@@ -99,6 +99,9 @@ importers:
       '@ios/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@ios/profit':
+        specifier: workspace:*
+        version: link:../../packages/profit
       '@ios/wiring':
         specifier: workspace:*
         version: link:../../packages/wiring
