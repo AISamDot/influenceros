@@ -56,8 +56,19 @@ describe('approval engine: kill and retire (Owner only, no timeout)', () => {
     expect(await state(id)).toBe('TESTING');
     expect((await ctx.db.one<{ status: string }>('SELECT status FROM approval WHERE id = $1', [approval.id])).status).toBe('pending');
 
+    // The Owner's approval needs the typed name and the card's payload hash, on every path.
+    const hash = payloadHash(approval.payload);
+    const name = (await ctx.db.one<{ name: string }>('SELECT name FROM persona WHERE id = $1', [id])).name;
+    await expect(decide(ctx.db, { approvalId: approval.id, decision: 'approve', actor: OWNER })).rejects.toThrow(/payload hash/);
+    await expect(decide(ctx.db, { approvalId: approval.id, decision: 'approve', actor: OWNER, payloadHash: hash })).rejects.toThrow(/type .* exactly/);
+    await expect(decide(ctx.db, { approvalId: approval.id, decision: 'approve', actor: OWNER, payloadHash: hash, confirmName: 'wrong' })).rejects.toThrow(/exactly/);
+    await expect(
+      decide(ctx.db, { approvalId: approval.id, decision: 'approve', actor: OWNER, payloadHash: 'deadbeef', confirmName: name }),
+    ).rejects.toThrow(/changed/);
+    expect(await state(id)).toBe('TESTING');
+
     // The Owner taps Approve → executed, logged, audited.
-    const done = await decide(ctx.db, { approvalId: approval.id, decision: 'approve', actor: OWNER, note: 'agreed' });
+    const done = await decide(ctx.db, { approvalId: approval.id, decision: 'approve', actor: OWNER, note: 'agreed', payloadHash: hash, confirmName: ` ${name} ` });
     expect(done).toMatchObject({ status: 'approved', decided_by: 'owner:hossam' });
     expect(done.executed_at).not.toBeNull();
     expect(await state(id)).toBe('KILLED');

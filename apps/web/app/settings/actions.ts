@@ -3,6 +3,7 @@
 import { type Autonomy, getSettings, OWNER, updatePersonaControls, updateSettings } from '@ios/core';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { currentSession } from '@/lib/auth';
 import { studioContext } from '@/lib/server';
 
 const num = (f: FormData, k: string, label: string, min = 0) => {
@@ -14,6 +15,8 @@ const autonomy = (v: FormDataEntryValue | null): Autonomy => (v === 'L0' || v ==
 
 /** Runs a save, then returns to Settings with a confirmation or the validation error (never the error page). */
 async function save(run: () => Promise<string>): Promise<never> {
+  // Server actions post to the page URL: check the Owner's session row here too (sign-out and revocation).
+  if (process.env.IOS_AUTH !== 'off' && !(await currentSession())) redirect('/login');
   let target: string;
   try {
     target = `/settings?ok=${encodeURIComponent(await run())}`;

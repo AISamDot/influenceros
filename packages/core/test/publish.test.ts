@@ -1,6 +1,6 @@
 import { createFakeProviders } from '@ios/providers';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { decide, OWNER, propose, PublishBlockedError, publishPost, STUDIO_MANAGER, sweepAutoApprovals } from '../src';
+import { decide, OWNER, propose, PublishBlockedError, publishPost, recoverPublishing, STUDIO_MANAGER, sweepAutoApprovals } from '../src';
 import { type Ctx, makePersona, setup } from './helpers';
 
 let ctx: Ctx;
@@ -104,5 +104,59 @@ describe('publishPost', () => {
     expect(await status(p)).toBe('live');
     expect(pub.callsTo('publish')).toHaveLength(1);
     expect(pub.callsTo('publish')[0]?.args).toMatchObject({ idempotencyKey: p });
+  });
+
+  it('a verify that throws leaves the post publishing with its external id; recovery confirms it', async () => {
+    const pub = createFakeProviders().publish;
+    const id = await makePersona(ctx);
+    const p = await ownerApproved(id);
+    const realVerify = pub.verify.bind(pub);
+    pub.verify = async () => {
+      throw new Error('zernio verify timeout');
+    };
+    const res = await publishPost(ctx.db, pub, p);
+    expect(res.status).toBe('verifying');
+    const stuck = await ctx.db.one<{ status: string; external_id: string | null; verify_attempts: number; verify_error: string | null }>(
+      'SELECT status, external_id, verify_attempts, verify_error FROM post WHERE id = $1',
+      [p],
+    );
+    expect(stuck).toMatchObject({ status: 'publishing', external_id: res.externalId, verify_attempts: 1, verify_error: 'zernio verify timeout' });
+
+    // Not stale yet: recovery leaves it alone. Later, verify works again → live, audited.
+    expect((await recoverPublishing(ctx.db, pub)).live).toEqual([]);
+    pub.verify = realVerify;
+    const later = new Date(Date.now() + 10 * 60_000);
+    expect(await recoverPublishing(ctx.db, pub, { now: later })).toMatchObject({ live: [p], failed: [], rescheduled: [] });
+    expect(await status(p)).toBe('live');
+    expect(pub.callsTo('publish')).toHaveLength(1);
+    const actions = (await ctx.db.query<{ action: string }>(`SELECT action FROM audit_log WHERE entity_id = $1 ORDER BY id`, [p])).map((r) => r.action);
+    expect(actions).toEqual(['post.verify_deferred', 'post.published']);
+  });
+
+  it('recovery reschedules a never-confirmed publish and fails a post that never verifies', async () => {
+    const pub = createFakeProviders().publish;
+    const id = await makePersona(ctx);
+    const later = new Date(Date.now() + 10 * 60_000);
+
+    // Crashed between the claim and the provider's response: no external id → back to scheduled, then republished
+    // once (the idempotency key dedupes on the provider side).
+    const a = await ownerApproved(id);
+    await ctx.db.query(`UPDATE post SET status = 'publishing', publishing_at = now() WHERE id = $1`, [a]);
+    expect((await recoverPublishing(ctx.db, pub, { now: later })).rescheduled).toEqual([a]);
+    expect(await status(a)).toBe('scheduled');
+    await publishPost(ctx.db, pub, a);
+    expect(await status(a)).toBe('live');
+
+    // Verify keeps throwing: after maxAttempts the post is failed and the Owner is told.
+    const b = await ownerApproved(id);
+    pub.verify = async () => {
+      throw new Error('upstream 502');
+    };
+    await publishPost(ctx.db, pub, b);
+    expect((await recoverPublishing(ctx.db, pub, { now: later, maxAttempts: 3 })).pending).toEqual([b]);
+    expect((await recoverPublishing(ctx.db, pub, { now: later, maxAttempts: 3 })).failed).toEqual([b]);
+    expect(await status(b)).toBe('failed');
+    const n = await ctx.db.one<{ n: number }>(`SELECT count(*)::int AS n FROM notification WHERE kind = 'publish' AND title LIKE 'Couldn''t confirm%'`);
+    expect(n.n).toBe(1);
   });
 });

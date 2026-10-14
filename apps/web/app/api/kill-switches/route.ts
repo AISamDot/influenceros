@@ -1,16 +1,21 @@
 import { activeKillSwitches, clearKillSwitch, type KillScope, OWNER, PLATFORMS, type Platform, setKillSwitch } from '@ios/core';
 import { backTo, isFormPost, isJson, UUID_RE } from '@/lib/http';
+import { requireOwner } from '@/lib/auth';
 import { studioContext } from '@/lib/server';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await requireOwner(req);
+  if (denied) return denied;
   const { db, studio } = await studioContext();
   return Response.json({ active: await activeKillSwitches(db, studio.id) });
 }
 
 /** {action: "set"|"clear", scope: "global"|"persona"|"platform", personaId?, platform?, reason?} as JSON or a form. */
 export async function POST(req: Request) {
+  const denied = await requireOwner(req);
+  if (denied) return denied;
   const isForm = isFormPost(req);
   if (!isForm && !isJson(req)) return Response.json({ error: 'send JSON or a form' }, { status: 415 });
   const input: Record<string, string> = isForm

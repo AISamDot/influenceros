@@ -4,8 +4,8 @@ import { OWNER } from './types';
 
 /**
  * Owner chat (FR-16.1: all Owner interaction happens in the dashboard). One Studio chat (Studio Manager), one chat
- * per persona (its manager), plus Monetization and Quality. Messages persist. Replies come from a deterministic
- * fake agent until the Claude Agent SDK runtime lands in IOS-2.
+ * per persona (its manager), plus Monetization and Quality. Messages persist. The agents themselves live in
+ * @ios/agents (`respondToOwner`); this module is storage, threads and mentions.
  */
 export type ThreadKind = 'studio' | 'persona' | 'monetization' | 'quality';
 
@@ -87,18 +87,31 @@ export async function listMessages(db: Db, threadId: string, limit = 100): Promi
 
 export async function addMessage(
   db: Db,
-  m: { threadId: string; role: ChatMessageRow['role']; author: string; body: string; meta?: Record<string, unknown>; personaId?: string | null; at?: Date },
+  m: {
+    threadId: string;
+    role: ChatMessageRow['role'];
+    author: string;
+    body: string;
+    meta?: Record<string, unknown>;
+    personaId?: string | null;
+    at?: Date;
+    /** Pre-allocated id (the chat API sends it as x-message-id before the reply has finished streaming). */
+    id?: string;
+  },
 ): Promise<ChatMessageRow> {
   const row = await db.one<ChatMessageRow>(
-    `INSERT INTO chat_message (thread_id, persona_id, role, author, body, meta, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb, COALESCE($7, now())) RETURNING *`,
-    [m.threadId, m.personaId ?? null, m.role, m.author, m.body, json(m.meta ?? {}), m.at ?? null],
+    `INSERT INTO chat_message (id, thread_id, persona_id, role, author, body, meta, created_at)
+     VALUES (COALESCE($8::uuid, gen_random_uuid()), $1, $2, $3, $4, $5, $6::jsonb, COALESCE($7, now())) RETURNING *`,
+    [m.threadId, m.personaId ?? null, m.role, m.author, m.body, json(m.meta ?? {}), m.at ?? null, m.id ?? null],
   );
   await db.query('UPDATE chat_thread SET updated_at = now() WHERE id = $1', [m.threadId]);
   return row;
 }
 
-/** Stores the Owner's message; persona-chat messages are also logged as feedback for the manager (IOS-2 classifies). */
+/**
+ * Stores the Owner's message (Studio messages carry their @mentions in meta). The persona manager decides whether a
+ * persona-chat message is feedback and logs it in `feedback` when it is (questions and commands are not).
+ */
 export async function postOwnerMessage(db: Db, threadId: string, body: string): Promise<ChatMessageRow> {
   const text = body.trim();
   if (!text) throw new Error('empty message');
@@ -114,15 +127,13 @@ export async function postOwnerMessage(db: Db, threadId: string, body: string): 
       personaId: thread.persona_id,
       meta: mentions.length ? { mentions } : {},
     });
-    if (thread.persona_id) {
-      await tx.query(`INSERT INTO feedback (persona_id, text, status) VALUES ($1, $2, 'received')`, [thread.persona_id, text]);
-    }
     await audit(tx, { studioId: thread.studio_id, personaId: thread.persona_id, actor: OWNER, action: 'chat.owner_message', entityType: 'chat_thread', entityId: threadId });
     return msg;
   });
 }
 
-async function findMentions(db: Db, studioId: string, text: string): Promise<Array<{ id: string; slug: string; name: string }>> {
+/** Personas @mentioned in a message, by slug or first name (case-insensitive). */
+export async function findMentions(db: Db, studioId: string, text: string): Promise<Array<{ id: string; slug: string; name: string }>> {
   const tags = [...text.matchAll(/@([a-z0-9-]+)/gi)].map((m) => m[1]!.toLowerCase());
   if (!tags.length) return [];
   return db.query(
@@ -134,7 +145,7 @@ async function findMentions(db: Db, studioId: string, text: string): Promise<Arr
 const usd = (cents: number) => `$${(cents / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}K` : String(n));
 
-/** The fake agent: a short, numbers-first manager reply built from live studio data. */
+/** A short, numbers-first summary built from live studio data (the no-key fallback reply). */
 export async function composeAgentReply(db: Db, thread: ChatThreadRow, ownerText: string): Promise<string> {
   const since = "now() - interval '7 days'";
   if (thread.kind === 'persona' && thread.persona_id) {
@@ -151,7 +162,7 @@ export async function composeAgentReply(db: Db, thread: ChatThreadRow, ownerText
     return [
       `${p.name} · ${p.state.toLowerCase().replace('_', '-')} · ${p.autonomy}. Last 7 days: ${k(m.views)} views, ${usd(m.rev)} revenue.`,
       next ? `Next post: "${next.title}".` : 'No posts scheduled yet.',
-      `Logged your note as feedback: "${ownerText.slice(0, 120)}". Once the agent runtime is live (IOS-2) I'll classify it, show a before/after example and confirm when it's applied.`,
+      `Noted: "${ownerText.slice(0, 120)}".`,
     ].join('\n\n');
   }
   if (thread.kind === 'monetization') {
@@ -161,10 +172,10 @@ export async function composeAgentReply(db: Db, thread: ChatThreadRow, ownerText
               (SELECT pr.name FROM orders o JOIN product pr ON pr.id = o.product_id WHERE o.ordered_at > ${since}
                 GROUP BY pr.name ORDER BY SUM(o.amount_cents) DESC LIMIT 1) AS top`,
     );
-    return `Catalogue: ${r.live} live products, ${usd(r.rev)} revenue in the last 7 days${r.top ? `; best seller: ${r.top}` : ''}.\n\nNoted: "${ownerText.slice(0, 120)}". Opportunity scoring and briefs arrive with the Monetization Agent in IOS-2.`;
+    return `Catalogue: ${r.live} live products, ${usd(r.rev)} revenue in the last 7 days${r.top ? `; best seller: ${r.top}` : ''}.\n\nNoted: "${ownerText.slice(0, 120)}".`;
   }
   if (thread.kind === 'quality') {
-    return `QC standards v1 are in place (Q1 script → Q4 final). No live checks run yet: QC Q1/Q2 land in IOS-2 and Q3/Q4 in IOS-3.\n\nNoted as a studio standard request: "${ownerText.slice(0, 120)}".`;
+    return `QC standards v1 are in place (Q1 script → Q4 final).\n\nNoted as a studio standard request: "${ownerText.slice(0, 120)}".`;
   }
   const s = await db.one<{ personas: number; testing: number; views: number; rev: number; pending: number; kills: number }>(
     `SELECT (SELECT count(*) FROM persona WHERE studio_id = $1 AND state NOT IN ('RETIRED','KILLED'))::int AS personas,
@@ -179,13 +190,12 @@ export async function composeAgentReply(db: Db, thread: ChatThreadRow, ownerText
   const lines = [
     `Studio, last 7 days: ${s.personas} active personas (${s.testing} testing), ${k(s.views)} views, ${usd(s.rev)} revenue. ${s.pending} item${s.pending === 1 ? '' : 's'} waiting in Approvals${s.kills ? `, including ${s.kills} kill proposal${s.kills === 1 ? '' : 's'}` : ''}.`,
   ];
-  if (mentions.length) lines.push(`Bringing in ${mentions.map((m) => `${m.name}'s manager`).join(' and ')}; their reply will land in this thread once agents run (IOS-2).`);
-  if (/\bpause\b/i.test(ownerText)) lines.push('To pause posting now, use the kill switches in Settings (global, per persona or per platform). From IOS-2 I can do it from this chat.');
-  lines.push(`Noted: "${ownerText.slice(0, 140)}". I'm the IOS-1 stand-in; the real Studio Manager answers from IOS-2.`);
+  if (mentions.length) lines.push(`Bringing in ${mentions.map((m) => `${m.name}'s manager`).join(' and ')}.`);
+  lines.push(`Noted: "${ownerText.slice(0, 140)}".`);
   return lines.join('\n\n');
 }
 
-/** Saves the agent's reply. The API streams `body` to the browser. */
+/** Saves a data-summary reply (no agent run). The chat API uses @ios/agents `respondToOwner` instead. */
 export async function replyAsAgent(db: Db, threadId: string, ownerText: string): Promise<ChatMessageRow> {
   const thread = await db.one<ChatThreadRow>('SELECT * FROM chat_thread WHERE id = $1', [threadId]);
   const body = await composeAgentReply(db, thread, ownerText);

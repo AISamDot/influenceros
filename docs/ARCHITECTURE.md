@@ -69,6 +69,27 @@ apps/worker         Local queue worker on the Mac (stream D).
 Each stream documents what it built inside its own block below (append only).
 
 <!-- >>> stream A architecture -->
+### Stream A: agent runtime, managers, chat, Owner login
+
+**Runtime** (`packages/agents/src/runtime.ts`). `createServices({ mode })` builds one runtime for every agent:
+- `fake` (tests, no key) or `auto`: live when `providers.llm` is the live `AnthropicLlm` (wiring overlays it only when the Anthropic key is present and `IOS_FAKE_PROVIDERS` doesn't force fakes).
+- One pipeline for both modes: routing (`task.tier` → D's `RoutingPolicy` → `DEFAULT_ROUTING`; Haiku 5.5 / Sonnet 5.5 / Opus 5.5) → governor hold (refused past a cap, logged `refused`) → engine → settle the actual cost (a failed live run's partial spend is still debited) → `parse` → one `agent_run` row (mode, engine, tokens, cache read/write tokens, tool calls, `CostRef`).
+- Engines (`src/live/`): the **Claude Agent SDK** for agent work (tasks with tools or skills) and the **Messages API** for one-shot structured calls. `IOS_AGENT_ENGINE=messages|agent-sdk` forces one.
+  - Messages API: cached blocks first as system blocks with `cache_control` on the last (tools sorted for a stable prefix; tool loops also cache the conversation), structured output via `output_config.format`, explicit effort per tier, `stop_reason: "refusal"` → `AgentRefusalError`, server-side refusal fallback on Sonnet/Opus (`IOS_LLM_FALLBACKS=off` disables), spend checked between turns.
+  - Agent SDK: `settingSources: ['project']`, `cwd` = repo root (`.claude/skills`), `skills` limited to the task's, `settings.disableSkillShellExecution`, `tools: []` (or `['Skill']`) plus `disallowedTools` (Bash, Write, Edit, Read, web, subagents), registry tools exposed through an in-process MCP server and pre-approved by name, `permissionMode: 'dontAsk'`, `maxBudgetUsd` = governor headroom (capped per run), `persistSession: false`, and a subprocess env with only PATH/HOME and the Anthropic key.
+- Streaming stays inside A: `runAgent(services, task, { onText })`; the fake runtime streams its text in chunks.
+
+**Tools and permissions** (`src/tools`, `src/registry.ts`). `studio.*` (overview, personas, propose_kill, pause_posting, delegate, adopt_rule), `persona.*` (status, posts, lower_controls), `bible.*` (read, revise), `playbook.*`, `feedback.*` (recent; `decide` is Owner-only), `approvals.*` (pending, withdraw; `decide` is Owner-only), `chat.notify_owner`. The registry refuses unknown tools, Owner-only tools for agents, callers outside a tool's allowlist, another persona's id for a persona-scoped caller, personas outside the studio, and an agent caller carrying an Owner actor; mutating calls are audited. Kills, cap or autonomy raises, disclosure/legal text and accounts are only ever proposed.
+
+**Managers** (`src/agents`, `src/chat.ts`, `src/feedback.ts`).
+- Studio Manager: Studio chat, all studio tools (plus other streams' tools it may see), kill proposals as approval cards in the thread, pause posting, delegation to persona managers, @mentions bring the persona's manager into the thread. Cached context: the studio rules.
+- Persona Manager: cached context = studio rules → bible vN → playbook. Feedback loop: classify (fast tier, structured) → restate with before/after → one-off applies now; persona rule / strategy wait for the Owner's Apply (button or "yes"); studio-wide becomes a proposed studio rule → Bible vN+1 (previous version superseded) or a playbook rule → `feedback.applied` audit → confirmation. Compliance/identity sections become a `legal_text_change` approval. `/status`, `/bible`, `/pause`, `/resume` shortcuts.
+- Monetization and Quality threads run their agents with B's `monetization.*` / `gate.*` / `qc.*` tools.
+- Jobs/schedules: `agent.recover_publishing` (every 5 min via `studio.recover_publishing`), `agent.feedback_effects` (daily via `persona.feedback_effects`: views/saves per post the week before vs after each applied change).
+
+**Owner login** (`packages/auth`, `apps/web/proxy.ts`, `app/login`, `app/api/auth/*`). Magic link to `OWNER_EMAIL` via Resend (live adapter `ResendEmail`; the link lands on `/login/verify`, whose button posts the one-time token so mail scanners can't use it), or the fallback password set with `pnpm owner set-password` (scrypt). Sessions are rows plus an HMAC-signed `ios_session` cookie (HttpOnly, SameSite=Lax, Secure on https, 14 days). The proxy checks the signature and expiry on every request and protects everything except `/login`, `/api/auth/*`, `/api/webhooks/*`, `/api/cron/*` and `/api/health`; pages, server actions and A's API routes also check the session row (sign-out and `pnpm owner sessions revoke` take effect at once). Deployed without `AUTH_SECRET`, protected routes fail closed. Attempts are throttled. `IOS_AUTH=off` works only on loopback and never when deployed.
+
+**IOS-1 recheck fixes.** Kill/retire approvals need the typed persona name and the payload hash in `decide()` itself, so the form, JSON and tool paths all enforce it. Queue claims carry a per-claim `lease_token`; every post-claim update matches on it. A post whose verify throws (or reports "processing") keeps its external id in `publishing`; `recoverPublishing()` re-verifies it, reschedules a never-confirmed publish (the idempotency key prevents a double post) and fails it after repeated verify failures, telling the Owner.
 <!-- <<< stream A architecture -->
 
 <!-- >>> stream B architecture -->

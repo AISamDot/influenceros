@@ -1,7 +1,8 @@
 /**
- * @ios/auth (IOS-2 stream A): Owner login for the dashboard and API. Magic link to the Owner's email via Resend
- * (or a passkey), with a CLI-set hashed password as the fallback; an Owner-only session cookie. The proxy in
- * apps/web/proxy.ts protects every route except /login, /api/auth/*, /api/webhooks/* and /api/cron/* (secret).
- * Stream A fills this package.
+ * @ios/auth (IOS-2 stream A): Owner login for the dashboard and API. A magic link to the Owner's email via Resend,
+ * with a CLI-set scrypt password as the fallback; an Owner-only signed session cookie backed by a session row.
+ * apps/web/proxy.ts runs `authorize` (from '@ios/auth/guard', no database) on every request: everything is
+ * protected except /login, /api/auth/*, /api/webhooks/*, /api/cron/* (Bearer CRON_SECRET) and /api/health.
  */
-export {};
+export * from './guard';
+export * from './owner';

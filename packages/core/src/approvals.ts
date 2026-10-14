@@ -291,12 +291,24 @@ export interface DecideInput {
   decision: 'approve' | 'reject';
   actor: Actor;
   note?: string;
-  /** payloadHash() of the payload shown on the card. When given, decide refuses if the payload differs. */
+  /**
+   * payloadHash() of the payload shown on the card. When given, decide refuses if the payload differs. Approving a
+   * kill or retire requires it.
+   */
   payloadHash?: string;
+  /** Approving a kill or retire requires the persona's name, typed by the Owner (mis-tap guard). */
+  confirmName?: string;
   now?: Date;
 }
 
-/** The Owner approves or rejects. Agents and the system can never decide; they can only propose. */
+/** Kinds whose approval needs the typed persona name and the card's payload hash, on every path (form, JSON, chat). */
+export const CONFIRM_KINDS: readonly ApprovalKind[] = ['persona_kill', 'persona_retire'];
+
+/**
+ * The Owner approves or rejects. Agents and the system can never decide; they can only propose.
+ * Approving a kill or retire also needs the payload hash of the card the Owner reviewed and the persona's name
+ * typed exactly, whichever path the decision comes from.
+ */
 export async function decide(db: Db, input: DecideInput): Promise<ApprovalRow> {
   if (input.actor.type !== 'owner') {
     throw new ApprovalError(`${actorRef(input.actor)} cannot decide approvals: only the Owner can (agents only propose)`);
@@ -305,6 +317,16 @@ export async function decide(db: Db, input: DecideInput): Promise<ApprovalRow> {
     const a = await tx.maybeOne<ApprovalRow>('SELECT * FROM approval WHERE id = $1 FOR UPDATE', [input.approvalId]);
     if (!a) throw new NotFoundError(`approval ${input.approvalId} not found`);
     if (a.status !== 'pending') throw new ApprovalError(`approval is already ${a.status}`);
+    if (input.decision === 'approve' && CONFIRM_KINDS.includes(a.kind)) {
+      const p = a.persona_id ? await tx.maybeOne<{ name: string }>('SELECT name FROM persona WHERE id = $1', [a.persona_id]) : null;
+      const name = p?.name ?? '';
+      if (typeof input.payloadHash !== 'string' || !input.payloadHash) {
+        throw new ApprovalError(`approving "${a.title}" needs the payload hash of the card you reviewed`);
+      }
+      if (typeof input.confirmName !== 'string' || !name || input.confirmName.trim() !== name) {
+        throw new ApprovalError(`type ${name || 'the persona name'} exactly to confirm`);
+      }
+    }
     if (input.payloadHash !== undefined && input.payloadHash !== payloadHash(a.payload)) {
       throw new ApprovalError('this card changed after you opened it: reload and check it again');
     }

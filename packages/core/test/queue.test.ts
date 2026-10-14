@@ -113,6 +113,29 @@ describe('Postgres job queue', () => {
     expect(await job(j.id)).toMatchObject({ status: 'succeeded', result: { by: 'B' } });
   });
 
+  it('the lease is the claim, not the worker id: a restarted worker with the same id cannot finish a stale claim', async () => {
+    const t0 = new Date('2026-10-14T10:00:00Z');
+    const j = await enqueue(ctx.db, { kind: 'render', runAt: t0 });
+    const first = (await claimNext(ctx.db, { workerId: 'mac-1', now: t0 }))!;
+    expect(first.lease_token).toMatch(/^[0-9a-f-]{36}$/);
+    // The worker hangs; the reaper takes the job back; the same worker id (after a restart) claims it again.
+    const later = new Date(t0.getTime() + 20 * 60_000);
+    expect(await reapStale(ctx.db, { timeoutMs: 15 * 60_000, now: later })).toBe(1);
+    const second = (await claimNext(ctx.db, { workerId: 'mac-1', now: (await job(j.id)).run_at }))!;
+    expect(second.locked_by).toBe(first.locked_by);
+    expect(second.lease_token).not.toBe(first.lease_token);
+
+    // The stale run's heartbeat, completion, failure and deferral are all refused.
+    expect(await heartbeat(ctx.db, first)).toBe(false);
+    expect(await completeJob(ctx.db, first, { by: 'stale' })).toBe(false);
+    expect(await failJob(ctx.db, first, new Error('stale'))).toBe('lost');
+    expect(await job(j.id)).toMatchObject({ status: 'running', lease_token: second.lease_token });
+
+    expect(await heartbeat(ctx.db, second)).toBe(true);
+    expect(await completeJob(ctx.db, second, { by: 'fresh' })).toBe(true);
+    expect(await job(j.id)).toMatchObject({ status: 'succeeded', result: { by: 'fresh' }, lease_token: null });
+  });
+
   it('the reaper backs off and dead-letters a job that keeps crashing its worker', async () => {
     let now = new Date('2026-10-14T10:00:00Z');
     const j = await enqueue(ctx.db, { kind: 'render', maxAttempts: 3, runAt: now });

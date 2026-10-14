@@ -1,5 +1,6 @@
 import { markRead } from '@ios/core';
 import { backTo, isFormPost, redirectTo, safePath, UUID_RE } from '@/lib/http';
+import { requireOwner } from '@/lib/auth';
 import { studioContext } from '@/lib/server';
 
 export const dynamic = 'force-dynamic';
@@ -9,6 +10,8 @@ export const dynamic = 'force-dynamic';
  * Form posts redirect; JSON gets {ok}.
  */
 export async function POST(req: Request) {
+  const denied = await requireOwner(req);
+  if (denied) return denied;
   const { db, studio } = await studioContext();
   const isForm = isFormPost(req);
   const f = isForm ? await req.formData() : null;
