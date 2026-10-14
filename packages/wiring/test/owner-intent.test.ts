@@ -36,6 +36,15 @@ describe('owner intent: verb + object, never a question', () => {
     ['studio.propose_kill', 'Is the kill switch on'],
     ['monetization.brief', 'Make sure the product page loads.'],
     ['knowledge.request_build', 'What does the field brain know about dating?'],
+    // Questions without a "?" and requests for information.
+    ['bible.revise', 'Did you update her voice'],
+    ['bible.revise', "Update me on Vivian's voice."],
+    ['bible.revise', 'Tell me what you would change about her tone.'],
+    ['bible.revise', 'Walk me through how you would change her look.'],
+    ['forecast.run', 'Run me through the forecast.'],
+    ['persona.lower_controls', 'I wonder if we should lower the budget.'],
+    ['persona.lower_controls', 'Should we lower the budget'],
+    ['playbook.add_rule', 'Have you added a rule for hooks'],
     // Polite questions still don't unlock (the agent proposes; the Owner says yes).
     ['persona.lower_controls', "Can you lower Vivian's autonomy to L1?"],
     // Negated asks.

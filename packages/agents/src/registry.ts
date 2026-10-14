@@ -19,8 +19,17 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** An Owner's short yes to the agent's own proposal. */
 const CONFIRM_RE = /^\s*(?:yes|yep|yeah|yup|ok(?:ay)?|sure|confirm(?:ed)?|approved?|do it|go ahead|go for it|please do|sounds good)\b/i;
 
-/** A question never asks for a write: it ends with "?" or opens with a question word ("Give me an update on…"). */
-const QUESTION_RE = /\?["'”’)\]]*\s*$|^\W*(?:what|how|why|when|where|who|whom|whose|which|give\s+me|show\s+me)\b/i;
+/**
+ * A question never asks for a write: it ends with "?" or opens like one, "?" or not ("Give me an update on…",
+ * "Did you update her voice", "Update me on her voice", "Tell me what you'd change", "Walk me through the forecast").
+ */
+const QUESTION_RE = new RegExp(
+  String.raw`\?["'”’)\]]*\s*$|^\W*(?:what|how|why|when|where|who|whom|whose|which|any|give\s+me|show\s+me|` +
+    String.raw`(?:did|does|is|are|am|was|were|has|had)(?:n['’]?t)?|(?:do|have)(?:n['’]?t)?\s+(?:you|we|i|they|she|he|it)|` +
+    String.raw`(?:should|shall)\s+(?:we|i)|i\s+wonder|explain|update\s+(?:me|us)|` +
+    String.raw`(?:tell|remind)\s+(?:me|us)\s+(?:what|how|why|who|where|which|whether|about)|(?:walk|talk|run|take)\s+(?:me|us)\s+through)\b`,
+  'i',
+);
 /** A negator before the action verb: "Don't change Vivian's voice", "I won't lower her budget". */
 const NEGATED_RE =
   /\b(?:don['’]?t|do\s+not|never(?!\s+mind)|no\s+need\s+to|won['’]?t|will\s+not|shouldn['’]?t|should\s+not|can['’]?t|cannot|mustn['’]?t|must\s+not|not\s+(?:yet|now))\b/i;

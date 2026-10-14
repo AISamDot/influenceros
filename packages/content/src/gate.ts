@@ -99,7 +99,7 @@ const ATTRIB_BEFORE = new RegExp(
  * Attribution alone is a testimonial, not a warning: "People who tried it say this tea cures diabetes" stays red.
  */
 const REFUTED = new RegExp(
-  String.raw`(?<!\b(?:never|not|no|hardly|rarely)\s+(?:[\w'’]+\s+)?)(?<!n['’]t\s+(?:[\w'’]+\s+)?)\b(?:wrong|false|untrue|myths?|not true|isn['’]t true|no (?:evidence|proof|science)|don['’]?t believe|do not believe|debunked|lying|lies|liars?|a lie|scams?|scammers?|nonsense|misleading|bogus|beware|red flag|don['’]?t fall for|don['’]?t trust)\b|,\s*run(?:\s+away)?\b[.!]*\s*$`,
+  String.raw`(?<!\b(?:never|not|no|hardly|rarely)\s+(?:[\w'’]+\s+)?)(?<!n['’]t\s+(?:[\w'’]+\s+)?)\b(?:wrong|false|untrue|myths?|not true|isn['’]t true|no (?:evidence|proof|science)|don['’]?t believe|do not believe|debunked|lying|(?:full of|telling|spreading) lies|liars?|a lie|scams?|scammers?|nonsense|misleading|bogus|beware|red flag|don['’]?t fall for|don['’]?t trust)\b|,\s*run(?:\s+away)?\b[.!]*\s*$`,
   'i',
 );
 

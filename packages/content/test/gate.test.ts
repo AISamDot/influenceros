@@ -94,6 +94,8 @@ describe('Compliance Gate v1: the red lines (contract §1)', () => {
     ['People who tried it say this tea cures diabetes.', 'red', 'medical_claims'],
     ['My followers swear this tea cures diabetes.', 'red', 'medical_claims'],
     ['Influencers who say this tea melts fat are never wrong.', 'red', 'medical_claims'],
+    ['People who tried it say this tea cures diabetes; the science lies with them.', 'red', 'medical_claims'],
+    ['Influencers who say this tea melts fat are full of lies.', 'green', null],
     ['No tea cures diabetes; see your doctor.', 'green', null],
     ["This isn't a get-rich-quick scheme and nobody can promise returns.", 'green', null],
     ['Influencers who say this tea melts fat are wrong.', 'green', null],
