@@ -18,6 +18,8 @@ const config: NextConfig = {
     // >>> stream B server externals
     // <<< stream B server externals
     // >>> stream C server externals
+    '@huggingface/transformers',
+    'onnxruntime-node',
     // <<< stream C server externals
     // >>> stream D server externals
     // <<< stream D server externals

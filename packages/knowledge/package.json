@@ -12,9 +12,12 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.133.0",
+    "@huggingface/transformers": "4.3.1",
     "@ios/agents": "workspace:*",
     "@ios/core": "workspace:*",
     "@ios/db": "workspace:*",
-    "@ios/providers": "workspace:*"
+    "@ios/providers": "workspace:*",
+    "fast-xml-parser": "5.11.2"
   }
 }
