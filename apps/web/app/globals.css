@@ -12,7 +12,7 @@
   --line-strong: #cfc9bd;
   --fg: #1c1b18;
   --muted: #6d695f;
-  --faint: #9a958a;
+  --faint: #706c64; /* ≥ 4.5:1 on bg, surface and surface-2: usable for small text */
   --ink: #1c1b18;
   --on-ink: #fbfaf7;
   --accent: #4f4bd8;
@@ -23,6 +23,10 @@
   --warn-soft: #fdf3e2;
   --ok: #2b7a4b;
   --ok-soft: #e7f4ec;
+  /* Text on solid danger/accent/ok fills (badges, counts). */
+  --on-danger: #ffffff;
+  --on-accent: #ffffff;
+  --on-ok: #ffffff;
   --shadow: 0 1px 2px rgb(28 27 24 / 0.05), 0 8px 24px -12px rgb(28 27 24 / 0.12);
   --shadow-lg: 0 2px 4px rgb(28 27 24 / 0.04), 0 24px 48px -24px rgb(28 27 24 / 0.25);
   color-scheme: light;
@@ -37,7 +41,7 @@
   --line-strong: #3b4048;
   --fg: #edece8;
   --muted: #a09d95;
-  --faint: #6f6c66;
+  --faint: #949189;
   --ink: #edece8;
   --on-ink: #121315;
   --accent: #8d8af5;
@@ -48,6 +52,10 @@
   --warn-soft: #34260f;
   --ok: #5cc98a;
   --ok-soft: #12301f;
+  /* The dark theme's fills are light, so text on them is dark (white measured 2.1–3.0:1). */
+  --on-danger: #121315;
+  --on-accent: #121315;
+  --on-ok: #121315;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.6);
   --shadow-lg: 0 2px 4px rgb(0 0 0 / 0.3), 0 24px 48px -24px rgb(0 0 0 / 0.8);
   color-scheme: dark;
@@ -73,6 +81,9 @@
   --color-warn-soft: var(--warn-soft);
   --color-ok: var(--ok);
   --color-ok-soft: var(--ok-soft);
+  --color-on-danger: var(--on-danger);
+  --color-on-accent: var(--on-accent);
+  --color-on-ok: var(--on-ok);
   --shadow-card: var(--shadow);
   --shadow-lift: var(--shadow-lg);
   --font-sans: "Geist Variable", -apple-system, "SF Pro Text", system-ui, sans-serif;
@@ -191,5 +202,15 @@
   }
   .no-scrollbar::-webkit-scrollbar {
     display: none;
+  }
+  /* Edge fade on horizontal scrollers so hidden items read as "more this way". */
+  .fade-x {
+    mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 24px), transparent 100%);
+  }
+  /* iOS Safari zooms into inputs under 16px on focus; keep them at 16px on phones. */
+  @media (max-width: 639.98px) {
+    .input {
+      font-size: 16px;
+    }
   }
 }

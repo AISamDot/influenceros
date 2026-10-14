@@ -9,7 +9,7 @@ import {
   type TalkingProvider,
   type VoiceProvider,
 } from '@ios/providers';
-import { assertBudget, debit, type Unit } from './governor';
+import { releaseHold, reserve, settleHold, type Unit } from './governor';
 
 export interface MeterContext {
   studioId: string;
@@ -19,8 +19,10 @@ export interface MeterContext {
 }
 
 /**
- * Runs a paid provider call under the governor: refuse up front if the estimate would pass a cap, then debit
- * the actual cost (recorded even if it overshoots the estimate, since it was incurred).
+ * Runs a paid provider call under the governor: reserve the estimate first (refused if it would pass a cap, and
+ * serialised with every other reservation, so concurrent calls can't all fit in the same headroom), then settle
+ * the hold to the actual cost (recorded even if it overshoots the estimate, since it was incurred), or release it
+ * if the call fails.
  */
 export async function metered<T>(
   db: Db,
@@ -29,18 +31,16 @@ export async function metered<T>(
   call: () => Promise<T>,
   actual: (r: T) => number,
 ): Promise<T> {
-  await assertBudget(db, { studioId: ctx.studioId, personaId: ctx.personaId, unit: spec.unit, amount: spec.estimate, operation: spec.operation });
-  const result = await call();
-  await debit(db, {
-    studioId: ctx.studioId,
-    personaId: ctx.personaId,
-    unit: spec.unit,
-    amount: actual(result),
-    provider: spec.provider,
-    operation: spec.operation,
-    meta: { agent: ctx.agent },
-    enforce: false,
-  });
+  const base = { studioId: ctx.studioId, personaId: ctx.personaId, unit: spec.unit, provider: spec.provider, operation: spec.operation, meta: { agent: ctx.agent } };
+  const holdId = await reserve(db, { ...base, amount: spec.estimate });
+  let result: T;
+  try {
+    result = await call();
+  } catch (err) {
+    await releaseHold(db, holdId);
+    throw err;
+  }
+  await settleHold(db, holdId, { ...base, amount: actual(result) });
   return result;
 }
 
@@ -72,7 +72,8 @@ export function meteredProviders(db: Db, raw: Providers, ctx: MeterContext): Pro
     imageToVideo: (req) =>
       metered(db, ctx, spec('image_to_video', credits('image_to_video', req.durationS)), () => hf.imageToVideo(req), (r) => r.credits),
     talkingWithAudio: (req) =>
-      metered(db, ctx, spec('talking_with_audio', credits('talking_with_audio', 30)), () => hf.talkingWithAudio(req), (r) => r.credits),
+      // Unknown audio length: reserve for 60 s (2x the usual 30 s clip) rather than under-reserve.
+      metered(db, ctx, spec('talking_with_audio', credits('talking_with_audio', req.durationS ?? 60)), () => hf.talkingWithAudio(req), (r) => r.credits),
     costProbe: (req) => hf.costProbe(req), // free
   };
 

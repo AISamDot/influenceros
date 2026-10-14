@@ -16,6 +16,19 @@ const config: NextConfig = {
   images: { unoptimized: true },
   devIndicators: false,
   agentRules: false,
+  // The dashboard is never framed (clickjacking on "Approve kill", kill switches).
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+        ],
+      },
+    ];
+  },
 };
 
 export default config;

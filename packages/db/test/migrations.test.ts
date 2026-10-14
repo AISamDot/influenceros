@@ -59,6 +59,8 @@ describe('migrations', () => {
     await db.query(`INSERT INTO audit_log (actor_type, actor_id, action) VALUES ('system','test','x')`);
     await expect(db.query(`UPDATE audit_log SET action = 'y'`)).rejects.toThrow(/append-only/);
     await expect(db.query(`DELETE FROM audit_log`)).rejects.toThrow(/append-only/);
+    await expect(db.query(`TRUNCATE audit_log`)).rejects.toThrow(/append-only/);
+    expect((await db.query(`SELECT 1 FROM audit_log`)).length).toBe(1);
   });
 
   it('supports pgvector similarity on knowledge nodes', async () => {

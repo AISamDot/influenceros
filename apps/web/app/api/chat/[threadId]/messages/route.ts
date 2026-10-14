@@ -1,5 +1,6 @@
 import { getThread, listMessages, postOwnerMessage, replyAsAgent } from '@ios/core';
 import { getDb } from '@ios/db';
+import { UUID_RE } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,6 +8,7 @@ type Ctx = { params: Promise<{ threadId: string }> };
 
 export async function GET(_req: Request, { params }: Ctx) {
   const { threadId } = await params;
+  if (!UUID_RE.test(threadId)) return Response.json({ error: 'thread not found' }, { status: 404 });
   const db = await getDb();
   if (!(await getThread(db, threadId))) return Response.json({ error: 'thread not found' }, { status: 404 });
   return Response.json({ messages: await listMessages(db, threadId) });
@@ -18,8 +20,11 @@ export async function GET(_req: Request, { params }: Ctx) {
  */
 export async function POST(req: Request, { params }: Ctx) {
   const { threadId } = await params;
+  if (!UUID_RE.test(threadId)) return new Response('thread not found', { status: 404 });
   const db = await getDb();
   if (!(await getThread(db, threadId))) return new Response('thread not found', { status: 404 });
+  // JSON only: a cross-site text/plain "simple request" must not be able to post as the Owner.
+  if (!(req.headers.get('content-type') ?? '').includes('application/json')) return new Response('expected application/json', { status: 415 });
   let body: string;
   try {
     body = String(((await req.json()) as { body?: unknown }).body ?? '');

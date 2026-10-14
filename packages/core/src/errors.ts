@@ -25,3 +25,7 @@ export class PublishBlockedError extends Error {
 export class NotFoundError extends Error {
   override readonly name = 'NotFoundError';
 }
+/** The actor isn't allowed to make this change (e.g. an agent raising caps or autonomy). */
+export class ForbiddenError extends Error {
+  override readonly name = 'ForbiddenError';
+}

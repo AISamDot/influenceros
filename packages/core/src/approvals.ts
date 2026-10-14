@@ -1,71 +1,74 @@
 import { type Db, json } from '@ios/db';
 import { audit } from './audit';
-import { creditPeriod } from './governor';
+import { capFor, creditPeriod, type Unit } from './governor';
 import { ApprovalError, NotFoundError } from './errors';
-import { transition } from './lifecycle';
+import { canTransition, transition } from './lifecycle';
 import { notify } from './notifications';
+import {
+  approvalPolicy,
+  isOwnerOnly,
+  latestPostGate,
+  makeExplicit,
+  OWNER_ONLY_KINDS,
+  payloadHash,
+  postWindowAllowed,
+} from './policy';
 import { getSettings } from './settings';
 import {
   type Actor,
   actorRef,
   type ApprovalKind,
-  type ApprovalMode,
   type ApprovalRow,
   type Autonomy,
   type GateVerdict,
   type PersonaRow,
+  type PersonaState,
   type StudioSettings,
   SYSTEM,
 } from './types';
 
 /**
- * Approval engine (PRD §3.7).
- * - Owner-only kinds (kill/retire, spend above caps, plan upgrades, disclosure/legal text): explicit Owner
- *   approval, no timer, never auto-approved. Agents can only propose. The database enforces this too.
- * - Cards (persona launch, product v1): auto-approve after N hours (default 24) unless the studio switched it off.
- * - Posts: L0 = explicit; L1 = green auto after the veto window, amber explicit; L2 = green+amber after the veto
- *   window. Red never publishes.
+ * Approval engine (PRD §3.7). The policy (which kinds are Owner-only, card timers, post autonomy) lives in
+ * policy.ts; this module proposes, decides, executes and sweeps.
  */
-export const OWNER_ONLY_KINDS: readonly ApprovalKind[] = [
-  'persona_kill',
-  'persona_retire',
-  'spend_over_cap',
-  'plan_upgrade',
-  'disclosure_change',
-  'legal_text_change',
-];
-export const CARD_KINDS: readonly ApprovalKind[] = ['persona_launch', 'product_v1'];
 
-export const isOwnerOnly = (k: ApprovalKind) => OWNER_ONLY_KINDS.includes(k);
+/** The lifecycle state each lifecycle approval moves its persona into. */
+const LIFECYCLE_TARGET: Partial<Record<ApprovalKind, PersonaState>> = {
+  persona_kill: 'KILLED',
+  persona_retire: 'RETIRED',
+  persona_launch: 'SETUP',
+};
 
-export interface PolicyContext {
-  autonomy?: Autonomy;
-  gate?: GateVerdict;
-}
+/** Units a spend_over_cap grant can raise (the capped ones). */
+const GRANT_UNITS: readonly Unit[] = ['llm_usd', 'hf_credits'];
 
-export function approvalPolicy(
-  kind: ApprovalKind,
-  settings: StudioSettings,
-  ctx: PolicyContext = {},
-): { mode: ApprovalMode; windowMs: number | null } {
-  if (isOwnerOnly(kind)) return { mode: 'explicit', windowMs: null };
-  if (CARD_KINDS.includes(kind)) {
-    return settings.approvals.auto_approve_cards
-      ? { mode: 'auto_after', windowMs: settings.approvals.auto_approve_hours * 3_600_000 }
-      : { mode: 'explicit', windowMs: null };
+const nextPeriod = (now: Date) => creditPeriod(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)));
+
+/**
+ * Checks and normalises what an Owner-only card will execute, so the card shows exactly what runs:
+ * spend grants need a capped unit, a finite positive amount no larger than one month of the studio cap, and the
+ * current or next period; disclosure changes need non-empty text.
+ */
+function validatePayload(kind: ApprovalKind, payload: Record<string, unknown>, settings: StudioSettings, now: Date): Record<string, unknown> {
+  if (kind === 'spend_over_cap') {
+    const unit = String(payload.unit ?? 'llm_usd') as Unit;
+    if (!GRANT_UNITS.includes(unit)) throw new ApprovalError(`spend_over_cap: unit must be one of ${GRANT_UNITS.join(', ')}`);
+    const amount = Number(payload.amount);
+    if (!Number.isFinite(amount) || amount <= 0) throw new ApprovalError('spend_over_cap needs a finite, positive amount');
+    const cap = capFor(unit, settings.caps) ?? 0;
+    if (amount > cap) throw new ApprovalError(`spend_over_cap: ${amount} ${unit} is more than a full month of the studio cap (${cap})`);
+    const period = payload.period === undefined ? creditPeriod(now) : String(payload.period);
+    if (period !== creditPeriod(now) && period !== nextPeriod(now)) {
+      throw new ApprovalError(`spend_over_cap: period must be ${creditPeriod(now)} or ${nextPeriod(now)}`);
+    }
+    return { ...payload, unit, amount, period };
   }
-  // post
-  const gate = ctx.gate ?? 'green';
-  if (gate === 'red') throw new ApprovalError('Gate red: the post is blocked and can never be queued for publishing');
-  const veto = { mode: 'veto_window' as const, windowMs: settings.approvals.post_veto_window_minutes * 60_000 };
-  switch (ctx.autonomy ?? 'L0') {
-    case 'L0':
-      return { mode: 'explicit', windowMs: null };
-    case 'L1':
-      return gate === 'green' ? veto : { mode: 'explicit', windowMs: null };
-    case 'L2':
-      return veto;
+  if (kind === 'disclosure_change') {
+    const text = typeof payload.text === 'string' ? payload.text.trim() : '';
+    if (!text) throw new ApprovalError('disclosure_change needs non-empty text');
+    return { ...payload, text };
   }
+  return payload;
 }
 
 export interface ProposeInput {
@@ -78,7 +81,10 @@ export interface ProposeInput {
   subjectType?: string;
   subjectId?: string;
   proposedBy: Actor;
-  /** Post approvals only. */
+  /**
+   * Post approvals only: the verdict the proposer saw. The stored gate_result decides; if this disagrees with it
+   * the proposal is refused. A post with no stored verdict is never auto-published.
+   */
   gate?: GateVerdict;
   now?: Date;
 }
@@ -86,13 +92,44 @@ export interface ProposeInput {
 export async function propose(db: Db, input: ProposeInput): Promise<ApprovalRow> {
   return db.transaction(async (tx) => {
     const settings = await getSettings(tx, input.studioId);
-    let autonomy: Autonomy | undefined;
-    if (input.personaId) {
-      autonomy = (await tx.one<{ autonomy: Autonomy }>('SELECT autonomy FROM persona WHERE id = $1', [input.personaId]))
-        .autonomy;
-    }
-    const policy = approvalPolicy(input.kind, settings, { autonomy, gate: input.gate });
     const now = input.now ?? new Date();
+    let persona: Pick<PersonaRow, 'id' | 'name' | 'state' | 'autonomy'> | null = null;
+    if (input.personaId) {
+      persona = await tx.maybeOne('SELECT id, name, state, autonomy FROM persona WHERE id = $1', [input.personaId]);
+      if (!persona) throw new NotFoundError(`persona ${input.personaId} not found`);
+    }
+
+    // Lifecycle cards must be executable when the Owner (or the timer) approves them.
+    const target = LIFECYCLE_TARGET[input.kind];
+    if (target) {
+      if (!persona) throw new ApprovalError(`${input.kind} needs a persona`);
+      if (!canTransition(persona.state, target)) {
+        throw new ApprovalError(`${persona.name} is ${persona.state}: ${persona.state} → ${target} is not a valid transition`);
+      }
+    }
+
+    const payload = validatePayload(input.kind, input.payload ?? {}, settings, now);
+
+    // Posts: the approval is bound to one post of this persona, and the Gate verdict comes from the stored
+    // gate_result, never from the caller.
+    let gate: GateVerdict | undefined;
+    if (input.kind === 'post') {
+      if (!persona) throw new ApprovalError('a post approval needs a persona');
+      if (input.subjectType !== 'post' || !input.subjectId) throw new ApprovalError('a post approval needs subjectType "post" and the post id');
+      const post = await tx.maybeOne<{ persona_id: string; status: string }>('SELECT persona_id, status FROM post WHERE id = $1 FOR UPDATE', [input.subjectId]);
+      if (!post) throw new NotFoundError(`post ${input.subjectId} not found`);
+      if (post.persona_id !== persona.id) throw new ApprovalError('the post belongs to another persona');
+      if (post.status !== 'draft' && post.status !== 'awaiting_approval') throw new ApprovalError(`the post is ${post.status}, not awaiting approval`);
+      const open = await tx.maybeOne(`SELECT 1 FROM approval WHERE kind = 'post' AND subject_id = $1 AND status = 'pending'`, [input.subjectId]);
+      if (open) throw new ApprovalError('the post already has a pending approval');
+      gate = (await latestPostGate(tx, input.subjectId))?.verdict;
+      if (input.gate && gate && input.gate !== gate) {
+        throw new ApprovalError(`Gate verdict mismatch: the proposer says ${input.gate}, the stored Gate result is ${gate}`);
+      }
+    }
+
+    const autonomy: Autonomy | undefined = persona?.autonomy;
+    const policy = approvalPolicy(input.kind, settings, { autonomy, gate });
     const autoAt = policy.windowMs === null ? null : new Date(now.getTime() + policy.windowMs);
     const row = await tx.one<ApprovalRow>(
       `INSERT INTO approval (studio_id, persona_id, kind, mode, title, summary, payload, subject_type, subject_id,
@@ -105,7 +142,7 @@ export async function propose(db: Db, input: ProposeInput): Promise<ApprovalRow>
         policy.mode,
         input.title,
         input.summary ?? null,
-        json(input.payload ?? {}),
+        json(payload),
         input.subjectType ?? null,
         input.subjectId ?? null,
         actorRef(input.proposedBy),
@@ -113,6 +150,9 @@ export async function propose(db: Db, input: ProposeInput): Promise<ApprovalRow>
         now,
       ],
     );
+    if (input.kind === 'post') {
+      await tx.query(`UPDATE post SET status = 'awaiting_approval', approval_id = $2, updated_at = now() WHERE id = $1`, [input.subjectId, row.id]);
+    }
     await audit(tx, {
       studioId: input.studioId,
       personaId: input.personaId,
@@ -120,7 +160,7 @@ export async function propose(db: Db, input: ProposeInput): Promise<ApprovalRow>
       action: 'approval.proposed',
       entityType: 'approval',
       entityId: row.id,
-      data: { kind: row.kind, mode: row.mode, auto_approve_at: autoAt?.toISOString() ?? null },
+      data: { kind: row.kind, mode: row.mode, auto_approve_at: autoAt?.toISOString() ?? null, gate: gate ?? null },
     });
     if (input.kind !== 'post' || policy.mode === 'explicit') {
       await notify(tx, {
@@ -199,14 +239,20 @@ async function execute(tx: Db, a: ApprovalRow, actor: Actor): Promise<unknown> {
       return { product: a.subject_id, status: 'approved' };
     }
     case 'post': {
-      if (a.subject_id) await tx.query(`UPDATE post SET status = 'scheduled', updated_at = now() WHERE id = $1`, [a.subject_id]);
+      if (a.subject_type !== 'post' || !a.subject_id || !a.persona_id) throw new ApprovalError('post approval without a post');
+      const rows = await tx.query(
+        `UPDATE post SET status = 'scheduled', approval_id = $3, updated_at = now()
+          WHERE id = $1 AND persona_id = $2 AND status = 'awaiting_approval' RETURNING id`,
+        [a.subject_id, a.persona_id, a.id],
+      );
+      if (!rows.length) throw new ApprovalError('the post is no longer awaiting approval');
       return { post: a.subject_id, status: 'scheduled' };
     }
     case 'spend_over_cap': {
       // A grant raises headroom for the month: available = cap + grants − debits.
       const unit = String(a.payload.unit ?? 'llm_usd');
       const amount = Number(a.payload.amount ?? 0);
-      if (!(amount > 0)) throw new ApprovalError('spend_over_cap needs a positive amount');
+      if (!Number.isFinite(amount) || amount <= 0) throw new ApprovalError('spend_over_cap needs a finite, positive amount');
       await tx.query(
         `INSERT INTO credit_ledger (studio_id, persona_id, unit, entry_type, amount, period, operation, ref_type, ref_id)
          VALUES ($1, $2, $3, 'grant', $4, $5, 'owner_grant', 'approval', $6)`,
@@ -232,7 +278,7 @@ async function execute(tx: Db, a: ApprovalRow, actor: Actor): Promise<unknown> {
 
 async function onReject(tx: Db, a: ApprovalRow): Promise<void> {
   if (a.kind === 'post' && a.subject_id) {
-    await tx.query(`UPDATE post SET status = 'vetoed', updated_at = now() WHERE id = $1`, [a.subject_id]);
+    await tx.query(`UPDATE post SET status = 'vetoed', updated_at = now() WHERE id = $1 AND status = 'awaiting_approval'`, [a.subject_id]);
   }
   if (a.kind === 'product_v1' && a.subject_id) {
     await tx.query(`UPDATE product SET status = 'building' WHERE id = $1`, [a.subject_id]);
@@ -245,6 +291,8 @@ export interface DecideInput {
   decision: 'approve' | 'reject';
   actor: Actor;
   note?: string;
+  /** payloadHash() of the payload shown on the card. When given, decide refuses if the payload differs. */
+  payloadHash?: string;
   now?: Date;
 }
 
@@ -257,6 +305,9 @@ export async function decide(db: Db, input: DecideInput): Promise<ApprovalRow> {
     const a = await tx.maybeOne<ApprovalRow>('SELECT * FROM approval WHERE id = $1 FOR UPDATE', [input.approvalId]);
     if (!a) throw new NotFoundError(`approval ${input.approvalId} not found`);
     if (a.status !== 'pending') throw new ApprovalError(`approval is already ${a.status}`);
+    if (input.payloadHash !== undefined && input.payloadHash !== payloadHash(a.payload)) {
+      throw new ApprovalError('this card changed after you opened it: reload and check it again');
+    }
     const now = input.now ?? new Date();
     const status = input.decision === 'approve' ? 'approved' : 'rejected';
     const decided = await tx.one<ApprovalRow>(
@@ -316,7 +367,10 @@ export async function withdraw(db: Db, approvalId: string, actor: Actor): Promis
 
 /**
  * Auto-approves timed cards and veto-window posts whose time has come. Owner-only kinds are never touched (and
- * the database would reject it). If the studio switched auto-approve off, pending cards become explicit.
+ * the database would reject it). Before approving, the policy is re-checked against the current state: if the
+ * studio switched card auto-approve off, or a post's persona dropped to a level (or its Gate verdict changed to
+ * one) that needs the Owner, the approval becomes explicit instead. One failing approval never blocks the rest:
+ * it is audited, the Owner is notified, and it becomes explicit so it can't fail again on the next tick.
  */
 export async function sweepAutoApprovals(db: Db, opts: { now?: Date } = {}): Promise<string[]> {
   const now = opts.now ?? new Date();
@@ -328,40 +382,76 @@ export async function sweepAutoApprovals(db: Db, opts: { now?: Date } = {}): Pro
       ORDER BY auto_approve_at`,
     [now, OWNER_ONLY_KINDS],
   );
+  const actor: Actor = { type: 'system', id: 'auto-approve' };
   for (const { id } of due) {
-    await db.transaction(async (tx) => {
-      const a = await tx.maybeOne<ApprovalRow>(
-        `SELECT * FROM approval WHERE id = $1 AND status = 'pending' FOR UPDATE SKIP LOCKED`,
-        [id],
-      );
-      if (!a || isOwnerOnly(a.kind) || a.auto_approve_at === null || a.auto_approve_at > now) return;
-      if (a.mode === 'auto_after') {
+    try {
+      const done = await db.transaction(async (tx) => {
+        const a = await tx.maybeOne<ApprovalRow>(
+          `SELECT * FROM approval WHERE id = $1 AND status = 'pending' FOR UPDATE SKIP LOCKED`,
+          [id],
+        );
+        if (!a || isOwnerOnly(a.kind) || a.auto_approve_at === null || a.auto_approve_at > now) return false;
         const settings = await getSettings(tx, a.studio_id);
-        if (!settings.approvals.auto_approve_cards) {
-          await tx.query(`UPDATE approval SET mode = 'explicit', auto_approve_at = NULL WHERE id = $1`, [a.id]);
-          await audit(tx, { studioId: a.studio_id, personaId: a.persona_id, actor: SYSTEM, action: 'approval.auto_disabled', entityType: 'approval', entityId: a.id });
-          return;
+        if (a.mode === 'auto_after' && !settings.approvals.auto_approve_cards) {
+          await makeExplicit(tx, a, SYSTEM, 'approval.auto_disabled', {});
+          return false;
         }
-      }
-      const decided = await tx.one<ApprovalRow>(
-        `UPDATE approval SET status = 'auto_approved', decided_by = 'system:auto-approve', decided_at = $2 WHERE id = $1 RETURNING *`,
-        [a.id, now],
-      );
-      const actor: Actor = { type: 'system', id: 'auto-approve' };
-      await audit(tx, {
-        studioId: a.studio_id,
-        personaId: a.persona_id,
-        actor,
-        action: 'approval.auto_approved',
-        entityType: 'approval',
-        entityId: a.id,
-        data: { kind: a.kind, mode: a.mode },
+        if (a.kind === 'post') {
+          // Re-check against the persona's autonomy and the Gate verdict as they are now, not as proposed.
+          const p = a.persona_id
+            ? await tx.maybeOne<{ autonomy: Autonomy }>('SELECT autonomy FROM persona WHERE id = $1 FOR SHARE', [a.persona_id])
+            : null;
+          const gate = a.subject_id ? ((await latestPostGate(tx, a.subject_id))?.verdict ?? null) : null;
+          if (!p || !postWindowAllowed(settings, p.autonomy, gate)) {
+            await makeExplicit(tx, a, SYSTEM, 'approval.window_revoked', { autonomy: p?.autonomy ?? null, gate });
+            return false;
+          }
+        }
+        const decided = await tx.one<ApprovalRow>(
+          `UPDATE approval SET status = 'auto_approved', decided_by = 'system:auto-approve', decided_at = $2 WHERE id = $1 RETURNING *`,
+          [a.id, now],
+        );
+        await audit(tx, {
+          studioId: a.studio_id,
+          personaId: a.persona_id,
+          actor,
+          action: 'approval.auto_approved',
+          entityType: 'approval',
+          entityId: a.id,
+          data: { kind: a.kind, mode: a.mode },
+        });
+        await markExecuted(tx, decided, await execute(tx, decided, actor), actor);
+        return true;
       });
-      await markExecuted(tx, decided, await execute(tx, decided, actor), actor);
-      approved.push(a.id);
-    });
+      if (done) approved.push(id);
+    } catch (err) {
+      await quarantine(db, id, err);
+    }
   }
   return approved;
+}
+
+/** A timed approval whose execution failed: make it explicit, audit why, and tell the Owner. */
+async function quarantine(db: Db, id: string, err: unknown): Promise<void> {
+  const message = err instanceof Error ? err.message : String(err);
+  try {
+    await db.transaction(async (tx) => {
+      const a = await tx.maybeOne<ApprovalRow>(`SELECT * FROM approval WHERE id = $1 AND status = 'pending' FOR UPDATE`, [id]);
+      if (!a) return;
+      await makeExplicit(tx, a, SYSTEM, 'approval.auto_failed', { error: message });
+      await notify(tx, {
+        studioId: a.studio_id,
+        personaId: a.persona_id,
+        kind: 'approval',
+        severity: 'warn',
+        title: `Couldn't auto-approve: ${a.title}`,
+        body: `${message}. It now waits for your decision.`,
+        link: '/approvals',
+      });
+    });
+  } catch (inner) {
+    console.error(`[approvals] could not quarantine approval ${id}:`, inner, 'original error:', err);
+  }
 }
 
 export async function listPendingApprovals(db: Db, studioId: string): Promise<Array<ApprovalRow & { persona_name: string | null; persona_slug: string | null; portrait_url: string | null }>> {

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  ApprovalError,
   ApprovalRequiredError,
   canTransition,
   decide,
@@ -12,6 +13,7 @@ import {
   STUDIO_MANAGER,
   transition,
   TRANSITIONS,
+  updateSettings,
 } from '../src';
 import { type Ctx, count, makePersona, setup } from './helpers';
 
@@ -41,12 +43,12 @@ describe('persona lifecycle state machine', () => {
   });
 
   it('runs a valid path and logs every transition in persona_state_log and audit_log', async () => {
-    const id = await makePersona(ctx, { state: 'PROPOSED', autonomy: 'L1' });
+    const id = await makePersona(ctx, { state: 'PROPOSED', autonomy: 'L0' });
     const launch = await propose(ctx.db, { studioId: ctx.studioId, personaId: id, kind: 'persona_launch', title: 'Launch', proposedBy: STUDIO_MANAGER });
     await decide(ctx.db, { approvalId: launch.id, decision: 'approve', actor: OWNER });
     const testing = await transition(ctx.db, { personaId: id, to: 'TESTING', actor: STUDIO_MANAGER, reason: 'accounts ready' });
     expect(testing.state).toBe('TESTING');
-    expect(testing.autonomy).toBe('L0'); // first days of every persona are supervised
+    expect(testing.autonomy).toBe('L1'); // the studio default (posts default to L1), not a permanent L0
     expect(testing.launched_at).not.toBeNull();
     await transition(ctx.db, { personaId: id, to: 'MONETISING', actor: STUDIO_MANAGER });
     await transition(ctx.db, { personaId: id, to: 'SCALING', actor: STUDIO_MANAGER });
@@ -102,5 +104,42 @@ describe('persona lifecycle state machine', () => {
     // …but retiring a live winner needs its own Owner-approved retire approval.
     const winner = await makePersona(ctx, { state: 'MONETISING' });
     await expect(transition(ctx.db, { personaId: winner, to: 'RETIRED', actor: STUDIO_MANAGER })).rejects.toBeInstanceOf(ApprovalRequiredError);
+  });
+
+  it('going live applies the studio default autonomy, and new personas default to L1 in the schema', async () => {
+    const live = async (id: string) => {
+      const launch = await propose(ctx.db, { studioId: ctx.studioId, personaId: id, kind: 'persona_launch', title: 'Launch', proposedBy: STUDIO_MANAGER });
+      await decide(ctx.db, { approvalId: launch.id, decision: 'approve', actor: OWNER });
+      return transition(ctx.db, { personaId: id, to: 'TESTING', actor: STUDIO_MANAGER });
+    };
+    await updateSettings(ctx.db, ctx.studioId, { default_autonomy: 'L2' }, OWNER);
+    expect((await live(await makePersona(ctx, { state: 'PROPOSED', autonomy: 'L0' }))).autonomy).toBe('L2');
+    await updateSettings(ctx.db, ctx.studioId, { default_autonomy: 'L0' }, OWNER);
+    expect((await live(await makePersona(ctx, { state: 'PROPOSED', autonomy: 'L1' }))).autonomy).toBe('L0');
+
+    const { autonomy } = await ctx.db.one<{ autonomy: string }>(
+      `INSERT INTO persona (studio_id, slug, name, niche) VALUES ($1, 'fresh', 'Fresh', 'x') RETURNING autonomy`,
+      [ctx.studioId],
+    );
+    expect(autonomy).toBe('L1');
+  });
+
+  it('refuses lifecycle proposals that could never execute (no edge from the current state)', async () => {
+    const testing = await makePersona(ctx, { state: 'TESTING' });
+    const reAngle = await makePersona(ctx, { state: 'RE_ANGLE' });
+    const proposed = await makePersona(ctx, { state: 'PROPOSED' });
+    const setup = await makePersona(ctx, { state: 'SETUP' });
+    const brand = await makePersona(ctx, { state: 'BRAND' });
+    await expect(proposeKill(ctx.db, { personaId: testing, action: 'retire', rationale: 'x', proposedBy: STUDIO_MANAGER })).rejects.toThrow(/TESTING → RETIRED/);
+    await expect(proposeKill(ctx.db, { personaId: reAngle, action: 'retire', rationale: 'x', proposedBy: STUDIO_MANAGER })).rejects.toBeInstanceOf(ApprovalError);
+    await expect(proposeKill(ctx.db, { personaId: proposed, rationale: 'x', proposedBy: STUDIO_MANAGER })).rejects.toThrow(/PROPOSED → KILLED/);
+    await expect(proposeKill(ctx.db, { personaId: brand, rationale: 'x', proposedBy: STUDIO_MANAGER })).rejects.toThrow(/BRAND → KILLED/);
+    await expect(propose(ctx.db, { studioId: ctx.studioId, personaId: setup, kind: 'persona_launch', title: 'Launch', proposedBy: STUDIO_MANAGER })).rejects.toThrow(/SETUP → SETUP/);
+    expect(await count(ctx.db, 'SELECT 1 FROM approval')).toBe(0);
+    expect(await count(ctx.db, 'SELECT 1 FROM kill_scale_proposal')).toBe(0);
+
+    // Valid ones still go through: a kill in TESTING, a retire of a live winner, a retire after a kill.
+    await proposeKill(ctx.db, { personaId: testing, rationale: 'x', proposedBy: STUDIO_MANAGER });
+    await proposeKill(ctx.db, { personaId: brand, action: 'retire', rationale: 'x', proposedBy: STUDIO_MANAGER });
   });
 });

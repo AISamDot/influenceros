@@ -177,7 +177,7 @@ export default async function PersonaPage({ params, searchParams }: Props) {
                               <span className="absolute left-1.5 top-1.5 grid size-6 place-items-center rounded-full bg-black/45 text-white backdrop-blur-sm" title={FORMAT_LABEL[s.format]}>
                                 <FormatIcon format={s.format} size={13} />
                               </span>
-                              {s.status === 'live' ? <span className="absolute right-1.5 top-1.5 rounded-full bg-ok px-1.5 py-0.5 text-[9.5px] font-bold uppercase text-white">Live</span> : null}
+                              {s.status === 'live' ? <span className="absolute right-1.5 top-1.5 rounded-full bg-ok px-1.5 py-0.5 text-[9.5px] font-bold uppercase text-on-ok">Live</span> : null}
                             </div>
                             <div className="space-y-1 p-1.5">
                               <div className="flex items-center justify-between gap-1">

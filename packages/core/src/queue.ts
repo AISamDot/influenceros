@@ -82,35 +82,51 @@ export async function claimNext(db: Db, opts: ClaimOptions): Promise<JobRow | nu
   );
 }
 
-export async function completeJob(db: Db, jobId: string, result?: unknown): Promise<void> {
-  await db.query(
-    `UPDATE job SET status = 'succeeded', result = $2::jsonb, locked_by = NULL, finished_at = now(), updated_at = now()
-      WHERE id = $1 AND status = 'running'`,
-    [jobId, json(result ?? null)],
+/**
+ * Every state change after a claim is scoped to the lease (status running, locked_by this worker). If the reaper
+ * took the job back and another worker re-claimed it, the late result is discarded ('lost') instead of
+ * overwriting the new run.
+ */
+type Lease = Pick<JobRow, 'id' | 'locked_by'>;
+const LEASE = `id = $1 AND status = 'running' AND locked_by = $2`;
+
+/** Marks a claimed job done. Returns false when the lease was lost (the result is discarded). */
+export async function completeJob(db: Db, job: Lease, result?: unknown): Promise<boolean> {
+  const rows = await db.query(
+    `UPDATE job SET status = 'succeeded', result = $3::jsonb, locked_by = NULL, finished_at = now(), updated_at = now()
+      WHERE ${LEASE} RETURNING id`,
+    [job.id, job.locked_by, json(result ?? null)],
   );
+  return rows.length > 0;
+}
+
+/** Long jobs (renders) call this so the reaper only takes jobs whose worker really died. */
+export async function heartbeat(db: Db, job: Lease, now: Date = new Date()): Promise<boolean> {
+  const rows = await db.query(`UPDATE job SET locked_at = $3, updated_at = $3 WHERE ${LEASE} RETURNING id`, [job.id, job.locked_by, now]);
+  return rows.length > 0;
 }
 
 export async function failJob(
   db: Db,
-  job: Pick<JobRow, 'id' | 'attempts' | 'max_attempts'>,
+  job: Pick<JobRow, 'id' | 'attempts' | 'max_attempts' | 'locked_by'>,
   error: unknown,
   opts: { now?: Date; policy?: RetryPolicy; random?: () => number } = {},
-): Promise<'retry' | 'dead'> {
+): Promise<'retry' | 'dead' | 'lost'> {
   const now = opts.now ?? new Date();
   const message = error instanceof Error ? error.message : String(error);
   if (job.attempts >= job.max_attempts) {
-    await db.query(
-      `UPDATE job SET status = 'dead', last_error = $2, locked_by = NULL, finished_at = $3, updated_at = $3 WHERE id = $1`,
-      [job.id, message, now],
+    const rows = await db.query(
+      `UPDATE job SET status = 'dead', last_error = $3, locked_by = NULL, finished_at = $4, updated_at = $4 WHERE ${LEASE} RETURNING id`,
+      [job.id, job.locked_by, message, now],
     );
-    return 'dead';
+    return rows.length ? 'dead' : 'lost';
   }
   const runAt = new Date(now.getTime() + retryDelayMs(job.attempts, opts.policy, opts.random));
-  await db.query(
-    `UPDATE job SET status = 'queued', last_error = $2, run_at = $3, locked_by = NULL, locked_at = NULL, updated_at = $4 WHERE id = $1`,
-    [job.id, message, runAt, now],
+  const rows = await db.query(
+    `UPDATE job SET status = 'queued', last_error = $3, run_at = $4, locked_by = NULL, locked_at = NULL, updated_at = $5 WHERE ${LEASE} RETURNING id`,
+    [job.id, job.locked_by, message, runAt, now],
   );
-  return 'retry';
+  return rows.length ? 'retry' : 'lost';
 }
 
 /** Thrown by a handler to postpone a job without spending an attempt (e.g. a kill switch is on). */
@@ -124,13 +140,23 @@ export class DeferJob extends Error {
   }
 }
 
-/** Running jobs whose worker died (lock older than `timeoutMs`) go back to the queue. */
-export async function reapStale(db: Db, opts: { timeoutMs: number; now?: Date }): Promise<number> {
+/**
+ * Running jobs whose worker died (lock older than `timeoutMs`) go back to the queue with the same backoff as a
+ * failure, or to `dead` once they have used all their attempts (a job that crashes its worker can't loop forever).
+ * Returns how many jobs were reaped.
+ */
+export async function reapStale(db: Db, opts: { timeoutMs: number; now?: Date; policy?: RetryPolicy }): Promise<number> {
   const now = opts.now ?? new Date();
+  const policy = opts.policy ?? DEFAULT_RETRY;
   const rows = await db.query(
-    `UPDATE job SET status = 'queued', locked_by = NULL, locked_at = NULL, last_error = 'lock expired', updated_at = $1
+    `UPDATE job SET
+            status = CASE WHEN attempts >= max_attempts THEN 'dead' ELSE 'queued' END,
+            run_at = CASE WHEN attempts >= max_attempts THEN run_at
+                          ELSE $1::timestamptz + make_interval(secs => LEAST($3::float8, $4::float8 * power(2, LEAST(GREATEST(attempts, 1) - 1, 30)))) END,
+            finished_at = CASE WHEN attempts >= max_attempts THEN $1 ELSE finished_at END,
+            locked_by = NULL, locked_at = NULL, last_error = 'lock expired (worker died or timed out)', updated_at = $1
       WHERE status = 'running' AND locked_at < $2 RETURNING id`,
-    [now, new Date(now.getTime() - opts.timeoutMs)],
+    [now, new Date(now.getTime() - opts.timeoutMs), policy.capMs / 1000, policy.baseMs / 1000],
   );
   return rows.length;
 }
@@ -142,23 +168,28 @@ export async function runOnce(
   db: Db,
   handlers: Readonly<Record<string, JobHandler>>,
   opts: ClaimOptions & { policy?: RetryPolicy; random?: () => number },
-): Promise<{ job: JobRow; outcome: 'succeeded' | 'retry' | 'dead' | 'deferred' } | null> {
+): Promise<{ job: JobRow; outcome: 'succeeded' | 'retry' | 'dead' | 'deferred' | 'lost' } | null> {
   const job = await claimNext(db, { ...opts, kinds: opts.kinds ?? Object.keys(handlers) });
   if (!job) return null;
   const handler = handlers[job.kind];
+  let result: unknown;
   try {
     if (!handler) throw new Error(`no handler for job kind ${job.kind}`);
-    await completeJob(db, job.id, await handler(job));
-    return { job, outcome: 'succeeded' };
+    result = await handler(job);
   } catch (err) {
     if (err instanceof DeferJob) {
       const now = opts.now ?? new Date();
-      await db.query(
-        `UPDATE job SET status = 'queued', attempts = attempts - 1, last_error = $2, run_at = $3, locked_by = NULL, locked_at = NULL, updated_at = now() WHERE id = $1`,
-        [job.id, err.message, new Date(now.getTime() + err.delayMs)],
+      const rows = await db.query(
+        `UPDATE job SET status = 'queued', attempts = attempts - 1, last_error = $3, run_at = $4, locked_by = NULL, locked_at = NULL, updated_at = now() WHERE ${LEASE} RETURNING id`,
+        [job.id, job.locked_by, err.message, new Date(now.getTime() + err.delayMs)],
       );
-      return { job, outcome: 'deferred' };
+      return { job, outcome: rows.length ? 'deferred' : 'lost' };
     }
+    return { job, outcome: await failJob(db, job, err, opts) };
+  }
+  try {
+    return { job, outcome: (await completeJob(db, job, result)) ? 'succeeded' : 'lost' };
+  } catch (err) {
     return { job, outcome: await failJob(db, job, err, opts) };
   }
 }

@@ -10,7 +10,7 @@ Node 22 and pnpm 10 (`source ~/.nvm/nvm.sh && nvm use 22.23.3`).
 
 ```
 pnpm install
-pnpm dev        # migrates + seeds local PGlite if empty, then serves http://localhost:3100
+pnpm dev        # migrates + seeds local PGlite if empty, then serves http://127.0.0.1:3100 (loopback only)
 pnpm test       # Vitest
 pnpm build      # typecheck + Next.js build
 pnpm db:reset   # wipe and reseed local PGlite (stop `pnpm dev` first)

@@ -8,7 +8,9 @@ import { type Caps, type PersonaRow, SYSTEM } from './types';
 /**
  * Cost governor and credit ledger (PRD §8.4, §8.5, FR-5.3). Monthly caps per persona and per studio for LLM USD
  * and Higgsfield credits. Alert at 80%, refuse at 100%. Every metered provider call is debited.
- * Headroom = cap + Owner-approved grants (spend_over_cap) − debits.
+ * Headroom = cap + Owner-approved grants (spend_over_cap) − debits − open holds.
+ * A paid call first reserves its estimate as a hold (under the same lock as debits, refused past a cap), then the
+ * hold is settled to the actual cost, or released if the call fails. Concurrent calls can't all squeeze in.
  */
 export type Unit = 'llm_usd' | 'hf_credits' | 'media_usd';
 export const UNITS: readonly Unit[] = ['llm_usd', 'hf_credits', 'media_usd'];
@@ -40,7 +42,7 @@ export interface BudgetStatus {
 
 async function sums(db: Db, where: string, params: unknown[]): Promise<{ used: number; grants: number }> {
   const r = await db.one<{ used: number; grants: number }>(
-    `SELECT COALESCE(SUM(amount) FILTER (WHERE entry_type = 'debit'), 0) AS used,
+    `SELECT COALESCE(SUM(amount) FILTER (WHERE entry_type IN ('debit','hold')), 0) AS used,
             COALESCE(SUM(amount) FILTER (WHERE entry_type = 'grant'), 0) AS grants
        FROM credit_ledger WHERE ${where}`,
     params,
@@ -59,7 +61,7 @@ export async function budgetStatus(
 ): Promise<BudgetStatus> {
   const settings = await getSettings(db, input.studioId);
   const period = creditPeriod(input.now ?? new Date());
-  const st = await sums(db, `studio_id = $1 AND period = $2 AND unit = $3 AND (entry_type = 'debit' OR persona_id IS NULL)`, [
+  const st = await sums(db, `studio_id = $1 AND period = $2 AND unit = $3 AND (entry_type IN ('debit','hold') OR persona_id IS NULL)`, [
     input.studioId,
     period,
     input.unit,
@@ -116,12 +118,19 @@ export interface DebitInput {
  * threshold writes an audit entry and a notification once (on the debit that crosses it).
  */
 export async function debit(db: Db, input: DebitInput): Promise<BudgetStatus> {
+  return (await writeLedger(db, input, 'debit')).status;
+}
+
+const ledgerLock = (tx: Db, studioId: string, unit: Unit, period: string) =>
+  tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`${studioId}:${unit}:${period}`]);
+
+async function writeLedger(db: Db, input: DebitInput, entryType: 'debit' | 'hold'): Promise<{ status: BudgetStatus; id: string }> {
   const now = input.now ?? new Date();
   const period = creditPeriod(now);
   try {
     return await db.transaction(async (tx) => {
-      // Serialise debits per studio/unit/month so two workers can't both squeeze under the cap.
-      await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`${input.studioId}:${input.unit}:${period}`]);
+      // Serialise debits and holds per studio/unit/month so two workers can't both squeeze under the cap.
+      await ledgerLock(tx, input.studioId, input.unit, period);
       const before = await checkBudget(tx, { ...input, now });
       if (input.enforce !== false && !before.allowed) {
         const s = before.status.persona && before.status.persona.limit !== null && before.status.persona.used + input.amount > before.status.persona.limit ? before.status.persona : before.status.studio;
@@ -133,9 +142,9 @@ export async function debit(db: Db, input: DebitInput): Promise<BudgetStatus> {
           requested: input.amount,
         });
       }
-      await tx.query(
+      const row = await tx.one<{ id: string }>(
         `INSERT INTO credit_ledger (studio_id, persona_id, unit, entry_type, amount, period, provider, operation, ref_type, ref_id, meta, created_at)
-         VALUES ($1, $2, $3, 'debit', $4, $5, $6, $7, $8, $9, $10::jsonb, $11)`,
+         VALUES ($1, $2, $3, $12, $4, $5, $6, $7, $8, $9, $10::jsonb, $11) RETURNING id`,
         [
           input.studioId,
           input.personaId ?? null,
@@ -148,9 +157,12 @@ export async function debit(db: Db, input: DebitInput): Promise<BudgetStatus> {
           input.refId ?? null,
           json(input.meta ?? {}),
           now,
+          entryType,
         ],
       );
       const after = await budgetStatus(tx, { ...input, now });
+      // Alerts fire on real spend only; a hold is settled into a debit (which alerts) or released.
+      if (entryType === 'hold') return { status: after, id: row.id };
       const settings = await getSettings(tx, input.studioId);
       for (const [name, b, a] of [
         ['persona', before.status.persona, after.persona],
@@ -185,7 +197,7 @@ export async function debit(db: Db, input: DebitInput): Promise<BudgetStatus> {
           });
         }
       }
-      return after;
+      return { status: after, id: row.id };
     });
   } catch (err) {
     if (err instanceof BudgetExceededError) {
@@ -227,4 +239,30 @@ export async function assertBudget(
     cap: s.limit ?? 0,
     requested: input.amount,
   });
+}
+
+/** Reserves `amount` before a paid call (refused past a cap, like an enforced debit). Returns the hold id. */
+export async function reserve(db: Db, input: Omit<DebitInput, 'enforce'>): Promise<string> {
+  return (await writeLedger(db, { ...input, enforce: true }, 'hold')).id;
+}
+
+/** Replaces a hold with the actual cost (recorded even past the cap: it was incurred). */
+export async function settleHold(db: Db, holdId: string, input: Omit<DebitInput, 'enforce' | 'now'>): Promise<BudgetStatus> {
+  return db.transaction(async (tx) => {
+    const hold = await tx.maybeOne<{ period: string; created_at: Date }>(
+      `SELECT period, created_at FROM credit_ledger WHERE id = $1 AND entry_type = 'hold'`,
+      [holdId],
+    );
+    if (hold) {
+      await ledgerLock(tx, input.studioId, input.unit, hold.period);
+      await tx.query(`DELETE FROM credit_ledger WHERE id = $1 AND entry_type = 'hold'`, [holdId]);
+    }
+    // Same month as the reservation, so a call that straddles midnight on the 1st debits the month it reserved.
+    return debit(tx, { ...input, now: hold ? new Date(hold.created_at) : undefined, enforce: false });
+  });
+}
+
+/** Drops a hold (the paid call failed, so nothing was spent). */
+export async function releaseHold(db: Db, holdId: string): Promise<void> {
+  await db.query(`DELETE FROM credit_ledger WHERE id = $1 AND entry_type = 'hold'`, [holdId]);
 }

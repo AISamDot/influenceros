@@ -10,7 +10,7 @@ const STATE_STYLE: Record<string, string> = {
   SCALING: 'bg-[#efe8fd] text-[#6b3fd1] dark:bg-[#2a1f4a] dark:text-[#bca4ff]',
   BRAND: 'bg-[#fbf0d9] text-[#8a5a00] dark:bg-[#33270d] dark:text-[#f3c86b]',
   KILLED: 'bg-danger-soft text-danger',
-  RETIRED: 'bg-surface-3 text-faint',
+  RETIRED: 'bg-surface-3 text-muted',
 };
 
 export function LifecycleBadge({ state }: { state: string }) {
@@ -38,7 +38,7 @@ export function AutonomyBadge({ level }: { level: string }) {
 
 export function KillFlag() {
   return (
-    <span className="pill bg-danger text-white shadow-[0_0_0_3px_var(--danger-soft)]">
+    <span className="pill bg-danger text-on-danger shadow-[0_0_0_3px_var(--danger-soft)]">
       <IconFlag size={12} strokeWidth={2.4} />
       Kill proposed
     </span>

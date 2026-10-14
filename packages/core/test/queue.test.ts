@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { claimNext, completeJob, DeferJob, enqueue, type JobRow, reapStale, retryDelayMs, runOnce } from '../src';
+import { claimNext, completeJob, DeferJob, enqueue, failJob, heartbeat, type JobRow, reapStale, retryDelayMs, runOnce } from '../src';
 import { type Ctx, makePersona, setup } from './helpers';
 
 let ctx: Ctx;
@@ -20,7 +20,7 @@ describe('Postgres job queue', () => {
     expect(new Set(got.map((j) => j.id)).size).toBe(5);
     expect(got.every((j) => j.status === 'running' && j.attempts === 1)).toBe(true);
     expect(await claimNext(ctx.db, { workerId: 'late' })).toBeNull();
-    await completeJob(ctx.db, got[0]!.id, { ok: true });
+    expect(await completeJob(ctx.db, got[0]!, { ok: true })).toBe(true);
     expect((await job(got[0]!.id)).status).toBe('succeeded');
   });
 
@@ -91,5 +91,48 @@ describe('Postgres job queue', () => {
     await claimNext(ctx.db, { workerId: 'dies', kinds: ['render'], now: new Date(now.getTime() - 20 * 60_000) });
     expect(await reapStale(ctx.db, { timeoutMs: 10 * 60_000, now })).toBe(1);
     expect((await job(k.id)).status).toBe('queued');
+  });
+
+  it("a worker that lost its lease can't overwrite the new run (reap → re-claim → complete → stale fail)", async () => {
+    const t0 = new Date('2026-10-14T10:00:00Z');
+    const j = await enqueue(ctx.db, { kind: 'render', runAt: t0 });
+    const a = (await claimNext(ctx.db, { workerId: 'A', now: t0 }))!;
+    // A is slow; the reaper takes the job back and B runs it to completion.
+    const later = new Date(t0.getTime() + 20 * 60_000);
+    expect(await reapStale(ctx.db, { timeoutMs: 15 * 60_000, now: later })).toBe(1);
+    const due = (await job(j.id)).run_at;
+    const b = (await claimNext(ctx.db, { workerId: 'B', now: due }))!;
+    expect(b.id).toBe(j.id);
+    expect(await heartbeat(ctx.db, a)).toBe(false); // A's lease is gone
+    expect(await heartbeat(ctx.db, b)).toBe(true);
+    expect(await completeJob(ctx.db, b, { by: 'B' })).toBe(true);
+
+    // A's late failure (or late success) is discarded instead of re-queueing a finished job.
+    expect(await failJob(ctx.db, a, new Error('A timed out'))).toBe('lost');
+    expect(await completeJob(ctx.db, a, { by: 'A' })).toBe(false);
+    expect(await job(j.id)).toMatchObject({ status: 'succeeded', result: { by: 'B' } });
+  });
+
+  it('the reaper backs off and dead-letters a job that keeps crashing its worker', async () => {
+    let now = new Date('2026-10-14T10:00:00Z');
+    const j = await enqueue(ctx.db, { kind: 'render', maxAttempts: 3, runAt: now });
+    const policy = { baseMs: 30_000, capMs: 3_600_000 };
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const claimed = await claimNext(ctx.db, { workerId: `crash-${attempt}`, now });
+      expect(claimed?.attempts).toBe(attempt);
+      now = new Date(now.getTime() + 20 * 60_000); // the worker died; its lock expires
+      expect(await reapStale(ctx.db, { timeoutMs: 15 * 60_000, now, policy })).toBe(1);
+      const row = await job(j.id);
+      if (attempt < 3) {
+        expect(row.status).toBe('queued');
+        // Same backoff as a failure, not an immediate re-claim.
+        expect(row.run_at.getTime() - now.getTime()).toBe(policy.baseMs * 2 ** (attempt - 1));
+        expect(await claimNext(ctx.db, { workerId: 'eager', now })).toBeNull();
+        now = row.run_at;
+      } else {
+        expect(row).toMatchObject({ status: 'dead', attempts: 3 });
+      }
+    }
+    expect(await claimNext(ctx.db, { workerId: 'w', now: new Date(now.getTime() + 24 * 3_600_000) })).toBeNull();
   });
 });

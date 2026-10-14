@@ -1,6 +1,8 @@
 import type { Db } from '@ios/db';
 import { audit } from './audit';
 import { ApprovalRequiredError, InvalidTransitionError, NotFoundError } from './errors';
+import { reconcilePostApprovals } from './policy';
+import { getSettings } from './settings';
 import { type Actor, actorRef, type ApprovalKind, type ApprovalRow, type PersonaRow, type PersonaState } from './types';
 
 /**
@@ -74,7 +76,11 @@ async function assertApproval(
   return a;
 }
 
-/** Moves a persona to a new state. Valid edges only; logged in persona_state_log and audit_log. */
+/**
+ * Moves a persona to a new state. Valid edges only; logged in persona_state_log and audit_log.
+ * Going live (SETUP → TESTING) sets the persona's autonomy to the studio default (Settings → Default autonomy,
+ * L1 out of the box: green posts auto-publish after the veto window). The Owner can change it per persona.
+ */
 export async function transition(db: Db, input: TransitionInput): Promise<PersonaRow> {
   return db.transaction(async (tx) => {
     const persona = await tx.maybeOne<PersonaRow>('SELECT * FROM persona WHERE id = $1 FOR UPDATE', [input.personaId]);
@@ -87,14 +93,18 @@ export async function transition(db: Db, input: TransitionInput): Promise<Person
     if (kinds) await assertApproval(tx, persona, input, kinds);
 
     const enteringTesting = from === 'SETUP' && input.to === 'TESTING';
+    const settings = await getSettings(tx, persona.studio_id);
     const updated = await tx.one<PersonaRow>(
       `UPDATE persona
           SET state = $2, state_changed_at = now(), updated_at = now(),
               launched_at = CASE WHEN $3 THEN COALESCE(launched_at, now()) ELSE launched_at END,
-              autonomy = CASE WHEN $3 THEN 'L0' ELSE autonomy END
+              autonomy = CASE WHEN $3 THEN $4 ELSE autonomy END
         WHERE id = $1 RETURNING *`,
-      [persona.id, input.to, enteringTesting],
+      [persona.id, input.to, enteringTesting, settings.default_autonomy],
     );
+    if (updated.autonomy !== persona.autonomy) {
+      await reconcilePostApprovals(tx, { personaId: persona.id, settings, actor: input.actor });
+    }
     await tx.query(
       `INSERT INTO persona_state_log (persona_id, from_state, to_state, actor_type, actor_id, reason, approval_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,

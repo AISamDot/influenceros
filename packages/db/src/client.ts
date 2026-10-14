@@ -34,17 +34,30 @@ export const PGLITE_EXTENSIONS = { vector };
 pg.types.setTypeParser(1700, parseNumber);
 pg.types.setTypeParser(20, parseNumber);
 
-interface PgliteLike {
+interface Queryable {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
+}
+interface PgliteLike extends Queryable {
   exec(sql: string): Promise<unknown>;
+}
+
+/**
+ * Multi-statement SQL. PGlite has `exec`; node-postgres has no `exec`, but a `query` without parameters uses the
+ * simple query protocol, which runs several statements in one call.
+ */
+function execFor(q: Queryable): (sql: string) => Promise<void> {
+  const maybeExec = (q as Partial<PgliteLike>).exec;
+  if (typeof maybeExec === 'function') return async (sql) => void (await maybeExec.call(q, sql));
+  return async (sql) => void (await q.query(sql));
 }
 
 function wrapQueryable(
   dialect: Db['dialect'],
-  q: PgliteLike,
+  q: Queryable,
   transaction: Db['transaction'],
   close: () => Promise<void>,
 ): Db {
+  const exec = execFor(q);
   const db: Db = {
     dialect,
     async query<T>(sql: string, params: readonly unknown[] = []) {
@@ -61,7 +74,7 @@ function wrapQueryable(
       return (rows[0] as T | undefined) ?? null;
     },
     async exec(sql: string) {
-      await q.exec(sql);
+      await exec(sql);
     },
     transaction,
     close,
@@ -103,12 +116,12 @@ export function createPostgres(connectionString: string): Db {
   const pool = new pg.Pool({ connectionString, max: Number(process.env.DATABASE_POOL_MAX ?? 5) });
   return wrapQueryable(
     'postgres',
-    pool as unknown as PgliteLike,
+    pool as unknown as Queryable,
     async (fn) => {
       const client = await pool.connect();
       const txDb: Db = wrapQueryable(
         'postgres',
-        client as unknown as PgliteLike,
+        client as unknown as Queryable,
         (inner) => inner(txDb),
         async () => {},
       );

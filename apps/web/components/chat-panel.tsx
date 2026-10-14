@@ -131,7 +131,7 @@ export function ChatPanel({
           rows={1}
           placeholder={placeholder}
           aria-label={`Message ${title}`}
-          className="max-h-32 min-h-[38px] flex-1 resize-none rounded-xl border border-line-strong bg-surface px-3 py-2 text-[13.5px] outline-none focus:border-accent"
+          className="max-h-32 min-h-[38px] flex-1 resize-none rounded-xl border border-line-strong bg-surface px-3 py-2 text-[16px] outline-none sm:text-[13.5px] focus:border-accent"
         />
         <button type="submit" disabled={busy || !text.trim()} className="btn btn-ink size-[38px] shrink-0 p-0 disabled:opacity-40" aria-label="Send">
           <IconSend size={16} />

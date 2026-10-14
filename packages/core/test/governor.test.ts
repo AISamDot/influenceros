@@ -69,4 +69,32 @@ describe('cost governor and credit ledger', () => {
     // The free cost probe still works.
     expect(await prov.imageVideo.costProbe({ operation: 'still' })).toEqual({ credits: 2 });
   });
+
+  it('reserves before calling, so concurrent paid calls cannot all fit in the same headroom', async () => {
+    const p = await makePersona(ctx);
+    const raw = createFakeProviders();
+    const prov = meteredProviders(ctx.db, raw, { studioId: ctx.studioId, personaId: p, agent: 'renderer' });
+    await debit(ctx.db, { studioId: ctx.studioId, personaId: p, unit: 'hf_credits', amount: 94 }); // 6 credits left
+    const results = await Promise.allSettled(
+      [1, 2, 3, 4].map(() => prov.imageVideo.imageToVideo({ imageUrl: 'a.png', prompt: 'walk', durationS: 5 })), // 6 credits each
+    );
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((r) => r.status === 'rejected' && r.reason instanceof BudgetExceededError)).toHaveLength(3);
+    expect(raw.imageVideo.callsTo('imageToVideo')).toHaveLength(1);
+    const used = (await budgetStatus(ctx.db, { studioId: ctx.studioId, personaId: p, unit: 'hf_credits' })).persona!;
+    expect(used.used).toBe(100);
+    expect(await count(ctx.db, `SELECT 1 FROM credit_ledger WHERE entry_type = 'hold'`)).toBe(0);
+  });
+
+  it('releases the hold when the paid call fails', async () => {
+    const p = await makePersona(ctx);
+    const raw = createFakeProviders();
+    raw.imageVideo.generateStill = async () => {
+      throw new Error('upstream 503');
+    };
+    const prov = meteredProviders(ctx.db, raw, { studioId: ctx.studioId, personaId: p, agent: 'renderer' });
+    await expect(prov.imageVideo.generateStill({ prompt: 'desk' })).rejects.toThrow(/503/);
+    expect((await budgetStatus(ctx.db, { studioId: ctx.studioId, personaId: p, unit: 'hf_credits' })).persona?.used).toBe(0);
+    expect(await count(ctx.db, 'SELECT 1 FROM credit_ledger')).toBe(0);
+  });
 });

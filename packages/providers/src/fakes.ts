@@ -134,9 +134,9 @@ export class FakeHiggsfield extends Recorder implements ImageVideoProvider {
       credits: higgsfieldCredits('image_to_video', req.durationS),
     };
   }
-  async talkingWithAudio(req: { imageUrl: string; audioUrl: string; resolution?: '720p' | '1080p' }): Promise<MediaResult> {
+  async talkingWithAudio(req: { imageUrl: string; audioUrl: string; resolution?: '720p' | '1080p'; durationS?: number }): Promise<MediaResult> {
     const id = this.record('talkingWithAudio', req);
-    const durationS = 30;
+    const durationS = req.durationS ?? 30;
     return {
       jobId: `hf_${id}`,
       url: `https://fake.higgsfield.local/talking/${id}.mp4`,
@@ -214,8 +214,12 @@ export class FakeZernio extends Recorder implements PublishProvider {
     this.posts.set(id, { req, status: 'scheduled' });
     return { externalId: id, status: 'scheduled' as const };
   }
+  /** idempotencyKey → externalId of the post it created. */
+  private readonly byKey = new Map<string, string>();
   async publish(req: PublishRequest) {
     this.guard(req);
+    const seen = req.idempotencyKey ? this.byKey.get(req.idempotencyKey) : undefined;
+    if (seen) return { externalId: seen, status: 'published' as const };
     if (this.failNext > 0) {
       this.failNext -= 1;
       this.record('publish:failed', req);
@@ -223,6 +227,7 @@ export class FakeZernio extends Recorder implements PublishProvider {
     }
     const id = this.record('publish', req);
     this.posts.set(id, { req, status: 'live' });
+    if (req.idempotencyKey) this.byKey.set(req.idempotencyKey, id);
     return { externalId: id, status: 'published' as const };
   }
   async verify(externalId: string) {

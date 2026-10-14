@@ -1,18 +1,20 @@
 import { activeKillSwitches, PLATFORMS, personaCaps, type PersonaRow } from '@ios/core';
 import Link from 'next/link';
+import { Flash } from '@/components/flash';
 import { IconPause, IconPlug } from '@/components/icons';
+import { SubmitButton } from '@/components/submit-button';
 import { studioContext } from '@/lib/server';
 import { savePersonaControls, saveStudioSettings } from './actions';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Settings' };
 
-function Field({ label, name, value, suffix, step = 1 }: { label: string; name: string; value: number; suffix?: string; step?: number }) {
+function Field({ label, name, value, suffix, step = 1, min = 0 }: { label: string; name: string; value: number; suffix?: string; step?: number; min?: number }) {
   return (
     <label className="block">
       <span className="text-[12px] font-medium text-muted">{label}</span>
       <div className="relative mt-1">
-        <input className="input pr-14 tabular-nums" type="number" name={name} defaultValue={value} min={0} step={step} required />
+        <input className="input pr-14 tabular-nums" type="number" name={name} defaultValue={value} min={min} step={step} required />
         {suffix ? <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-muted">{suffix}</span> : null}
       </div>
     </label>
@@ -31,7 +33,7 @@ function SwitchForm({ scope, on, personaId, platform, label }: { scope: string; 
         {label}
         <span className="text-[12px] text-muted">{on ? 'paused' : 'posting'}</span>
       </span>
-      <button className={`btn btn-sm ${on ? 'btn-ink' : ''}`}>
+      <SubmitButton className={`btn btn-sm ${on ? 'btn-ink' : ''}`}>
         {on ? (
           'Resume'
         ) : (
@@ -39,12 +41,13 @@ function SwitchForm({ scope, on, personaId, platform, label }: { scope: string; 
             <IconPause size={12} /> Pause
           </>
         )}
-      </button>
+      </SubmitButton>
     </form>
   );
 }
 
-export default async function Settings() {
+export default async function Settings({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
+  const sp = await searchParams;
   const { db, studio } = await studioContext();
   const s = studio.resolved;
   const personas = await db.query<PersonaRow>(`SELECT * FROM persona WHERE studio_id = $1 ORDER BY name`, [studio.id]);
@@ -63,6 +66,7 @@ export default async function Settings() {
           <IconPlug size={14} /> Integrations
         </Link>
       </div>
+      <Flash error={sp.error} ok={sp.ok === 'paused' ? 'Posting paused.' : sp.ok === 'resumed' ? 'Posting resumed.' : sp.ok} />
 
       <form action={saveStudioSettings} className="card space-y-6 p-5 sm:p-6">
         <div>
@@ -86,10 +90,10 @@ export default async function Settings() {
                 <span className="block text-[12px] text-muted">If you ignore the card, it approves itself after the window.</span>
               </span>
             </label>
-            <Field label="Card window" name="auto_approve_hours" value={s.approvals.auto_approve_hours} suffix="hours" />
+            <Field label="Card window" name="auto_approve_hours" value={s.approvals.auto_approve_hours} suffix="hours" min={1} />
             <Field label="Post veto window" name="post_veto_window_minutes" value={s.approvals.post_veto_window_minutes} suffix="min" />
             <label className="block">
-              <span className="text-[12px] font-medium text-muted">Default autonomy (after the L0 period)</span>
+              <span className="text-[12px] font-medium text-muted">Default autonomy for new personas</span>
               <select name="default_autonomy" defaultValue={s.default_autonomy} className="input mt-1">
                 <option value="L0">L0 · approve every post</option>
                 <option value="L1">L1 · exceptions only</option>
@@ -99,7 +103,7 @@ export default async function Settings() {
           </div>
         </div>
         <div className="flex justify-end">
-          <button className="btn btn-ink">Save studio settings</button>
+          <SubmitButton className="btn btn-ink">Save studio settings</SubmitButton>
         </div>
       </form>
 
@@ -112,6 +116,7 @@ export default async function Settings() {
             return (
               <form key={p.id} action={savePersonaControls} className="grid items-end gap-3 py-3 sm:grid-cols-[1.2fr_1fr_1fr_1fr_auto]">
                 <input type="hidden" name="persona_id" value={p.id} />
+                <input type="hidden" name="persona_name" value={p.name} />
                 <div className="flex items-center gap-2.5 self-center">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.portrait_url ?? ''} alt="" className="size-9 rounded-full object-cover" />
@@ -130,7 +135,7 @@ export default async function Settings() {
                 </label>
                 <Field label="LLM cap" name="llm_usd_month" value={caps.llm_usd_month} suffix="USD" />
                 <Field label="Credit cap" name="hf_credits_month" value={caps.hf_credits_month} suffix="cr" />
-                <button className="btn">Save</button>
+                <SubmitButton className="btn">Save</SubmitButton>
               </form>
             );
           })}

@@ -1,20 +1,20 @@
-import { reapStale, sweepAutoApprovals } from '@ios/core';
+import { tick } from '@ios/core';
 import { getDb } from '@ios/db';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * Scheduler tick (Vercel Cron or any pinger): auto-approves due 24 h cards and veto-window posts (never kill or
- * other Owner-only kinds) and requeues jobs whose worker died. Protected by CRON_SECRET when it is set.
+ * Scheduler tick (Vercel Cron, see vercel.json; locally the dev ticker in instrumentation.ts): auto-approves due
+ * 24 h cards and veto-window posts (never kill or other Owner-only kinds) and reaps jobs whose worker died.
+ * Protected by CRON_SECRET; on Vercel the secret is required.
  */
-async function tick(req: Request) {
+async function handler(req: Request) {
   const secret = process.env.CRON_SECRET;
+  if (!secret && process.env.VERCEL) return new Response('CRON_SECRET is not set', { status: 503 });
   if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) return new Response('unauthorized', { status: 401 });
-  const db = await getDb();
-  const approved = await sweepAutoApprovals(db);
-  const requeued = await reapStale(db, { timeoutMs: 15 * 60_000 });
-  return Response.json({ approved, requeued });
+  const result = await tick(await getDb());
+  return Response.json(result, { status: result.errors.length ? 500 : 200 });
 }
 
-export const GET = tick;
-export const POST = tick;
+export const GET = handler;
+export const POST = handler;

@@ -1,6 +1,6 @@
 import type { Db } from '@ios/db';
 import { audit } from './audit';
-import { PublishBlockedError } from './errors';
+import { ForbiddenError, PublishBlockedError } from './errors';
 import { PUBLISHING_STATES } from './lifecycle';
 import { notify } from './notifications';
 import { type Actor, actorRef, type PersonaState, type Platform } from './types';
@@ -55,7 +55,9 @@ export async function setKillSwitch(db: Db, studioId: string, s: KillScope, acto
   });
 }
 
+/** Resuming posting is the Owner's call: agents and the system can pause but never un-pause. */
 export async function clearKillSwitch(db: Db, studioId: string, s: KillScope, actor: Actor): Promise<void> {
+  if (actor.type !== 'owner') throw new ForbiddenError(`${actorRef(actor)} cannot clear a kill switch: only the Owner can resume posting`);
   const { personaId, platform } = target(s);
   await db.transaction(async (tx) => {
     const rows = await tx.query(

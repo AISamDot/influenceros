@@ -27,13 +27,13 @@ export default async function Chat({ searchParams }: { searchParams: Promise<{ t
           <h1 className="font-[family-name:var(--font-display)] text-[28px] leading-none">Chat</h1>
           <p className="mt-1 text-[12px] text-muted">All Owner conversations happen here.</p>
         </div>
-        <nav className="scroll-x no-scrollbar flex gap-1 p-2 lg:flex-col" aria-label="Threads">
+        <nav className="grid grid-cols-2 gap-1 p-2 lg:flex lg:flex-col" aria-label="Threads">
           {threads.map((x) => (
             <Link
               key={x.id}
               href={`/chat?t=${x.id}`}
               aria-current={x.id === current.id ? 'page' : undefined}
-              className={`flex min-w-[200px] items-center gap-3 rounded-xl px-2.5 py-2 lg:min-w-0 ${x.id === current.id ? 'bg-surface-2' : 'hover:bg-surface-2/60'}`}
+              className={`flex min-w-0 items-center gap-2.5 rounded-xl px-2 py-2 lg:gap-3 lg:px-2.5 ${x.id === current.id ? 'bg-surface-2' : 'hover:bg-surface-2/60'}`}
             >
               {x.portrait_url ? (
                 <img src={x.portrait_url} alt="" className="size-9 shrink-0 rounded-full object-cover" />

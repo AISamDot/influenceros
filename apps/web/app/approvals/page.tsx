@@ -1,7 +1,9 @@
 /* eslint-disable @next/next/no-img-element */
-import { type ApprovalRow, listPendingApprovals } from '@ios/core';
+import { type ApprovalRow, listPendingApprovals, payloadHash } from '@ios/core';
 import Link from 'next/link';
 import { Countdown } from '@/components/countdown';
+import { Flash } from '@/components/flash';
+import { SubmitButton } from '@/components/submit-button';
 import { IconCheck, IconClock, IconFlag, IconX } from '@/components/icons';
 import { relative } from '@/lib/format';
 import { studioContext } from '@/lib/server';
@@ -23,23 +25,116 @@ const KIND_LABEL: Record<string, string> = {
   post: 'Post',
 };
 
-function Decide({ id, approveLabel = 'Approve', rejectLabel = 'Reject', danger }: { id: string; approveLabel?: string; rejectLabel?: string; danger?: boolean }) {
+function Decide({ a, approveLabel = 'Approve', rejectLabel = 'Reject' }: { a: Row; approveLabel?: string; rejectLabel?: string }) {
   return (
     <div className="flex flex-wrap gap-2">
-      <form action={`/api/approvals/${id}`} method="post">
+      <form action={`/api/approvals/${a.id}`} method="post">
         <input type="hidden" name="decision" value="approve" />
-        <button className={`btn ${danger ? 'btn-danger' : 'btn-ink'}`}>
+        <input type="hidden" name="payload_hash" value={payloadHash(a.payload)} />
+        <SubmitButton className="btn btn-ink">
           <IconCheck size={14} /> {approveLabel}
-        </button>
+        </SubmitButton>
       </form>
-      <form action={`/api/approvals/${id}`} method="post">
+      <form action={`/api/approvals/${a.id}`} method="post">
         <input type="hidden" name="decision" value="reject" />
-        <button className="btn">
+        <SubmitButton className="btn">
           <IconX size={14} /> {rejectLabel}
-        </button>
+        </SubmitButton>
       </form>
     </div>
   );
+}
+
+const escapePattern = (s: string) => s.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&');
+
+/**
+ * Kill/retire: "Keep running" is the primary action. Approving needs a second step: open the confirm panel and
+ * type the persona's name (checked by the browser and again by the server), with an optional note.
+ */
+function KillDecide({ a }: { a: Row }) {
+  const name = a.persona_name ?? 'Studio';
+  const verb = a.kind === 'persona_retire' ? 'Retire' : 'Kill';
+  return (
+    <div className="flex flex-wrap items-start justify-end gap-2">
+      <form action={`/api/approvals/${a.id}`} method="post">
+        <input type="hidden" name="decision" value="reject" />
+        <SubmitButton className="btn btn-ink">
+          <IconX size={14} /> Keep running
+        </SubmitButton>
+      </form>
+      <details className="w-full sm:w-auto">
+        <summary className="btn btn-danger cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+          <IconCheck size={14} /> Approve {verb.toLowerCase()}…
+        </summary>
+        <form action={`/api/approvals/${a.id}`} method="post" className="mt-3 space-y-2 rounded-xl border border-danger/40 bg-danger-soft p-3 sm:w-80">
+          <input type="hidden" name="decision" value="approve" />
+          <input type="hidden" name="payload_hash" value={payloadHash(a.payload)} />
+          <label className="block text-[12.5px] text-fg">
+            {verb === 'Kill' ? 'This is permanent: a killed persona can only be retired.' : 'This retires the persona for good.'} Type{' '}
+            <b>{name}</b> to confirm.
+            <input
+              name="confirm"
+              required
+              pattern={escapePattern(name)}
+              title={`Type ${name} exactly`}
+              autoComplete="off"
+              className="input mt-1"
+              placeholder={name}
+            />
+          </label>
+          <textarea name="note" rows={2} className="input h-auto py-2" placeholder="Note (optional)" />
+          <SubmitButton className="btn btn-danger w-full justify-center">
+            {verb} {name}
+          </SubmitButton>
+        </form>
+      </details>
+    </div>
+  );
+}
+
+const UNIT_LABEL: Record<string, string> = { llm_usd: 'USD of LLM spend', hf_credits: 'Higgsfield credits', media_usd: 'USD of media spend' };
+
+/** Exactly what approving will execute, read from the payload (not the agent-written title). */
+function Executes({ a, disclosure }: { a: Row; disclosure: string }) {
+  const p = a.payload;
+  if (a.kind === 'spend_over_cap') {
+    return (
+      <p className="mt-2 rounded-lg border border-line bg-surface-2 px-3 py-2 text-[13px]">
+        <span className="text-muted">Approving grants </span>
+        <b className="tabular-nums">+{Number(p.amount).toLocaleString('en-US')}</b> {UNIT_LABEL[String(p.unit)] ?? String(p.unit)}
+        <span className="text-muted"> for {String(p.period)}</span>
+      </p>
+    );
+  }
+  if (a.kind === 'disclosure_change') {
+    return (
+      <div className="mt-2 grid gap-2 text-[13px] sm:grid-cols-2">
+        <div className="rounded-lg border border-line bg-surface-2 px-3 py-2">
+          <div className="eyebrow">Current</div>
+          <p className="mt-1 whitespace-pre-wrap text-muted">{disclosure || '(none)'}</p>
+        </div>
+        <div className="rounded-lg border border-warn/50 bg-warn-soft px-3 py-2">
+          <div className="eyebrow">Replaced with</div>
+          <p className="mt-1 whitespace-pre-wrap font-medium">{String(p.text ?? '')}</p>
+        </div>
+      </div>
+    );
+  }
+  if (a.kind === 'legal_text_change' || a.kind === 'plan_upgrade') {
+    const entries = Object.entries(p).filter(([k]) => k !== 'thumbnail_url');
+    if (!entries.length) return null;
+    return (
+      <dl className="mt-2 space-y-1 rounded-lg border border-line bg-surface-2 px-3 py-2 text-[13px]">
+        {entries.map(([k, v]) => (
+          <div key={k}>
+            <dt className="inline text-muted">{k.replace(/_/g, ' ')}: </dt>
+            <dd className="inline whitespace-pre-wrap">{typeof v === 'string' ? v : JSON.stringify(v)}</dd>
+          </div>
+        ))}
+      </dl>
+    );
+  }
+  return null;
 }
 
 function Who({ a }: { a: Row }) {
@@ -67,7 +162,8 @@ function Evidence({ payload }: { payload: Record<string, unknown> }) {
   );
 }
 
-export default async function Approvals() {
+export default async function Approvals({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
+  const sp = await searchParams;
   const { db, studio } = await studioContext();
   const pending = (await listPendingApprovals(db, studio.id)) as Row[];
   const kills = pending.filter((a) => a.kind === 'persona_kill' || a.kind === 'persona_retire');
@@ -85,6 +181,7 @@ export default async function Approvals() {
         <h1 className="font-[family-name:var(--font-display)] text-[44px] leading-none tracking-tight">Approvals</h1>
         <p className="mt-2 text-muted">Kill proposals come first and never time out: a persona keeps running until you decide.</p>
       </div>
+      <Flash error={sp.error} ok={sp.ok ? `Done: ${sp.ok}.` : undefined} />
 
       <section className="space-y-3">
         <h2 className="eyebrow flex items-center gap-1.5 !text-danger">
@@ -108,7 +205,7 @@ export default async function Approvals() {
                 <span className="text-[12px] text-muted">
                   Proposed by {a.proposed_by.replace('agent:', '')} · {relative(new Date(a.created_at))}
                 </span>
-                <Decide id={a.id} approveLabel="Approve kill" rejectLabel="Keep running" danger />
+                <KillDecide a={a} />
               </div>
             </div>
           </article>
@@ -128,8 +225,9 @@ export default async function Approvals() {
               </div>
               <h3 className="mt-2 text-[15px] font-semibold">{a.title}</h3>
               {a.summary ? <p className="mt-0.5 text-[13px] text-muted">{a.summary}</p> : null}
+              <Executes a={a} disclosure={studio.resolved.disclosure_text} />
             </div>
-            <Decide id={a.id} />
+            <Decide a={a} />
           </article>
         ))}
       </section>
@@ -160,7 +258,7 @@ export default async function Approvals() {
                   label={a.mode === 'veto_window' ? 'Publishes unless vetoed in' : 'Auto-approves in'}
                 />
               ) : null}
-              <Decide id={a.id} approveLabel={a.mode === 'veto_window' ? 'Approve now' : 'Approve'} rejectLabel={a.mode === 'veto_window' ? 'Veto' : 'Reject'} />
+              <Decide a={a} approveLabel={a.mode === 'veto_window' ? 'Approve now' : 'Approve'} rejectLabel={a.mode === 'veto_window' ? 'Veto' : 'Reject'} />
             </article>
           ))}
         </div>
@@ -177,7 +275,7 @@ export default async function Approvals() {
               </span>
               <span className="min-w-0 flex-1 truncate">{a.title}</span>
               <span className="text-muted">{a.decided_by}</span>
-              <span className="text-faint">{a.decided_at ? relative(new Date(a.decided_at)) : ''}</span>
+              <span className="text-muted">{a.decided_at ? relative(new Date(a.decided_at)) : ''}</span>
             </div>
           ))}
           {recent.length === 0 ? <p className="px-4 py-3 text-[13px] text-muted">No decisions yet.</p> : null}

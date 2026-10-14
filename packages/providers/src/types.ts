@@ -45,7 +45,8 @@ export interface ImageVideoProvider {
   createSoulId(req: { name: string; referenceImageUrls: readonly string[] }): Promise<{ soulId: string; credits: number }>;
   generateStill(req: { soulId?: string; prompt: string; aspect?: '9:16' | '1:1' | '4:5' }): Promise<MediaResult>;
   imageToVideo(req: { imageUrl: string; prompt: string; durationS: number; model?: string }): Promise<MediaResult>;
-  talkingWithAudio(req: { imageUrl: string; audioUrl: string; resolution?: '720p' | '1080p' }): Promise<MediaResult>;
+  /** `durationS` is the audio length when known; the governor reserves credits from it. */
+  talkingWithAudio(req: { imageUrl: string; audioUrl: string; resolution?: '720p' | '1080p'; durationS?: number }): Promise<MediaResult>;
   /** Credits an operation would cost, without running it. */
   costProbe(req: { operation: HiggsfieldOperation; durationS?: number }): Promise<{ credits: number }>;
 }
@@ -83,6 +84,8 @@ export interface PublishRequest {
   /** Platform AI label (IG is_ai_generated, TikTok AIGC, YT containsSyntheticMedia). Always on. */
   readonly aiLabel: true;
   readonly scheduledAt?: Date;
+  /** Stable per post: a retried publish with the same key must not create a second post. */
+  readonly idempotencyKey?: string;
 }
 export interface PublishProvider {
   readonly name: string;
