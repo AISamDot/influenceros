@@ -4,3 +4,11 @@ packages:
 onlyBuiltDependencies:
   - esbuild
   - sharp
+  # >>> stream A built deps (append only)
+  # <<< stream A built deps
+  # >>> stream B built deps
+  # <<< stream B built deps
+  # >>> stream C built deps
+  # <<< stream C built deps
+  # >>> stream D built deps
+  # <<< stream D built deps

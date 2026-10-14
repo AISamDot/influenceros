@@ -214,3 +214,13 @@
     }
   }
 }
+
+/* IOS-2: prefer the existing tokens and utilities. A stream that needs new CSS appends it inside its own block only. */
+/* >>> stream A css */
+/* <<< stream A css */
+/* >>> stream B css */
+/* <<< stream B css */
+/* >>> stream C css */
+/* <<< stream C css */
+/* >>> stream D css */
+/* <<< stream D css */

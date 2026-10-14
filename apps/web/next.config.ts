@@ -6,9 +6,22 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 const config: NextConfig = {
   // Workspace packages ship TypeScript source.
-  transpilePackages: ['@ios/core', '@ios/db', '@ios/providers', '@ios/secrets'],
+  transpilePackages: ['@ios/agents', '@ios/auth', '@ios/content', '@ios/core', '@ios/db', '@ios/knowledge', '@ios/profit', '@ios/providers', '@ios/secrets', '@ios/wiring'],
   // Native / WASM packages load their own files at runtime.
-  serverExternalPackages: ['@electric-sql/pglite', '@electric-sql/pglite-pgvector', 'pg', '@napi-rs/keyring'],
+  serverExternalPackages: [
+    '@electric-sql/pglite',
+    '@electric-sql/pglite-pgvector',
+    'pg',
+    '@napi-rs/keyring',
+    // >>> stream A server externals (append only)
+    // <<< stream A server externals
+    // >>> stream B server externals
+    // <<< stream B server externals
+    // >>> stream C server externals
+    // <<< stream C server externals
+    // >>> stream D server externals
+    // <<< stream D server externals
+  ],
   outputFileTracingRoot: join(here, '..', '..'),
   turbopack: { root: join(here, '..', '..') },
   poweredByHeader: false,

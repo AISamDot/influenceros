@@ -1,0 +1,16 @@
+{
+  "name": "@ios/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@ios/agents": "workspace:*",
+    "@ios/core": "workspace:*",
+    "@ios/db": "workspace:*",
+    "@ios/wiring": "workspace:*"
+  }
+}

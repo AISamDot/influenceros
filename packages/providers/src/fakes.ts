@@ -1,23 +1,31 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
-import type {
-  EmailProvider,
-  HiggsfieldOperation,
-  ImageVideoProvider,
-  LlmProvider,
-  LlmRequest,
-  LlmResponse,
-  MediaResult,
-  ModelTier,
-  Platform,
-  Providers,
-  PublishProvider,
-  PublishRequest,
-  ResearchProvider,
-  StoreEvent,
-  StoreProduct,
-  StoreProvider,
-  TalkingProvider,
-  VoiceProvider,
+import {
+  EMBEDDING_DIM,
+  type EmailProvider,
+  type EmbeddingProvider,
+  type FeedItem,
+  type FeedProvider,
+  type FieldMap,
+  type HiggsfieldOperation,
+  type ImageVideoProvider,
+  type LlmProvider,
+  type LlmRequest,
+  type LlmResponse,
+  type MediaResult,
+  type ModelTier,
+  type Platform,
+  type Providers,
+  type PublishProvider,
+  type PublishRequest,
+  type ResearchProvider,
+  type StoreEvent,
+  type StoreProduct,
+  type StoreProvider,
+  type TalkingProvider,
+  type TopicResearch,
+  type TranscribeProvider,
+  type VoiceProvider,
+  type WebResearchProvider,
 } from './types';
 
 /**
@@ -60,18 +68,25 @@ function stableStringify(v: unknown): string {
 
 // ─── LLM ───
 
-/** USD per million tokens (input, output), by tier. Mirrors the PRD §7.2 tiering; exact prices land in IOS-2. */
-export const LLM_PRICES: Readonly<Record<ModelTier, { model: string; inPerM: number; outPerM: number }>> = {
-  fast: { model: 'claude-haiku-5-5', inPerM: 1, outPerM: 5 },
-  standard: { model: 'claude-sonnet-5-5', inPerM: 3, outPerM: 15 },
-  strong: { model: 'claude-opus-5-5', inPerM: 5, outPerM: 25 },
+/**
+ * Model routing by tier (PRD §8.4) and USD per million tokens: Anthropic list prices, Oct 2026. Cache writes bill
+ * at 1.25x input and cache reads at the cache-read rate. The single source of model ids for every stream.
+ */
+export const LLM_PRICES: Readonly<
+  Record<ModelTier, { model: string; inPerM: number; outPerM: number; cacheReadPerM: number; cacheWritePerM: number }>
+> = {
+  fast: { model: 'claude-haiku-5-5', inPerM: 0.1, outPerM: 0.5, cacheReadPerM: 0.01, cacheWritePerM: 0.125 },
+  standard: { model: 'claude-sonnet-5-5', inPerM: 2, outPerM: 10, cacheReadPerM: 0.2, cacheWritePerM: 2.5 },
+  strong: { model: 'claude-opus-5-5', inPerM: 4, outPerM: 20, cacheReadPerM: 0.2, cacheWritePerM: 5 },
 };
 
 export const estimateTokens = (text: string): number => Math.max(1, Math.ceil(text.length / 4));
 
-export function llmCostUsd(tier: ModelTier, inputTokens: number, outputTokens: number): number {
+/** `inputTokens` excludes cached tokens; pass cache reads and writes separately when the API reports them. */
+export function llmCostUsd(tier: ModelTier, inputTokens: number, outputTokens: number, cacheReadTokens = 0, cacheWriteTokens = 0): number {
   const p = LLM_PRICES[tier];
-  return Math.round(((inputTokens * p.inPerM + outputTokens * p.outPerM) / 1_000_000) * 1e6) / 1e6;
+  const micros = inputTokens * p.inPerM + outputTokens * p.outPerM + cacheReadTokens * p.cacheReadPerM + cacheWriteTokens * p.cacheWritePerM;
+  return Math.round((micros / 1_000_000) * 1e6) / 1e6;
 }
 
 export class FakeLlm extends Recorder implements LlmProvider {
@@ -83,7 +98,9 @@ export class FakeLlm extends Recorder implements LlmProvider {
     this.record('complete', req);
     const last = req.messages.at(-1)?.content ?? '';
     const text = this.responder?.(req) ?? `[${req.tier}] Noted: ${last.slice(0, 160)}`;
-    const inputTokens = estimateTokens((req.system ?? '') + req.messages.map((m) => m.content).join('\n'));
+    const inputTokens = estimateTokens(
+      (req.cached ?? []).map((b) => b.text).join('\n') + (req.system ?? '') + req.messages.map((m) => m.content).join('\n'),
+    );
     const outputTokens = estimateTokens(text);
     return {
       text,
@@ -175,6 +192,11 @@ export class FakeTalking extends Recorder implements TalkingProvider {
 
 export class FakeVoice extends Recorder implements VoiceProvider {
   readonly name = 'fake-elevenlabs';
+  readonly #spoken = new Map<string, string>();
+  /** The text a fake audio URL was synthesised from (FakeTranscriber reads it back). */
+  textFor(url: string): string | null {
+    return this.#spoken.get(url) ?? null;
+  }
   async designVoice(req: { description: string }) {
     const id = this.record('designVoice', req);
     return { voiceId: `voice_${id}` };
@@ -182,8 +204,10 @@ export class FakeVoice extends Recorder implements VoiceProvider {
   async tts(req: { voiceId: string; text: string }) {
     const id = this.record('tts', req);
     const words = req.text.trim().split(/\s+/).filter(Boolean).length;
+    const url = `https://fake.elevenlabs.local/audio/${id}.mp3`;
+    this.#spoken.set(url, req.text);
     return {
-      url: `https://fake.elevenlabs.local/audio/${id}.mp3`,
+      url,
       durationS: Math.max(1, Math.round((words / 150) * 60)),
       characters: req.text.length,
       costUsd: Math.round(req.text.length * 0.00018 * 10000) / 10000,
@@ -318,6 +342,114 @@ export class FakeApify extends Recorder implements ResearchProvider {
   }
 }
 
+// ─── IOS-2: transcription, embeddings, web research, feeds ───
+
+/**
+ * Reads back what FakeVoice synthesised for the URL (a perfect transcript), or '' for unknown audio. Tests can
+ * pass `mishear` to simulate a mispronunciation (e.g. replace a word) and exercise QC Q2.
+ */
+export class FakeTranscriber extends Recorder implements TranscribeProvider {
+  readonly name = 'fake-whisper';
+  constructor(
+    private readonly lookup: (audioUrl: string) => string | null = () => null,
+    private readonly mishear: (text: string) => string = (t) => t,
+  ) {
+    super();
+  }
+  async transcribe(req: { audioUrl: string; language?: 'en'; prompt?: string }) {
+    this.record('transcribe', req);
+    const text = this.mishear(this.lookup(req.audioUrl) ?? '');
+    const tokens = text.split(/\s+/).filter(Boolean);
+    const perWord = 60 / 150; // 150 wpm
+    const words = tokens.map((word, i) => ({ word, startS: round3(i * perWord), endS: round3((i + 1) * perWord) }));
+    const durationS = round3(tokens.length * perWord);
+    return { text, words, durationS, costUsd: round3((durationS / 60) * 0.006) };
+  }
+}
+
+const round3 = (n: number) => Math.round(n * 1000) / 1000;
+
+/**
+ * Deterministic bag-of-words embeddings: hashed tokens into EMBEDDING_DIM buckets, L2-normalised. Texts that share
+ * words land close together, so retrieval tests behave sensibly without a model.
+ */
+export class FakeEmbeddings extends Recorder implements EmbeddingProvider {
+  readonly name = 'fake-embeddings';
+  readonly dimensions = EMBEDDING_DIM;
+  async embed(texts: readonly string[]): Promise<number[][]> {
+    this.record('embed', { count: texts.length });
+    return texts.map((t) => {
+      const v = new Array<number>(EMBEDDING_DIM).fill(0);
+      for (const tok of t.toLowerCase().match(/[a-z0-9]+/g) ?? []) {
+        const h = createHash('sha256').update(tok).digest();
+        v[h.readUInt16BE(0) % EMBEDDING_DIM]! += h[2]! & 1 ? 1 : -1;
+      }
+      const norm = Math.hypot(...v) || 1;
+      return v.map((x) => x / norm);
+    });
+  }
+}
+
+export class FakeWebResearch extends Recorder implements WebResearchProvider {
+  readonly name = 'fake-web-research';
+  async mapField(req: { niche: string; maxSources?: number; maxNodes?: number }): Promise<FieldMap> {
+    const id = this.record('mapField', req);
+    const n = req.niche;
+    const levels = ['fundamental', 'intermediate', 'advanced', 'debate', 'myth', 'frontier'] as const;
+    const topics = ['basics', 'habits', 'tools', 'mistakes', 'evidence', 'trends'];
+    return {
+      sources: Array.from({ length: Math.min(req.maxSources ?? 5, 5) }, (_, i) => ({
+        name: `${n} source ${i + 1}`,
+        url: `https://fake.research.local/${id}/source-${i + 1}`,
+        kind: i === 0 ? 'institution' : i === 1 ? 'journal' : 'publication',
+        credibility: 5 - (i % 3),
+      })),
+      experts: [{ name: `${n} expert`, school: 'evidence-first', why: 'widely cited', url: `https://fake.research.local/${id}/expert` }],
+      curriculum: Array.from({ length: Math.min(req.maxNodes ?? 6, 6) }, (_, i) => ({
+        path: `${levels[i]}/${topics[i]}`,
+        title: `${n}: ${topics[i]}`,
+        level: levels[i]!,
+      })),
+      costUsd: 0.05,
+    };
+  }
+  async researchTopic(req: { niche: string; path: string; title: string; questions?: readonly string[]; maxSources?: number }): Promise<TopicResearch> {
+    const id = this.record('researchTopic', req);
+    const cite = (k: number) => ({ url: `https://fake.research.local/${id}/${k}`, title: `${req.title} (source ${k})`, quote: `A short quote about ${req.title}.` });
+    return {
+      synthesis: `${req.title}: a cited synthesis for ${req.niche} (fake research).`,
+      facts: [
+        { claim: `${req.title} works best when practised consistently.`, citations: [cite(1)] },
+        { claim: `Most beginners overestimate quick results in ${req.niche}.`, citations: [cite(2)] },
+      ],
+      frameworks: [`The 3-step ${req.title} loop`],
+      questions: req.questions?.length ? [...req.questions] : [`What is the first step in ${req.title}?`],
+      sources: [cite(1), cite(2)],
+      costUsd: 0.12,
+    };
+  }
+}
+
+export class FakeFeeds extends Recorder implements FeedProvider {
+  readonly name = 'fake-feeds';
+  async fetchFeed(req: { url: string; limit?: number }): Promise<FeedItem[]> {
+    const id = this.record('fetchFeed', req);
+    let host = 'feed';
+    try {
+      host = new URL(req.url).hostname;
+    } catch {
+      /* keep the default */
+    }
+    return Array.from({ length: req.limit ?? 3 }, (_, i) => ({
+      title: `${host} headline ${i + 1}`,
+      url: `https://fake.news.local/${id}/${i + 1}`,
+      publishedAt: new Date(Date.UTC(2026, 9, 14, 6 - i)),
+      summary: `Summary of headline ${i + 1} from ${host}.`,
+      source: host,
+    }));
+  }
+}
+
 export interface FakeProviders extends Providers {
   readonly llm: FakeLlm;
   readonly imageVideo: FakeHiggsfield;
@@ -327,17 +459,28 @@ export interface FakeProviders extends Providers {
   readonly store: FakeLemonSqueezy;
   readonly email: FakeResend;
   readonly research: FakeApify;
+  readonly transcribe: FakeTranscriber;
+  readonly embeddings: FakeEmbeddings;
+  readonly webResearch: FakeWebResearch;
+  readonly feeds: FakeFeeds;
 }
 
-export function createFakeProviders(opts: { talking?: TalkingProvider['name']; llmResponder?: (req: LlmRequest) => string } = {}): FakeProviders {
+export function createFakeProviders(
+  opts: { talking?: TalkingProvider['name']; llmResponder?: (req: LlmRequest) => string; mishear?: (text: string) => string } = {},
+): FakeProviders {
+  const voice = new FakeVoice();
   return {
     llm: new FakeLlm(opts.llmResponder),
     imageVideo: new FakeHiggsfield(),
     talking: new FakeTalking(opts.talking ?? 'fal-kling-avatar'),
-    voice: new FakeVoice(),
+    voice,
     publish: new FakeZernio(),
     store: new FakeLemonSqueezy(),
     email: new FakeResend(),
     research: new FakeApify(),
+    transcribe: new FakeTranscriber((url) => voice.textFor(url), opts.mishear),
+    embeddings: new FakeEmbeddings(),
+    webResearch: new FakeWebResearch(),
+    feeds: new FakeFeeds(),
   };
 }

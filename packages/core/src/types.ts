@@ -27,6 +27,17 @@ export const OWNER: Actor = { type: 'owner', id: 'hossam' };
 export const STUDIO_MANAGER: Actor = { type: 'agent', id: 'studio-manager' };
 export const SYSTEM: Actor = { type: 'system', id: 'core' };
 
+/**
+ * What a ledger entry paid for (credit_ledger.ref_type / ref_id), so the Profit Engine can build per-post,
+ * per-product and per-persona P&L (FR-24.1). Content work for a calendar slot (idea, script, QC, Gate, media)
+ * uses the slot id; the slot links to its post once one exists. See docs/IOS-2-CONTRACTS.md §5.
+ */
+export type CostRefType = 'calendar_slot' | 'post' | 'product' | 'knowledge' | 'news' | 'chat_thread' | 'persona' | 'studio';
+export interface CostRef {
+  readonly type: CostRefType;
+  readonly id: string;
+}
+
 export interface Caps {
   /** Monthly LLM spend cap, USD. */
   llm_usd_month: number;
@@ -71,6 +82,7 @@ export const DEFAULT_SETTINGS: StudioSettings = {
       'Guaranteed returns or income claims',
       'Fabricated results used to sell',
       'Fake credentials',
+      'Undisclosed sponsorships or affiliate links',
       'Denying being AI when asked',
       'Missing post-level AI flag',
     ],

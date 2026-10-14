@@ -29,18 +29,36 @@ importers:
       '@fontsource/instrument-serif':
         specifier: 5.3.0
         version: 5.3.0
+      '@ios/agents':
+        specifier: workspace:*
+        version: link:../../packages/agents
+      '@ios/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
+      '@ios/content':
+        specifier: workspace:*
+        version: link:../../packages/content
       '@ios/core':
         specifier: workspace:*
         version: link:../../packages/core
       '@ios/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@ios/knowledge':
+        specifier: workspace:*
+        version: link:../../packages/knowledge
+      '@ios/profit':
+        specifier: workspace:*
+        version: link:../../packages/profit
       '@ios/providers':
         specifier: workspace:*
         version: link:../../packages/providers
       '@ios/secrets':
         specifier: workspace:*
         version: link:../../packages/secrets
+      '@ios/wiring':
+        specifier: workspace:*
+        version: link:../../packages/wiring
       '@napi-rs/keyring':
         specifier: 2.1.0
         version: 2.1.0
@@ -70,6 +88,57 @@ importers:
         specifier: 4.3.3
         version: 4.3.3
 
+  apps/worker:
+    dependencies:
+      '@ios/agents':
+        specifier: workspace:*
+        version: link:../../packages/agents
+      '@ios/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@ios/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@ios/wiring':
+        specifier: workspace:*
+        version: link:../../packages/wiring
+
+  packages/agents:
+    dependencies:
+      '@ios/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ios/db':
+        specifier: workspace:*
+        version: link:../db
+      '@ios/providers':
+        specifier: workspace:*
+        version: link:../providers
+
+  packages/auth:
+    dependencies:
+      '@ios/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ios/db':
+        specifier: workspace:*
+        version: link:../db
+
+  packages/content:
+    dependencies:
+      '@ios/agents':
+        specifier: workspace:*
+        version: link:../agents
+      '@ios/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ios/db':
+        specifier: workspace:*
+        version: link:../db
+      '@ios/providers':
+        specifier: workspace:*
+        version: link:../providers
+
   packages/core:
     dependencies:
       '@ios/db':
@@ -95,6 +164,36 @@ importers:
         specifier: 8.23.1
         version: 8.23.1
 
+  packages/knowledge:
+    dependencies:
+      '@ios/agents':
+        specifier: workspace:*
+        version: link:../agents
+      '@ios/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ios/db':
+        specifier: workspace:*
+        version: link:../db
+      '@ios/providers':
+        specifier: workspace:*
+        version: link:../providers
+
+  packages/profit:
+    dependencies:
+      '@ios/agents':
+        specifier: workspace:*
+        version: link:../agents
+      '@ios/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ios/db':
+        specifier: workspace:*
+        version: link:../db
+      '@ios/providers':
+        specifier: workspace:*
+        version: link:../providers
+
   packages/providers: {}
 
   packages/secrets:
@@ -102,6 +201,33 @@ importers:
       '@napi-rs/keyring':
         specifier: 2.1.0
         version: 2.1.0
+
+  packages/wiring:
+    dependencies:
+      '@ios/agents':
+        specifier: workspace:*
+        version: link:../agents
+      '@ios/content':
+        specifier: workspace:*
+        version: link:../content
+      '@ios/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ios/db':
+        specifier: workspace:*
+        version: link:../db
+      '@ios/knowledge':
+        specifier: workspace:*
+        version: link:../knowledge
+      '@ios/profit':
+        specifier: workspace:*
+        version: link:../profit
+      '@ios/providers':
+        specifier: workspace:*
+        version: link:../providers
+      '@ios/secrets':
+        specifier: workspace:*
+        version: link:../secrets
 
 packages:
 

@@ -51,3 +51,31 @@ pnpm build        # typecheck all packages + next build
 pnpm db:migrate | db:seed | db:reset
 pnpm ios secrets status
 ```
+
+## IOS-2 (agents, content, knowledge, profit)
+Built by four parallel streams against the contracts in `docs/IOS-2-CONTRACTS.md`. New packages:
+
+```
+packages/agents     Contracts (frozen) + agent runtime, tool registry, Studio Manager, Persona Manager (stream A).
+packages/auth       Owner login: magic link / passkey, CLI password fallback, session cookie (stream A).
+packages/content    Calendar, Scriptwriter + hook-lab, Monetization v1, Compliance Gate v1, QC Q1/Q2, pipeline (B).
+packages/knowledge  Field Brain, embeddings + pgvector retrieval, News Desk, persona importer (stream C).
+packages/profit     Profit Engine v1: P&L, levers, lever log, forecast, reports, scheduler (stream D).
+packages/wiring     Composition root: every package's tools, jobs, schedules, live adapters and policies.
+apps/worker         Local queue worker on the Mac (stream D).
+.claude/skills      The studio's own skills, loaded by the Agent SDK (stream C).
+```
+
+Each stream documents what it built inside its own block below (append only).
+
+<!-- >>> stream A architecture -->
+<!-- <<< stream A architecture -->
+
+<!-- >>> stream B architecture -->
+<!-- <<< stream B architecture -->
+
+<!-- >>> stream C architecture -->
+<!-- <<< stream C architecture -->
+
+<!-- >>> stream D architecture -->
+<!-- <<< stream D architecture -->

@@ -16,7 +16,12 @@
     "db:seed": "tsx packages/core/src/seed/cli.ts",
     "db:setup": "pnpm db:migrate && pnpm db:seed --if-empty",
     "db:reset": "tsx packages/db/src/cli/reset.ts && pnpm db:migrate && pnpm db:seed",
-    "ios": "tsx packages/secrets/src/cli.ts"
+    "ios": "tsx packages/secrets/src/cli.ts",
+    "worker": "tsx apps/worker/src/main.ts",
+    "owner": "tsx packages/auth/src/cli.ts",
+    "content": "tsx packages/content/src/cli.ts",
+    "knowledge": "tsx packages/knowledge/src/cli.ts",
+    "profit": "tsx packages/profit/src/cli.ts"
   },
   "devDependencies": {
     "@types/node": "22.20.5",

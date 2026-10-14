@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { ChatPanel } from '@/components/chat-panel';
 import { Kpi } from '@/components/kpi';
 import { PersonaCard } from '@/components/persona-card';
+import { ProfitCard } from '@/components/profit-card';
 import { SetupHint } from '@/components/setup-hint';
 import { compact, usd } from '@/lib/format';
 import { loadChat, studioContext } from '@/lib/server';
@@ -53,6 +54,9 @@ export default async function StudioWall() {
           />
         </Link>
       </div>
+
+      {/* Profit Engine card (IOS-2 stream D owns components/profit-card.tsx; renders nothing until it lands). */}
+      <ProfitCard db={db} studioId={studio.id} />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
         <div className="min-w-0 xl:order-2">

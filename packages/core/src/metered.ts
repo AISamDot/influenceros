@@ -10,12 +10,15 @@ import {
   type VoiceProvider,
 } from '@ios/providers';
 import { releaseHold, reserve, settleHold, type Unit } from './governor';
+import type { CostRef } from './types';
 
 export interface MeterContext {
   studioId: string;
   personaId?: string | null;
   /** Which agent/worker is spending (recorded on agent_run and the ledger). */
   agent: string;
+  /** What the spend is for (credit_ledger.ref_type / ref_id), for the Profit Engine's P&L. */
+  ref?: CostRef;
 }
 
 /**
@@ -31,7 +34,16 @@ export async function metered<T>(
   call: () => Promise<T>,
   actual: (r: T) => number,
 ): Promise<T> {
-  const base = { studioId: ctx.studioId, personaId: ctx.personaId, unit: spec.unit, provider: spec.provider, operation: spec.operation, meta: { agent: ctx.agent } };
+  const base = {
+    studioId: ctx.studioId,
+    personaId: ctx.personaId,
+    unit: spec.unit,
+    provider: spec.provider,
+    operation: spec.operation,
+    refType: ctx.ref?.type,
+    refId: ctx.ref?.id,
+    meta: { agent: ctx.agent },
+  };
   const holdId = await reserve(db, { ...base, amount: spec.estimate });
   let result: T;
   try {
@@ -49,7 +61,7 @@ export function meteredProviders(db: Db, raw: Providers, ctx: MeterContext): Pro
   const llm: LlmProvider = {
     name: raw.llm.name,
     async complete(req) {
-      const inTok = estimateTokens((req.system ?? '') + req.messages.map((m) => m.content).join('\n'));
+      const inTok = estimateTokens((req.cached ?? []).map((b) => b.text).join('\n') + (req.system ?? '') + req.messages.map((m) => m.content).join('\n'));
       const estimate = llmCostUsd(req.tier, inTok, req.maxTokens ?? 1024);
       const startedAt = new Date();
       const res = await metered(db, ctx, { unit: 'llm_usd', estimate, provider: raw.llm.name, operation: `complete:${req.tier}` }, () => raw.llm.complete(req), (r) => r.costUsd);
