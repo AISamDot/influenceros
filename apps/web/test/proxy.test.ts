@@ -22,7 +22,7 @@ describe('proxy: every route needs the Owner session', () => {
   it('refuses unauthenticated requests: pages redirect to /login, API calls get 401', async () => {
     const page = proxy(req('/approvals'));
     expect(page.status).toBe(303);
-    expect(page.headers.get('location')).toBe('/login?next=%2Fapprovals');
+    expect(page.headers.get('location')).toBe(`${BASE}/login?next=%2Fapprovals`);
     for (const path of ['/api/approvals', '/api/chat/00000000-0000-4000-8000-000000000000/messages', '/api/profit/report', '/api/knowledge/search']) {
       const r = proxy(req(path));
       expect(r.status).toBe(401);

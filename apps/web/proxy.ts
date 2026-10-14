@@ -46,9 +46,14 @@ export function proxy(req: NextRequest) {
 
   const decision = authorize({ pathname, search, cookie: readCookie(req.headers.get('cookie')), host });
   if (decision.action === 'deny') return NextResponse.json({ error: decision.message }, { status: decision.status });
-  // A relative Location keeps the browser on the host it used (NextURL rewrites 127.0.0.1 to localhost, and the
-  // session cookie belongs to one host).
-  if (decision.action === 'redirect') return new NextResponse(null, { status: 303, headers: { Location: decision.location } });
+  // The Location is built on the request's own (allowlisted) Host so the browser stays on the host it used
+  // (NextURL rewrites 127.0.0.1 to localhost, and the session cookie belongs to one host). It must be absolute:
+  // under `next start` the Node proxy adapter parses Location as a URL and throws on a relative one; for a
+  // same-host target it relativizes it again on the way out.
+  if (decision.action === 'redirect') {
+    const location = new URL(decision.location, `${req.nextUrl.protocol}//${host}`).toString();
+    return new NextResponse(null, { status: 303, headers: { Location: location } });
+  }
 
   // Pages read the path so the layout can skip the session-row check on /login (app/layout.tsx).
   const headers = new Headers(req.headers);

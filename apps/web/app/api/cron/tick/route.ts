@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { isDeployed } from '@ios/auth/guard';
 import { getDb } from '@ios/db';
 import { studioTick } from '@ios/profit';
 import { allSchedules, createStudioServices } from '@ios/wiring';
@@ -10,7 +11,7 @@ export const maxDuration = 60;
  * Scheduler tick (Vercel Cron every minute, see vercel.json; on the Mac the ticker in instrumentation.ts and
  * `pnpm worker`): the core tick (auto-approves due 24 h cards and veto-window posts, never kill or other Owner-only
  * kinds; reaps jobs whose worker died), then every due ScheduledTask from every package (they only enqueue jobs).
- * Protected by `Authorization: Bearer $CRON_SECRET`; on Vercel the secret is required.
+ * Protected by `Authorization: Bearer $CRON_SECRET`; when deployed (Vercel or IOS_DEPLOYED=1) the secret is required.
  */
 const digest = (s: string) => createHash('sha256').update(s).digest();
 
@@ -21,7 +22,7 @@ function authorized(req: Request, secret: string): boolean {
 
 async function handler(req: Request) {
   const secret = process.env.CRON_SECRET;
-  if (!secret && process.env.VERCEL) return new Response('CRON_SECRET is not set', { status: 503 });
+  if (!secret && isDeployed()) return new Response('CRON_SECRET is not set', { status: 503 });
   if (secret && !authorized(req, secret)) return new Response('unauthorized', { status: 401 });
   const db = await getDb();
   const result = await studioTick(createStudioServices(db), allSchedules());
