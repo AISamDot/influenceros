@@ -19,6 +19,7 @@ const LINKS: Array<{ href: string; label: string; badge?: 'approvals' }> = [
   // >>> stream B nav (append only)
   // <<< stream B nav
   // >>> stream C nav (append only)
+  { href: '/knowledge', label: 'Knowledge' },
   // <<< stream C nav
   // >>> stream D nav (append only)
   // <<< stream D nav

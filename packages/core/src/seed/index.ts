@@ -9,9 +9,14 @@ import { notify } from '../notifications';
 import { weekStart } from '../queries';
 import { updatePersonaControls } from '../settings';
 import { DEFAULT_SETTINGS, OWNER, type PersonaRow, STUDIO_MANAGER } from '../types';
+import { loadLaunchPersonas, type LaunchPersona } from './launch';
+import { seedLaunchStudio } from './launch-seed';
 import { type SeedPersona, SEED_PERSONAS } from './personas';
 
 export { SEED_PERSONAS } from './personas';
+export * from './launch';
+export * from './launch-seed';
+export * from './markdown';
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
@@ -35,6 +40,8 @@ const SLOT_DAYS = [0, 0, 1, 2, 2, 3, 4, 4, 5, 6];
 const SLOT_HOURS = [13, 22, 17, 13, 22, 17, 13, 22, 15, 18];
 
 export interface SeedSummary {
+  /** 'launch': the real launch personas from packages/knowledge/seed/personas; 'samples': the IOS-1 demo studio. */
+  kind: 'launch' | 'samples';
   studioId: string;
   personas: Array<{ slug: string; id: string; state: string }>;
 }
@@ -43,8 +50,20 @@ export async function isSeeded(db: Db): Promise<boolean> {
   return (await db.maybeOne('SELECT 1 FROM studio LIMIT 1')) !== null;
 }
 
-export async function seed(db: Db, opts: { now?: Date } = {}): Promise<SeedSummary> {
+/**
+ * Seeds a fresh database. When the launch-persona folders exist (packages/knowledge/seed/personas/<slug>/), the
+ * studio holds those personas, in SETUP, with no invented results. Without them (or with `samples: true`) it
+ * falls back to the IOS-1 sample studio, whose metrics and orders are demo data.
+ */
+export async function seed(db: Db, opts: { now?: Date; personas?: readonly LaunchPersona[]; samples?: boolean } = {}): Promise<SeedSummary> {
   const now = opts.now ?? new Date();
+  const launch = opts.samples ? [] : (opts.personas ?? loadLaunchPersonas());
+  if (launch.length) return { kind: 'launch', ...(await seedLaunchStudio(db, launch, now)) };
+  return seedSamples(db, now);
+}
+
+/** The IOS-1 sample studio (demo data: metrics, orders and approvals are made up). */
+export async function seedSamples(db: Db, now: Date = new Date()): Promise<SeedSummary> {
   const studio = await db.one<{ id: string }>(
     `INSERT INTO studio (slug, name, settings) VALUES ('main', 'Influencer OS Studio', $1::jsonb) RETURNING id`,
     [json(DEFAULT_SETTINGS)],
@@ -115,7 +134,7 @@ export async function seed(db: Db, opts: { now?: Date } = {}): Promise<SeedSumma
   });
 
   await seedChat(db, studioId, byslug, now);
-  return { studioId, personas };
+  return { kind: 'samples', studioId, personas };
 }
 
 async function seedPersona(db: Db, studioId: string, sp: SeedPersona, index: number, now: Date): Promise<PersonaRow> {

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "about": "Fields the importer can't read reliably from the persona documents. Everything else comes from the four Markdown files in each folder (synced from the Ventures folder with `pnpm knowledge personas sync`).",
+  "personas": {
+    "ambrose": { "niche": "wealth", "timezone": "America/New_York", "hue": 215 },
+    "dot": { "niche": "food", "subNiche": "everyday food, cost and food myths", "timezone": "Europe/London", "hue": 275 },
+    "margot": { "niche": "wealth", "timezone": "America/New_York", "hue": 188 },
+    "rosa": { "niche": "dating", "timezone": "America/New_York", "hue": 352 },
+    "sal": { "niche": "wealth", "timezone": "America/New_York", "hue": 82 }
+  }
+}
