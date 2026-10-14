@@ -9,7 +9,7 @@
   - The git directory lives outside iCloud at `~/Library/Application Support/InfluencerOS/vcs/influencer-os.git`.
   - Builders work in the dev worktree at `~/Library/Application Support/InfluencerOS/worktrees/dev` (branch `dev`), where `node_modules` lives.
   - The Desktop folder `Hossam/influencer-os` is the `main` checkout. It is fast-forwarded at milestone ends.
-- **Commits:** local checkpoint commits are fine. **Never push** and never create remotes.
+- **Commits:** local checkpoint commits are fine. Push `dev` and `main` to `origin` at milestone ends (owner-approved, 14 Oct). Never commit secrets.
 - **Stack:**
   - Node 22 (`~/.nvm` v22.23.3), pnpm 10, TypeScript and a pnpm monorepo.
   - Next.js app (dashboard + API + cron) targeting **Vercel**.
@@ -32,3 +32,13 @@
 
 ## Status
 - 14 Oct: plan written; IOS-1 started.
+- 14 Oct: **IOS-1 built** (branch `dev`).
+  - Monorepo: `apps/web` (Next.js 16), `packages/db`, `packages/core`, `packages/providers`, `packages/secrets`. See `docs/ARCHITECTURE.md`.
+  - Schema: two SQL migrations covering §8.3 (incl. Monetization, Quality, Membership, Audience) plus chat, notifications and Field Brain / News Desk tables (pgvector). Runs on PGlite locally, Supabase via `DATABASE_URL`.
+  - Lifecycle state machine with state log + append-only audit log. Approval engine: kill/retire and other Owner-only kinds are explicit with no timer (enforced in code and by a DB check); 24 h auto-approve cards (studio switch + hours); post autonomy L0/L1/L2 with veto window. Approve/reject API.
+  - Cost governor + credit ledger (persona and studio monthly caps, alert 80%, refuse 100%, metered providers, grants via spend approvals). Postgres job queue (SKIP LOCKED, backoff, per-persona cap). Global/persona/platform kill switches checked before every publish.
+  - Provider interfaces + deterministic fakes (LLM, Higgsfield, talking, voice, Zernio, Lemon Squeezy, Resend, Apify). No Telegram: internal chat threads + notification centre with a streaming fake agent.
+  - Secrets: Keychain (`ai.influencer-os`), `pnpm ios secrets status|set|unset|import-brandos`, Settings → Integrations (Connected · Pending key · Fake mode).
+  - Seed: 1 studio, 5 personas (Testing ×3, Monetising, Scaling) with deep Appendix A profiles, 10-slot week calendars, metrics, orders, products, chats, a pending kill proposal for Theo, a 24 h product card, an L0 post, a veto-window post and a spend-above-cap request.
+  - Dashboard v0: studio wall + Studio chat, persona page (calendar, posts, shelf, plan, community, Profile tab, manager chat), Approvals, Chat, Notifications, Settings, Integrations; Pipeline/Niches/Money stubs. Light/dark, responsive.
+  - Tests: Vitest, 49 passing (migrations, lifecycle, approvals, 24 h cards, governor, queue, kill switches, chat, seed, providers, secrets).

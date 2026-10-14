@@ -1,0 +1,31 @@
+{
+  "name": "@ios/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3100",
+    "build": "next build",
+    "start": "next start --port 3100",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "5.3.0",
+    "@fontsource/instrument-serif": "5.3.0",
+    "@ios/core": "workspace:*",
+    "@ios/db": "workspace:*",
+    "@ios/providers": "workspace:*",
+    "@ios/secrets": "workspace:*",
+    "@napi-rs/keyring": "2.1.0",
+    "next": "16.3.6",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "postcss": "8.5.28",
+    "tailwindcss": "4.3.3"
+  }
+}

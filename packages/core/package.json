@@ -1,0 +1,19 @@
+{
+  "name": "@ios/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./seed": "./src/seed/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@ios/db": "workspace:*",
+    "@ios/providers": "workspace:*"
+  }
+}

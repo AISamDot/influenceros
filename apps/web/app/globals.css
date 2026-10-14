@@ -1,0 +1,195 @@
+@import "tailwindcss";
+
+/* Theme: data-theme on <html> ("light" | "dark"), set before paint by the inline script in layout.tsx. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  --bg: #f6f5f1;
+  --surface: #ffffff;
+  --surface-2: #f1efea;
+  --surface-3: #e9e6df;
+  --line: #e5e1d9;
+  --line-strong: #cfc9bd;
+  --fg: #1c1b18;
+  --muted: #6d695f;
+  --faint: #9a958a;
+  --ink: #1c1b18;
+  --on-ink: #fbfaf7;
+  --accent: #4f4bd8;
+  --accent-soft: #ecebfd;
+  --danger: #c92a2a;
+  --danger-soft: #fdecec;
+  --warn: #a8640a;
+  --warn-soft: #fdf3e2;
+  --ok: #2b7a4b;
+  --ok-soft: #e7f4ec;
+  --shadow: 0 1px 2px rgb(28 27 24 / 0.05), 0 8px 24px -12px rgb(28 27 24 / 0.12);
+  --shadow-lg: 0 2px 4px rgb(28 27 24 / 0.04), 0 24px 48px -24px rgb(28 27 24 / 0.25);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --bg: #0e0f11;
+  --surface: #16181b;
+  --surface-2: #1c1f23;
+  --surface-3: #252930;
+  --line: #2a2e34;
+  --line-strong: #3b4048;
+  --fg: #edece8;
+  --muted: #a09d95;
+  --faint: #6f6c66;
+  --ink: #edece8;
+  --on-ink: #121315;
+  --accent: #8d8af5;
+  --accent-soft: #23224a;
+  --danger: #ff6b6b;
+  --danger-soft: #3a1717;
+  --warn: #f0b04a;
+  --warn-soft: #34260f;
+  --ok: #5cc98a;
+  --ok-soft: #12301f;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.6);
+  --shadow-lg: 0 2px 4px rgb(0 0 0 / 0.3), 0 24px 48px -24px rgb(0 0 0 / 0.8);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-ink: var(--ink);
+  --color-on-ink: var(--on-ink);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --shadow-card: var(--shadow);
+  --shadow-lift: var(--shadow-lg);
+  --font-sans: "Geist Variable", -apple-system, "SF Pro Text", system-ui, sans-serif;
+  --font-display: "Instrument Serif", ui-serif, "New York", Georgia, serif;
+}
+
+@layer base {
+  html {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    min-height: 100dvh;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  ::selection {
+    background: var(--accent-soft);
+  }
+}
+
+@layer components {
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 14px;
+    border-radius: 999px;
+    font-weight: 550;
+    font-size: 13px;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--fg);
+    transition: background 120ms, border-color 120ms, transform 120ms;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .btn:hover {
+    background: var(--surface-2);
+  }
+  .btn:active {
+    transform: translateY(1px);
+  }
+  .btn-ink {
+    background: var(--ink);
+    color: var(--on-ink);
+    border-color: var(--ink);
+  }
+  .btn-ink:hover {
+    background: color-mix(in oklab, var(--ink) 86%, var(--bg));
+  }
+  .btn-danger {
+    background: #c92a2a;
+    color: #fff;
+    border-color: #c92a2a;
+  }
+  .btn-danger:hover {
+    background: #a51f1f;
+  }
+  .btn-sm {
+    height: 28px;
+    padding: 0 11px;
+    font-size: 12px;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 22px;
+    padding: 0 9px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .input {
+    height: 36px;
+    width: 100%;
+    padding: 0 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--fg);
+    font-size: 14px;
+  }
+  .scroll-x {
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
