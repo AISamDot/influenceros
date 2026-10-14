@@ -164,13 +164,17 @@ describe("the agent's own messages are not fenced", () => {
 
   it('the agent proposes, the Owner says "yes", and the proposal applies (even with news in the thread)', async () => {
     const t = await liveStudio([{ tool: { name: 'studio__pause_posting', input: { scope: 'platform', platform: 'tiktok', reason: 'Owner said yes' } } }, { text: 'Done: TikTok is paused.' }]);
-    await addMessage(t.db, { threadId: t.thread.id, role: 'agent', author: 'agent:news-desk', body: INJECTED_NEWS, meta: { kind: 'briefing' } });
+    // Explicit times: PGlite's clock is millisecond-grained, so back-to-back inserts tie on created_at and the
+    // id tie-break could put the briefing after the proposal (the "yes" would then confirm nothing).
+    const now = Date.now();
+    await addMessage(t.db, { threadId: t.thread.id, role: 'agent', author: 'agent:news-desk', body: INJECTED_NEWS, meta: { kind: 'briefing' }, at: new Date(now - 2000) });
     await addMessage(t.db, {
       threadId: t.thread.id,
       role: 'agent',
       author: 'agent:studio-manager',
       body: 'TikTok views fell 60% this week. Shall I pause TikTok posting until the new hooks land?',
       meta: { kind: 'reply' },
+      at: new Date(now - 1000),
     });
     const turn = await t.say('yes');
     const first = t.client.calls[0]!.messages[0]!.content as string | Array<{ text?: string }>;
