@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef } from 'react';
-import { IconBell } from './icons';
+import { IconBell, IconSignOut } from './icons';
 import { ThemeToggle } from './theme-toggle';
 
 // IOS-2: each stream appends its own links inside its marked block only (docs/IOS-2-CONTRACTS.md §6).
@@ -25,7 +25,7 @@ const LINKS: Array<{ href: string; label: string; badge?: 'approvals' }> = [
   { href: '/settings', label: 'Settings' },
 ];
 
-export function Nav({ pending, kills, unread }: { pending: number; kills: number; unread: number }) {
+export function Nav({ pending, kills, unread, signedIn = false }: { pending: number; kills: number; unread: number; signedIn?: boolean }) {
   const path = usePathname();
   const active = (href: string) => (href === '/' ? path === '/' || path.startsWith('/personas') : path.startsWith(href));
   const navRef = useRef<HTMLElement>(null);
@@ -70,6 +70,13 @@ export function Nav({ pending, kills, unread }: { pending: number; kills: number
             {unread > 0 ? <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[9.5px] font-bold text-on-danger">{unread > 9 ? '9+' : unread}</span> : null}
           </Link>
           <ThemeToggle />
+          {signedIn ? (
+            <form action="/api/auth/logout" method="post">
+              <button className="grid size-9 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-fg" aria-label="Sign out" title="Sign out">
+                <IconSignOut size={16} />
+              </button>
+            </form>
+          ) : null}
         </div>
       </div>
     </header>

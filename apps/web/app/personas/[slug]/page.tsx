@@ -304,6 +304,7 @@ export default async function PersonaPage({ params, searchParams }: Props) {
               title={`${p.name.split(' ')[0]}'s manager`}
               subtitle="Numbers-first · speaks as a manager, not in persona voice"
               initial={chat.initial}
+            mode={chat.mode}
               avatar={p.portrait_url}
               placeholder={`Tell ${p.name.split(' ')[0]}'s manager what to change…`}
               className="h-[560px] xl:sticky xl:top-20 xl:h-[calc(100dvh-7rem)]"

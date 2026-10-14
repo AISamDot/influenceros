@@ -6,6 +6,7 @@ import {
   decide,
   InvalidTransitionError,
   OWNER,
+  payloadHash,
   type PersonaState,
   PERSONA_STATES,
   propose,
@@ -94,7 +95,8 @@ describe('persona lifecycle state machine', () => {
     // An approval for another persona can't be borrowed.
     await expect(transition(ctx.db, { personaId: other, to: 'KILLED', actor: OWNER, approvalId: approval.id })).rejects.toBeInstanceOf(ApprovalRequiredError);
 
-    await decide(ctx.db, { approvalId: approval.id, decision: 'approve', actor: OWNER });
+    const name = (await ctx.db.one<{ name: string }>('SELECT name FROM persona WHERE id = $1', [id])).name;
+    await decide(ctx.db, { approvalId: approval.id, decision: 'approve', actor: OWNER, payloadHash: payloadHash(approval.payload), confirmName: name });
     expect((await ctx.db.one<{ state: string }>('SELECT state FROM persona WHERE id = $1', [id])).state).toBe('KILLED');
 
     // The kill approval completes the wind-down into RETIRED once…

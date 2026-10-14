@@ -65,6 +65,7 @@ export default async function StudioWall() {
             title="Studio Manager"
             subtitle="Runs the studio end to end · ask anything, @mention a persona"
             initial={chat.initial}
+            mode={chat.mode}
             placeholder="Ask the Studio Manager… (try @amos)"
             className="h-[420px] xl:sticky xl:top-20 xl:h-[calc(100dvh-7rem)]"
           />

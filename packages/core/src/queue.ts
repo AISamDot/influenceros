@@ -19,6 +19,8 @@ export interface JobRow {
   run_at: Date;
   locked_by: string | null;
   locked_at: Date | null;
+  /** Fresh per claim. Every post-claim update matches on it, so only the current claim can finish the job. */
+  lease_token: string | null;
   last_error: string | null;
   result: unknown;
 }
@@ -75,7 +77,8 @@ export async function claimNext(db: Db, opts: ClaimOptions): Promise<JobRow | nu
         LIMIT 1
         FOR UPDATE SKIP LOCKED
      )
-     UPDATE job SET status = 'running', attempts = job.attempts + 1, locked_by = $2, locked_at = $1, updated_at = $1
+     UPDATE job SET status = 'running', attempts = job.attempts + 1, locked_by = $2, locked_at = $1, updated_at = $1,
+                    lease_token = gen_random_uuid()
        FROM next WHERE job.id = next.id
      RETURNING job.*`,
     [now, opts.workerId, opts.kinds ? [...opts.kinds] : null, opts.maxRunningPerPersona ?? 1],
@@ -83,32 +86,32 @@ export async function claimNext(db: Db, opts: ClaimOptions): Promise<JobRow | nu
 }
 
 /**
- * Every state change after a claim is scoped to the lease (status running, locked_by this worker). If the reaper
- * took the job back and another worker re-claimed it, the late result is discarded ('lost') instead of
- * overwriting the new run.
+ * Every state change after a claim is scoped to the lease: status running and this claim's own lease token (not
+ * the worker id, which a restarted worker reuses). If the reaper took the job back and it was re-claimed (by any
+ * worker, the same one included), the late result is discarded ('lost') instead of overwriting the new run.
  */
-type Lease = Pick<JobRow, 'id' | 'locked_by'>;
-const LEASE = `id = $1 AND status = 'running' AND locked_by = $2`;
+type Lease = Pick<JobRow, 'id' | 'lease_token'>;
+const LEASE = `id = $1 AND status = 'running' AND lease_token = $2`;
 
 /** Marks a claimed job done. Returns false when the lease was lost (the result is discarded). */
 export async function completeJob(db: Db, job: Lease, result?: unknown): Promise<boolean> {
   const rows = await db.query(
-    `UPDATE job SET status = 'succeeded', result = $3::jsonb, locked_by = NULL, finished_at = now(), updated_at = now()
+    `UPDATE job SET status = 'succeeded', result = $3::jsonb, locked_by = NULL, lease_token = NULL, finished_at = now(), updated_at = now()
       WHERE ${LEASE} RETURNING id`,
-    [job.id, job.locked_by, json(result ?? null)],
+    [job.id, job.lease_token, json(result ?? null)],
   );
   return rows.length > 0;
 }
 
 /** Long jobs (renders) call this so the reaper only takes jobs whose worker really died. */
 export async function heartbeat(db: Db, job: Lease, now: Date = new Date()): Promise<boolean> {
-  const rows = await db.query(`UPDATE job SET locked_at = $3, updated_at = $3 WHERE ${LEASE} RETURNING id`, [job.id, job.locked_by, now]);
+  const rows = await db.query(`UPDATE job SET locked_at = $3, updated_at = $3 WHERE ${LEASE} RETURNING id`, [job.id, job.lease_token, now]);
   return rows.length > 0;
 }
 
 export async function failJob(
   db: Db,
-  job: Pick<JobRow, 'id' | 'attempts' | 'max_attempts' | 'locked_by'>,
+  job: Pick<JobRow, 'id' | 'attempts' | 'max_attempts' | 'lease_token'>,
   error: unknown,
   opts: { now?: Date; policy?: RetryPolicy; random?: () => number } = {},
 ): Promise<'retry' | 'dead' | 'lost'> {
@@ -116,15 +119,15 @@ export async function failJob(
   const message = error instanceof Error ? error.message : String(error);
   if (job.attempts >= job.max_attempts) {
     const rows = await db.query(
-      `UPDATE job SET status = 'dead', last_error = $3, locked_by = NULL, finished_at = $4, updated_at = $4 WHERE ${LEASE} RETURNING id`,
-      [job.id, job.locked_by, message, now],
+      `UPDATE job SET status = 'dead', last_error = $3, locked_by = NULL, lease_token = NULL, finished_at = $4, updated_at = $4 WHERE ${LEASE} RETURNING id`,
+      [job.id, job.lease_token, message, now],
     );
     return rows.length ? 'dead' : 'lost';
   }
   const runAt = new Date(now.getTime() + retryDelayMs(job.attempts, opts.policy, opts.random));
   const rows = await db.query(
-    `UPDATE job SET status = 'queued', last_error = $3, run_at = $4, locked_by = NULL, locked_at = NULL, updated_at = $5 WHERE ${LEASE} RETURNING id`,
-    [job.id, job.locked_by, message, runAt, now],
+    `UPDATE job SET status = 'queued', last_error = $3, run_at = $4, locked_by = NULL, locked_at = NULL, lease_token = NULL, updated_at = $5 WHERE ${LEASE} RETURNING id`,
+    [job.id, job.lease_token, message, runAt, now],
   );
   return rows.length ? 'retry' : 'lost';
 }
@@ -154,7 +157,7 @@ export async function reapStale(db: Db, opts: { timeoutMs: number; now?: Date; p
             run_at = CASE WHEN attempts >= max_attempts THEN run_at
                           ELSE $1::timestamptz + make_interval(secs => LEAST($3::float8, $4::float8 * power(2, LEAST(GREATEST(attempts, 1) - 1, 30)))) END,
             finished_at = CASE WHEN attempts >= max_attempts THEN $1 ELSE finished_at END,
-            locked_by = NULL, locked_at = NULL, last_error = 'lock expired (worker died or timed out)', updated_at = $1
+            locked_by = NULL, locked_at = NULL, lease_token = NULL, last_error = 'lock expired (worker died or timed out)', updated_at = $1
       WHERE status = 'running' AND locked_at < $2 RETURNING id`,
     [now, new Date(now.getTime() - opts.timeoutMs), policy.capMs / 1000, policy.baseMs / 1000],
   );
@@ -180,8 +183,8 @@ export async function runOnce(
     if (err instanceof DeferJob) {
       const now = opts.now ?? new Date();
       const rows = await db.query(
-        `UPDATE job SET status = 'queued', attempts = attempts - 1, last_error = $3, run_at = $4, locked_by = NULL, locked_at = NULL, updated_at = now() WHERE ${LEASE} RETURNING id`,
-        [job.id, job.locked_by, err.message, new Date(now.getTime() + err.delayMs)],
+        `UPDATE job SET status = 'queued', attempts = attempts - 1, last_error = $3, run_at = $4, locked_by = NULL, locked_at = NULL, lease_token = NULL, updated_at = now() WHERE ${LEASE} RETURNING id`,
+        [job.id, job.lease_token, err.message, new Date(now.getTime() + err.delayMs)],
       );
       return { job, outcome: rows.length ? 'deferred' : 'lost' };
     }

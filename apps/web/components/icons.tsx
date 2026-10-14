@@ -111,6 +111,11 @@ export const IconPause = (p: P) => (
     <path d="M9 5v14M15 5v14" />
   </Svg>
 );
+export const IconSignOut = (p: P) => (
+  <Svg {...p}>
+    <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 16l-4-4 4-4M6 12h10" />
+  </Svg>
+);
 export const IconPlug = (p: P) => (
   <Svg {...p}>
     <path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4" />

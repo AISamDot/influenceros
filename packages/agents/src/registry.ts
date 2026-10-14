@@ -7,6 +7,8 @@ import { type Caller, type ToolContext, type ToolDef, ToolPermissionError, type 
  * - `callers` is an allowlist;
  * - persona-scoped tools need `persona_id`: a persona-scoped caller may only pass its own, and the persona must
  *   belong to the caller's studio.
+ * - the caller and the actor must agree on whether this is the Owner (an agent can't borrow Owner authority);
+ * - successful `mutates` calls are audited.
  * Stream A owns this file and may harden it; the ToolRegistry signature is frozen (contracts.ts).
  */
 const NAME_RE = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/;
@@ -37,6 +39,10 @@ export function createToolRegistry(initial: ReadonlyArray<ToolDef<any, any>> = [
     async invoke(ctx: ToolContext, name: string, raw: unknown) {
       const def = defs.get(name);
       if (!def) throw new ToolPermissionError(`unknown tool: ${name}`);
+      // The caller and the actor must agree: an agent (or the system) can never act with the Owner's authority.
+      if ((ctx.caller === 'owner') !== (ctx.actor.type === 'owner')) {
+        throw new ToolPermissionError(`caller ${ctx.caller} does not match actor ${ctx.actor.type}:${ctx.actor.id}`);
+      }
       if (def.ownerOnly && (ctx.caller !== 'owner' || ctx.actor.type !== 'owner')) {
         throw new ToolPermissionError(`${name} is an Owner-only action`);
       }

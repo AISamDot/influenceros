@@ -3,8 +3,11 @@ import '@fontsource/instrument-serif/400.css';
 import './globals.css';
 import { studioTotals } from '@ios/core';
 import type { Metadata, Viewport } from 'next';
+import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { Nav } from '@/components/nav';
+import { currentSession } from '@/lib/auth';
 import { studioContext } from '@/lib/server';
 
 export const metadata: Metadata = {
@@ -28,15 +31,24 @@ async function counts() {
   }
 }
 
+/**
+ * The proxy has already checked the session cookie's signature; here the session row is checked too, so a page
+ * never renders for a signed-out or revoked session. Sign-in pages render without the nav.
+ */
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const c = await counts();
+  const path = (await headers()).get('x-ios-path') ?? '';
+  const signInPage = path === '/login' || path.startsWith('/login/');
+  const authOff = process.env.IOS_AUTH === 'off' && !process.env.VERCEL;
+  const session = signInPage || authOff ? null : await currentSession().catch(() => null);
+  if (!signInPage && !authOff && !session) redirect('/login');
+  const c = signInPage ? null : await counts();
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body className="bg-bg text-fg">
-        <Nav pending={c.pending} kills={c.kills} unread={c.unread} />
+        {c ? <Nav pending={c.pending} kills={c.kills} unread={c.unread} signedIn={Boolean(session)} /> : null}
         <main className="mx-auto max-w-[1440px] px-4 pb-24 pt-6 sm:px-6">{children}</main>
       </body>
     </html>

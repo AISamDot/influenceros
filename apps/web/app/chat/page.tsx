@@ -54,6 +54,7 @@ export default async function Chat({ searchParams }: { searchParams: Promise<{ t
         title={current.title}
         subtitle={SUBTITLE[current.kind]}
         initial={chat.initial}
+            mode={chat.mode}
         avatar={current.portrait_url}
         className="h-[calc(100dvh-8rem)] min-h-[480px]"
       />

@@ -14,6 +14,7 @@ const config: NextConfig = {
     'pg',
     '@napi-rs/keyring',
     // >>> stream A server externals (append only)
+    '@anthropic-ai/claude-agent-sdk',
     // <<< stream A server externals
     // >>> stream B server externals
     // <<< stream B server externals
