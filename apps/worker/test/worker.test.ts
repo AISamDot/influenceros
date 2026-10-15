@@ -35,9 +35,13 @@ describe('pnpm worker', () => {
     if (!handled) await enqueue(t.db, { kind: unhandled, personaId: p.id }); // no handler until IOS-4 (stream F)
     const once = await runCommand(parseArgs(['once'], {}), deps);
     expect(once.code).toBe(0);
-    const jobs = await t.db.query<{ kind: string; status: string }>('SELECT kind, status FROM job ORDER BY kind');
-    // Other streams' schedules also enqueue work on the tick; every handled job must succeed.
-    expect(jobs.filter((j) => (handled || j.kind !== unhandled) && j.status !== 'succeeded')).toEqual([]);
+    const rows = await t.db.query<{ kind: string; status: string; last_error: string | null }>('SELECT kind, status, last_error FROM job ORDER BY kind');
+    // IOS-4: publish.prepare defers itself ("waiting: no active account …") until the persona's accounts are connected.
+    const deferred = (j: { kind: string; status: string; last_error: string | null }) => j.kind === unhandled && j.status === 'queued' && /^waiting:/.test(j.last_error ?? '');
+    if (handled) expect(rows.filter((j) => j.kind === unhandled).every(deferred)).toBe(true);
+    const jobs = rows.map(({ kind, status }) => ({ kind, status }));
+    // Other streams' schedules also enqueue work on the tick; every handled job must succeed (or be deferred, above).
+    expect(rows.filter((j) => (handled ? !deferred(j) : j.kind !== unhandled) && j.status !== 'succeeded')).toEqual([]);
     expect(jobs.filter((j) => j.kind.startsWith('profit.'))).toEqual([
       { kind: 'profit.measure', status: 'succeeded' },
       { kind: 'profit.weekly_cycle', status: 'succeeded' },
