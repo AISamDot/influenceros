@@ -1,7 +1,12 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { MemoryMediaStore } from './storage';
 import {
+  type AudienceProvider,
+  type DistributionEvent,
+  type DmMessage,
   EMBEDDING_DIM,
   type EmailProvider,
+  type EmailWebhookEvent,
   type EmbeddingProvider,
   type FeedItem,
   type FeedProvider,
@@ -11,14 +16,20 @@ import {
   type LlmProvider,
   type LlmRequest,
   type LlmResponse,
+  type MediaAspect,
+  type MediaResolution,
   type MediaResult,
   type ModelTier,
   type Platform,
+  type PostMetrics,
   type Providers,
+  type PublishAccount,
+  type PublishComment,
   type PublishProvider,
   type PublishRequest,
   type ResearchProvider,
   type StoreEvent,
+  type StoreInfo,
   type StoreProduct,
   type StoreProvider,
   type TalkingProvider,
@@ -131,16 +142,16 @@ export function higgsfieldCredits(op: HiggsfieldOperation, durationS = 5): numbe
 
 export class FakeHiggsfield extends Recorder implements ImageVideoProvider {
   readonly name = 'fake-higgsfield';
-  async createSoulId(req: { name: string; referenceImageUrls: readonly string[] }) {
+  async createSoulId(req: { name: string; referenceImageUrls: readonly string[]; prompts?: readonly string[] }) {
     const id = this.record('createSoulId', req);
     return { soulId: `soul_${id}`, credits: higgsfieldCredits('soul_id') };
   }
-  async generateStill(req: { soulId?: string; prompt: string; aspect?: '9:16' | '1:1' | '4:5' }): Promise<MediaResult> {
+  async generateStill(req: { soulId?: string; prompt: string; aspect?: MediaAspect; model?: string; referenceImageUrls?: readonly string[]; resolution?: MediaResolution }): Promise<MediaResult> {
     const id = this.record('generateStill', req);
     const [w, h] = req.aspect === '1:1' ? [1080, 1080] : req.aspect === '4:5' ? [1080, 1350] : [1080, 1920];
     return { jobId: `hf_${id}`, url: `https://fake.higgsfield.local/stills/${id}.png`, width: w, height: h, credits: higgsfieldCredits('still') };
   }
-  async imageToVideo(req: { imageUrl: string; prompt: string; durationS: number; model?: string }): Promise<MediaResult> {
+  async imageToVideo(req: { imageUrl: string; prompt: string; durationS: number; model?: string; resolution?: MediaResolution; aspect?: MediaAspect }): Promise<MediaResult> {
     const id = this.record('imageToVideo', req);
     return {
       jobId: `hf_${id}`,
@@ -151,7 +162,7 @@ export class FakeHiggsfield extends Recorder implements ImageVideoProvider {
       credits: higgsfieldCredits('image_to_video', req.durationS),
     };
   }
-  async talkingWithAudio(req: { imageUrl: string; audioUrl: string; resolution?: '720p' | '1080p'; durationS?: number }): Promise<MediaResult> {
+  async talkingWithAudio(req: { imageUrl: string; audioUrl: string; resolution?: MediaResolution; durationS?: number; model?: string; prompt?: string }): Promise<MediaResult> {
     const id = this.record('talkingWithAudio', req);
     const durationS = req.durationS ?? 30;
     return {
@@ -163,9 +174,13 @@ export class FakeHiggsfield extends Recorder implements ImageVideoProvider {
       credits: higgsfieldCredits('talking_with_audio', durationS),
     };
   }
-  async costProbe(req: { operation: HiggsfieldOperation; durationS?: number }) {
+  async costProbe(req: { operation: HiggsfieldOperation; durationS?: number; model?: string; resolution?: MediaResolution }) {
     this.record('costProbe', req);
     return { credits: higgsfieldCredits(req.operation, req.durationS) };
+  }
+  async upload(req: { filePath: string; contentType?: string }) {
+    const id = this.record('upload', req);
+    return { url: `https://fake.higgsfield.local/uploads/${id}` };
   }
 }
 
@@ -175,7 +190,7 @@ export class FakeTalking extends Recorder implements TalkingProvider {
   constructor(readonly name: TalkingProvider['name'] = 'fal-kling-avatar') {
     super();
   }
-  async render(req: { imageUrl: string; audioUrl: string; durationS: number }) {
+  async render(req: { imageUrl: string; audioUrl: string; durationS: number; resolution?: MediaResolution; prompt?: string }) {
     const id = this.record('render', req);
     const viaFal = this.name === 'fal-kling-avatar';
     return {
@@ -201,7 +216,7 @@ export class FakeVoice extends Recorder implements VoiceProvider {
     const id = this.record('designVoice', req);
     return { voiceId: `voice_${id}` };
   }
-  async tts(req: { voiceId: string; text: string }) {
+  async tts(req: { voiceId: string; text: string; modelId?: string }) {
     const id = this.record('tts', req);
     const words = req.text.trim().split(/\s+/).filter(Boolean).length;
     const url = `https://fake.elevenlabs.local/audio/${id}.mp3`;
@@ -264,7 +279,7 @@ export class FakeZernio extends Recorder implements PublishProvider {
       aiLabel: p.req.aiLabel,
     };
   }
-  async listComments(externalId: string) {
+  async listComments(externalId: string): Promise<PublishComment[]> {
     this.record('listComments', { externalId });
     return [
       { id: `c_${shortHash(externalId + '1')}`, authorRef: 'user_a', text: 'Where can I get the template?', at: new Date(0) },
@@ -277,6 +292,58 @@ export class FakeZernio extends Recorder implements PublishProvider {
   async sendDm(req: { accountRef: string; userRef: string; text: string }) {
     return { id: `dm_${this.record('sendDm', req)}` };
   }
+  // IOS-4 (stream F owns this fake's behaviour)
+  async uploadMedia(req: { filePath: string; contentType: string }) {
+    return { mediaUrl: `https://fake.zernio.local/media/${this.record('uploadMedia', req)}` };
+  }
+  async hideComment(req: { externalId: string; commentId: string }) {
+    this.record('hideComment', req);
+    return { ok: true };
+  }
+  /** DMs the fake inbox returns (tests push into it). */
+  readonly inbox: DmMessage[] = [];
+  async listDms(req: { accountRef: string; since?: Date }): Promise<DmMessage[]> {
+    this.record('listDms', req);
+    return this.inbox.filter((m) => !req.since || m.at >= req.since);
+  }
+  async fetchMetrics(req: { externalId: string; platform: Platform }): Promise<PostMetrics> {
+    this.record('fetchMetrics', req);
+    const n = parseInt(shortHash(req.externalId, 6), 16);
+    const views = 500 + (n % 20_000);
+    return {
+      views,
+      watchTimeS: Math.round(views * 6.5),
+      likes: Math.round(views * 0.06),
+      comments: Math.round(views * 0.004),
+      saves: Math.round(views * 0.012),
+      shares: Math.round(views * 0.008),
+      follows: Math.round(views * 0.003),
+      profileVisits: Math.round(views * 0.02),
+      linkClicks: Math.round(views * 0.002),
+    };
+  }
+  /** Accounts the fake vendor has connected (tests push into it). */
+  readonly accounts: PublishAccount[] = [];
+  async listAccounts(): Promise<PublishAccount[]> {
+    this.record('listAccounts', {});
+    return [...this.accounts];
+  }
+  sign(rawBody: string): string {
+    return createHmac('sha256', FAKE_WEBHOOK_SECRET).update(rawBody).digest('hex');
+  }
+  verifyWebhook(rawBody: string, signature: string): boolean {
+    return safeEqualHex(this.sign(rawBody), signature);
+  }
+  parseWebhook(rawBody: string): DistributionEvent[] {
+    const v = JSON.parse(rawBody) as DistributionEvent | DistributionEvent[];
+    return Array.isArray(v) ? v : [v];
+  }
+}
+
+function safeEqualHex(expectedHex: string, gotHex: string): boolean {
+  const expected = Buffer.from(expectedHex, 'hex');
+  const got = Buffer.from(/^[0-9a-f]*$/i.test(gotHex) ? gotHex : '', 'hex');
+  return expected.length === got.length && timingSafeEqual(expected, got);
 }
 
 // ─── Store (Lemon Squeezy) ───
@@ -291,9 +358,9 @@ export class FakeLemonSqueezy extends Recorder implements StoreProvider {
   ) {
     super();
   }
-  async listProducts() {
-    this.record('listProducts', {});
-    return [...this.products];
+  async listProducts(req: { storeId?: string } = {}) {
+    this.record('listProducts', req);
+    return this.products.filter((p) => !req.storeId || !p.storeId || p.storeId === req.storeId);
   }
   async getProduct(id: string) {
     this.record('getProduct', { id });
@@ -310,6 +377,20 @@ export class FakeLemonSqueezy extends Recorder implements StoreProvider {
   parseWebhook(rawBody: string): StoreEvent {
     return JSON.parse(rawBody) as StoreEvent;
   }
+  // IOS-4 (stream G owns this fake's behaviour)
+  readonly stores: StoreInfo[] = [];
+  async listStores(): Promise<StoreInfo[]> {
+    this.record('listStores', {});
+    return [...this.stores];
+  }
+  async createCheckout(req: { storeId: string; variantId: string; customData?: Readonly<Record<string, string>>; discountCode?: string }) {
+    const id = this.record('createCheckout', req);
+    return { url: `https://fake.lemonsqueezy.local/checkout/${id}` };
+  }
+  async createDiscount(req: { storeId: string; code: string; percent: number; productIds?: readonly string[]; expiresAt?: Date | null }) {
+    const id = this.record('createDiscount', req);
+    return { id: `disc_${id}`, code: req.code };
+  }
 }
 
 // ─── Email (Resend) ───
@@ -318,6 +399,46 @@ export class FakeResend extends Recorder implements EmailProvider {
   readonly name = 'fake-resend';
   async send(req: { from: string; to: string; subject: string; html: string; tags?: Record<string, string> }) {
     return { id: `em_${this.record('send', req)}` };
+  }
+}
+
+// ─── Audience email (Resend audiences; IOS-4, stream G owns this fake's behaviour) ───
+
+export class FakeResendAudience extends Recorder implements AudienceProvider {
+  readonly name = 'fake-resend-audience';
+  readonly audiences = new Map<string, string>();
+  readonly contacts = new Map<string, { audienceId: string; email: string; unsubscribed: boolean }>();
+  async ensureAudience(req: { name: string }) {
+    this.record('ensureAudience', req);
+    let id = this.audiences.get(req.name);
+    if (!id) {
+      id = `aud_${shortHash(req.name)}`;
+      this.audiences.set(req.name, id);
+    }
+    return { audienceId: id };
+  }
+  async upsertContact(req: { audienceId: string; email: string; firstName?: string; unsubscribed?: boolean }) {
+    this.record('upsertContact', { ...req, email: '[redacted]' });
+    const id = `ct_${shortHash(`${req.audienceId}:${req.email.toLowerCase()}`)}`;
+    this.contacts.set(id, { audienceId: req.audienceId, email: req.email, unsubscribed: req.unsubscribed ?? false });
+    return { contactId: id };
+  }
+  async send(req: { from: string; to: string; subject: string; html: string; text?: string; replyTo?: string; headers?: Readonly<Record<string, string>>; tags?: Readonly<Record<string, string>> }) {
+    return { id: `em_${this.record('send', req)}` };
+  }
+  async sendBroadcast(req: { audienceId: string; from: string; subject: string; html: string; name?: string }) {
+    return { id: `bc_${this.record('sendBroadcast', req)}` };
+  }
+  /** Fake signature: `svix-signature` = hex HMAC of the body with FAKE_WEBHOOK_SECRET. */
+  sign(rawBody: string): string {
+    return createHmac('sha256', FAKE_WEBHOOK_SECRET).update(rawBody).digest('hex');
+  }
+  verifyWebhook(rawBody: string, headers: Readonly<Record<string, string | null | undefined>>): boolean {
+    return safeEqualHex(this.sign(rawBody), headers['svix-signature'] ?? '');
+  }
+  parseWebhook(rawBody: string): EmailWebhookEvent[] {
+    const v = JSON.parse(rawBody) as EmailWebhookEvent | EmailWebhookEvent[];
+    return (Array.isArray(v) ? v : [v]).map((e) => ({ ...e, at: new Date(e.at) }));
   }
 }
 
@@ -463,6 +584,8 @@ export interface FakeProviders extends Providers {
   readonly embeddings: FakeEmbeddings;
   readonly webResearch: FakeWebResearch;
   readonly feeds: FakeFeeds;
+  readonly audience: FakeResendAudience;
+  readonly storage: MemoryMediaStore;
 }
 
 export function createFakeProviders(
@@ -482,5 +605,7 @@ export function createFakeProviders(
     embeddings: new FakeEmbeddings(),
     webResearch: new FakeWebResearch(),
     feeds: new FakeFeeds(),
+    audience: new FakeResendAudience(),
+    storage: new MemoryMediaStore(),
   };
 }

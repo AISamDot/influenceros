@@ -64,9 +64,14 @@ export default async function Settings({ searchParams }: { searchParams: Promise
           <h1 className="font-[family-name:var(--font-display)] text-[44px] leading-none tracking-tight">Settings</h1>
           <p className="mt-2 text-muted">Caps, autonomy, approval toggles and kill switches. Every change is audited.</p>
         </div>
-        <Link href="/settings/integrations" className="btn">
-          <IconPlug size={14} /> Integrations
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/settings/accounts" className="btn">
+            Accounts
+          </Link>
+          <Link href="/settings/integrations" className="btn">
+            <IconPlug size={14} /> Integrations
+          </Link>
+        </div>
       </div>
       <Flash error={sp.error} ok={sp.ok === 'paused' ? 'Posting paused.' : sp.ok === 'resumed' ? 'Posting resumed.' : sp.ok} />
 

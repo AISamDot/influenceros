@@ -12,3 +12,11 @@ onlyBuiltDependencies:
   # <<< stream C built deps
   # >>> stream D built deps
   # <<< stream D built deps
+  # >>> stream E built deps
+  # <<< stream E built deps
+  # >>> stream F built deps
+  # <<< stream F built deps
+  # >>> stream G built deps
+  # <<< stream G built deps
+  # >>> stream H built deps
+  # <<< stream H built deps

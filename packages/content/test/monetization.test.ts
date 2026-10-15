@@ -44,6 +44,9 @@ describe('Monetization Agent v1', () => {
       await t.db.query(`INSERT INTO comment (persona_id, platform, text, classification, created_at) VALUES ($1, 'instagram', $2, $3, $4)`, [p.id, text, i === 0 ? 'purchase_intent' : null, new Date(NOW.getTime() - 3_600_000)]);
     }
     await addSignal(t.db, { personaId: p.id, source: 'etsy', text: 'Sinking funds tracker printable', ref: { price: 6.5, reviews: 2400 }, sourceRef: 'etsy-1' });
+    // Pin the signal to the test clock: the cycle ingests from the latest signal minus a day, and the database stamps
+    // created_at with the wall clock (on any later day the comments above would fall outside that window).
+    await t.db.query(`UPDATE demand_signal SET created_at = $2 WHERE persona_id = $1`, [p.id, new Date(NOW.getTime() - 2 * 3_600_000)]);
     const first = await runMonetizationCycle(t.services, p.id, NOW);
     expect(first.signals).toBe(5); // "nice video" is not a demand signal
     expect(first.briefed).toEqual([]);

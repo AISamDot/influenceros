@@ -35,6 +35,9 @@ importers:
       '@ios/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@ios/commerce':
+        specifier: workspace:*
+        version: link:../../packages/commerce
       '@ios/content':
         specifier: workspace:*
         version: link:../../packages/content
@@ -44,9 +47,18 @@ importers:
       '@ios/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@ios/distribution':
+        specifier: workspace:*
+        version: link:../../packages/distribution
       '@ios/knowledge':
         specifier: workspace:*
         version: link:../../packages/knowledge
+      '@ios/media':
+        specifier: workspace:*
+        version: link:../../packages/media
+      '@ios/products':
+        specifier: workspace:*
+        version: link:../../packages/products
       '@ios/profit':
         specifier: workspace:*
         version: link:../../packages/profit
@@ -145,6 +157,24 @@ importers:
         specifier: workspace:*
         version: link:../secrets
 
+  packages/commerce:
+    dependencies:
+      '@ios/agents':
+        specifier: workspace:*
+        version: link:../agents
+      '@ios/content':
+        specifier: workspace:*
+        version: link:../content
+      '@ios/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ios/db':
+        specifier: workspace:*
+        version: link:../db
+      '@ios/providers':
+        specifier: workspace:*
+        version: link:../providers
+
   packages/content:
     dependencies:
       '@ios/agents':
@@ -185,6 +215,24 @@ importers:
         specifier: 8.23.1
         version: 8.23.1
 
+  packages/distribution:
+    dependencies:
+      '@ios/agents':
+        specifier: workspace:*
+        version: link:../agents
+      '@ios/content':
+        specifier: workspace:*
+        version: link:../content
+      '@ios/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ios/db':
+        specifier: workspace:*
+        version: link:../db
+      '@ios/providers':
+        specifier: workspace:*
+        version: link:../providers
+
   packages/knowledge:
     dependencies:
       '@anthropic-ai/sdk':
@@ -208,6 +256,42 @@ importers:
       fast-xml-parser:
         specifier: 5.11.2
         version: 5.11.2
+
+  packages/media:
+    dependencies:
+      '@ios/agents':
+        specifier: workspace:*
+        version: link:../agents
+      '@ios/content':
+        specifier: workspace:*
+        version: link:../content
+      '@ios/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ios/db':
+        specifier: workspace:*
+        version: link:../db
+      '@ios/providers':
+        specifier: workspace:*
+        version: link:../providers
+
+  packages/products:
+    dependencies:
+      '@ios/agents':
+        specifier: workspace:*
+        version: link:../agents
+      '@ios/content':
+        specifier: workspace:*
+        version: link:../content
+      '@ios/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ios/db':
+        specifier: workspace:*
+        version: link:../db
+      '@ios/providers':
+        specifier: workspace:*
+        version: link:../providers
 
   packages/profit:
     dependencies:
@@ -237,6 +321,9 @@ importers:
       '@ios/agents':
         specifier: workspace:*
         version: link:../agents
+      '@ios/commerce':
+        specifier: workspace:*
+        version: link:../commerce
       '@ios/content':
         specifier: workspace:*
         version: link:../content
@@ -246,9 +333,18 @@ importers:
       '@ios/db':
         specifier: workspace:*
         version: link:../db
+      '@ios/distribution':
+        specifier: workspace:*
+        version: link:../distribution
       '@ios/knowledge':
         specifier: workspace:*
         version: link:../knowledge
+      '@ios/media':
+        specifier: workspace:*
+        version: link:../media
+      '@ios/products':
+        specifier: workspace:*
+        version: link:../products
       '@ios/profit':
         specifier: workspace:*
         version: link:../profit

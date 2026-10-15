@@ -19,6 +19,10 @@ export const SECRETS = {
   'lemonsqueezy.api_key': { env: 'LEMONSQUEEZY_API_KEY', label: 'Lemon Squeezy API key' },
   'lemonsqueezy.webhook_secret': { env: 'LEMONSQUEEZY_WEBHOOK_SECRET', label: 'Lemon Squeezy webhook secret' },
   'resend.api_key': { env: 'RESEND_API_KEY', label: 'Resend API key' },
+  // IOS-4, optional (not required for an integration to be live): webhook signing secrets. Without one, the adapter
+  // polls instead of accepting webhooks.
+  'zernio.webhook_secret': { env: 'ZERNIO_WEBHOOK_SECRET', label: 'Zernio webhook signing secret (optional)' },
+  'resend.webhook_secret': { env: 'RESEND_WEBHOOK_SECRET', label: 'Resend webhook signing secret (optional)' },
   'apify.token': { env: 'APIFY_TOKEN', label: 'Apify token' },
   'pixabay.api_key': { env: 'PIXABAY_API_KEY', label: 'Pixabay API key' },
   'discord.bot_token': { env: 'DISCORD_BOT_TOKEN', label: 'Discord bot token' },

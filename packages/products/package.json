@@ -1,0 +1,21 @@
+{
+  "name": "@ios/products",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@ios/agents": "workspace:*",
+    "@ios/content": "workspace:*",
+    "@ios/core": "workspace:*",
+    "@ios/db": "workspace:*",
+    "@ios/providers": "workspace:*"
+  }
+}

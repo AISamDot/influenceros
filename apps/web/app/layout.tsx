@@ -34,10 +34,19 @@ async function counts() {
 /**
  * The proxy has already checked the session cookie's signature; here the session row is checked too on a full page
  * load. Layouts don't re-render on client-side navigation, so every page also calls requireOwnerPage(). Sign-in
- * pages render without the nav.
+ * pages render without the nav. Public persona sites (/p/*, /l/*; IOS-4 stream G) render bare: no session, no nav,
+ * no studio data (their own layout styles them).
  */
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const path = (await headers()).get('x-ios-path') ?? '';
+  const h = await headers();
+  const path = h.get('x-ios-path') ?? '';
+  if (h.get('x-ios-site') || path.startsWith('/p/') || path.startsWith('/l/')) {
+    return (
+      <html lang="en">
+        <body>{children}</body>
+      </html>
+    );
+  }
   const signInPage = path === '/login' || path.startsWith('/login/');
   const off = authOff();
   const session = signInPage || off ? null : await currentSession().catch(() => null);

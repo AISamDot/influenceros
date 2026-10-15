@@ -49,6 +49,9 @@ export interface LlmProvider {
 
 // ─── Higgsfield (Soul ID, stills, image-to-video, talking-with-audio, cost probe) ───
 export type HiggsfieldOperation = 'soul_id' | 'still' | 'image_to_video' | 'talking_with_audio';
+/** (IOS-3/4, additive) Generation resolution. The pilot renders at 720p and upscales/sharpens on export. */
+export type MediaResolution = '720p' | '1080p';
+export type MediaAspect = '9:16' | '1:1' | '4:5';
 export interface MediaResult {
   readonly jobId: string;
   readonly url: string;
@@ -59,19 +62,34 @@ export interface MediaResult {
 }
 export interface ImageVideoProvider {
   readonly name: string;
-  createSoulId(req: { name: string; referenceImageUrls: readonly string[] }): Promise<{ soulId: string; credits: number }>;
-  generateStill(req: { soulId?: string; prompt: string; aspect?: '9:16' | '1:1' | '4:5' }): Promise<MediaResult>;
-  imageToVideo(req: { imageUrl: string; prompt: string; durationS: number; model?: string }): Promise<MediaResult>;
-  /** `durationS` is the audio length when known; the governor reserves credits from it. */
-  talkingWithAudio(req: { imageUrl: string; audioUrl: string; resolution?: '720p' | '1080p'; durationS?: number }): Promise<MediaResult>;
-  /** Credits an operation would cost, without running it. */
-  costProbe(req: { operation: HiggsfieldOperation; durationS?: number }): Promise<{ credits: number }>;
+  /** Soul ID character. IOS-3: `prompts` = the persona's look-prompts when there are no reference images yet. */
+  createSoulId(req: { name: string; referenceImageUrls: readonly string[]; prompts?: readonly string[] }): Promise<{ soulId: string; credits: number }>;
+  /** Stills (character sheet, look pack, carousel/static images). `model` e.g. 'soul' | 'nano-banana'. */
+  generateStill(req: {
+    soulId?: string;
+    prompt: string;
+    aspect?: MediaAspect;
+    model?: string;
+    referenceImageUrls?: readonly string[];
+    resolution?: MediaResolution;
+  }): Promise<MediaResult>;
+  /** Image-to-video from a start image. `model` e.g. 'kling-3.0-turbo' | 'kling' | 'wan'. */
+  imageToVideo(req: { imageUrl: string; prompt: string; durationS: number; model?: string; resolution?: MediaResolution; aspect?: MediaAspect }): Promise<MediaResult>;
+  /**
+   * Talking clip with the voice track (Seedance 2.0/2.5 with --audio). `durationS` is the audio length when known;
+   * the governor reserves credits from it. One clip is at most 15 s (a 30 s reel = 2 clips).
+   */
+  talkingWithAudio(req: { imageUrl: string; audioUrl: string; resolution?: MediaResolution; durationS?: number; model?: string; prompt?: string }): Promise<MediaResult>;
+  /** Credits an operation would cost, without running it ('higgsfield generate cost'). */
+  costProbe(req: { operation: HiggsfieldOperation; durationS?: number; model?: string; resolution?: MediaResolution }): Promise<{ credits: number }>;
+  /** (IOS-3) Uploads a local file (start image, voice track) so generations can reference it; returns its URL. */
+  upload(req: { filePath: string; contentType?: string }): Promise<{ url: string }>;
 }
 
 // ─── Talking avatar (pluggable: Higgsfield Seedance or fal Kling Avatar) ───
 export interface TalkingProvider {
   readonly name: 'higgsfield-seedance' | 'fal-kling-avatar';
-  render(req: { imageUrl: string; audioUrl: string; durationS: number }): Promise<{
+  render(req: { imageUrl: string; audioUrl: string; durationS: number; resolution?: MediaResolution; prompt?: string }): Promise<{
     jobId: string;
     url: string;
     durationS: number;
@@ -84,7 +102,8 @@ export interface TalkingProvider {
 export interface VoiceProvider {
   readonly name: string;
   designVoice(req: { description: string }): Promise<{ voiceId: string }>;
-  tts(req: { voiceId: string; text: string }): Promise<{
+  /** `modelId` (IOS-3, additive): provider model, e.g. ElevenLabs 'eleven_multilingual_v2'. */
+  tts(req: { voiceId: string; text: string; modelId?: string }): Promise<{
     url: string;
     durationS: number;
     characters: number;
@@ -93,6 +112,16 @@ export interface VoiceProvider {
 }
 
 // ─── Publishing (Zernio) ───
+/**
+ * The platform's post-level AI flag field, always set true (IOS-3/4 owner rule). TikTok AIGC is sent as
+ * `video_made_with_ai` through Zernio; Instagram `is_ai_generated`; YouTube `containsSyntheticMedia`.
+ */
+export const AI_FLAG_FIELDS: Readonly<Record<Platform, string>> = {
+  tiktok: 'video_made_with_ai',
+  instagram: 'is_ai_generated',
+  youtube: 'containsSyntheticMedia',
+  pinterest: 'is_ai_generated',
+};
 export interface PublishRequest {
   readonly accountRef: string;
   readonly platform: Platform;
@@ -103,15 +132,76 @@ export interface PublishRequest {
   readonly scheduledAt?: Date;
   /** Stable per post: a retried publish with the same key must not create a second post. */
   readonly idempotencyKey?: string;
+  // (IOS-4, additive)
+  /** What the media is. Defaults to 'video'. */
+  readonly kind?: 'video' | 'image' | 'carousel';
+  /** YouTube Shorts title; ignored elsewhere. */
+  readonly title?: string;
+  readonly coverUrl?: string;
+  /** 'draft_inbox' sends a TikTok/Instagram draft to the app inbox (trending-sound posts); default 'publish'. */
+  readonly mode?: 'publish' | 'draft_inbox';
+  /** Extra platform fields the adapter passes through (never used to switch the AI flag off). */
+  readonly platformOptions?: Readonly<Record<string, unknown>>;
 }
+export interface PublishComment {
+  readonly id: string;
+  readonly authorRef: string;
+  readonly text: string;
+  readonly at: Date;
+}
+/** (IOS-4) One DM in a conversation the account is part of. */
+export interface DmMessage {
+  readonly id: string;
+  readonly threadRef: string;
+  readonly userRef: string;
+  readonly platform: Platform;
+  /** 'in' = from the user; 'out' = sent by the account. */
+  readonly direction: 'in' | 'out';
+  readonly text: string;
+  readonly at: Date;
+}
+/** (IOS-4) Cumulative per-post metrics at the time of the call. */
+export interface PostMetrics {
+  readonly views: number;
+  readonly watchTimeS: number;
+  readonly likes: number;
+  readonly comments: number;
+  readonly saves: number;
+  readonly shares: number;
+  readonly follows: number;
+  readonly profileVisits: number;
+  readonly linkClicks: number;
+}
+/** (IOS-4) A connected social account in the publishing vendor. */
+export interface PublishAccount {
+  readonly accountRef: string;
+  readonly platform: Platform;
+  readonly handle: string;
+  /** The platform AI profile label, when the vendor can read it; null = unknown. */
+  readonly aiProfileLabel: boolean | null;
+}
+/** (IOS-4) Webhook events from the publishing vendor. */
+export type DistributionEvent =
+  | { type: 'comment'; platform: Platform; accountRef: string; externalPostId: string; comment: PublishComment }
+  | { type: 'dm'; accountRef: string; message: DmMessage }
+  | { type: 'post_status'; externalId: string; status: 'live' | 'processing' | 'failed'; url: string | null };
 export interface PublishProvider {
   readonly name: string;
   schedule(req: PublishRequest): Promise<{ externalId: string; status: 'scheduled' }>;
   publish(req: PublishRequest): Promise<{ externalId: string; status: 'published' | 'processing' }>;
   verify(externalId: string): Promise<{ status: 'live' | 'processing' | 'failed'; url: string | null; aiLabel: boolean }>;
-  listComments(externalId: string): Promise<Array<{ id: string; authorRef: string; text: string; at: Date }>>;
+  listComments(externalId: string): Promise<PublishComment[]>;
   replyToComment(req: { externalId: string; commentId: string; text: string }): Promise<{ id: string }>;
   sendDm(req: { accountRef: string; userRef: string; text: string }): Promise<{ id: string }>;
+  // (IOS-4, additive)
+  /** Uploads a local media file to the vendor; returns the URL to put in `mediaUrls`. */
+  uploadMedia(req: { filePath: string; contentType: string }): Promise<{ mediaUrl: string }>;
+  hideComment(req: { externalId: string; commentId: string }): Promise<{ ok: boolean }>;
+  listDms(req: { accountRef: string; since?: Date }): Promise<DmMessage[]>;
+  fetchMetrics(req: { externalId: string; platform: Platform }): Promise<PostMetrics>;
+  listAccounts(): Promise<PublishAccount[]>;
+  verifyWebhook(rawBody: string, signature: string): boolean;
+  parseWebhook(rawBody: string): DistributionEvent[];
 }
 
 // ─── Store (Lemon Squeezy) ───
@@ -122,23 +212,101 @@ export interface StoreProduct {
   readonly currency: string;
   readonly status: 'draft' | 'published';
   readonly url: string;
+  // (IOS-4, additive)
+  readonly storeId?: string;
+  readonly variantId?: string;
+  /** Hosted checkout URL (buy link). */
+  readonly checkoutUrl?: string;
 }
+/** (IOS-4) One Lemon Squeezy store (one per persona). */
+export interface StoreInfo {
+  readonly id: string;
+  readonly name: string;
+  readonly slug: string;
+  readonly domain: string | null;
+  readonly currency: string;
+}
+/**
+ * Store webhooks. IOS-4 adds optional attribution fields (store, variant, discount code, checkout custom data such as
+ * `post_id` / `short_link`) and subscription lifecycle events, additively.
+ */
 export type StoreEvent =
-  | { type: 'order_created'; orderId: string; productId: string; amountCents: number; currency: string; emailHash: string }
-  | { type: 'order_refunded'; orderId: string; amountCents: number }
-  | { type: 'subscription_created'; subscriptionId: string; productId: string };
+  | {
+      type: 'order_created';
+      orderId: string;
+      productId: string;
+      amountCents: number;
+      currency: string;
+      emailHash: string;
+      storeId?: string;
+      variantId?: string;
+      feeCents?: number;
+      discountCode?: string | null;
+      customData?: Readonly<Record<string, string>>;
+      /** Plain email, only to create the buyer's subscriber/consent records; never logged. */
+      email?: string;
+    }
+  | { type: 'order_refunded'; orderId: string; amountCents: number; storeId?: string }
+  | {
+      type: 'subscription_created';
+      subscriptionId: string;
+      productId: string;
+      storeId?: string;
+      variantId?: string;
+      emailHash?: string;
+      email?: string;
+      priceCents?: number;
+      status?: 'on_trial' | 'active';
+      customData?: Readonly<Record<string, string>>;
+    }
+  | { type: 'subscription_updated'; subscriptionId: string; status: 'on_trial' | 'active' | 'paused' | 'past_due' | 'unpaid' | 'cancelled' | 'expired'; endsAt?: string | null; storeId?: string }
+  | { type: 'subscription_payment_failed'; subscriptionId: string; storeId?: string };
 export interface StoreProvider {
   readonly name: string;
-  listProducts(): Promise<StoreProduct[]>;
+  /** Read-only products API. `storeId` (IOS-4, additive) limits it to one store. */
+  listProducts(req?: { storeId?: string }): Promise<StoreProduct[]>;
   getProduct(id: string): Promise<StoreProduct | null>;
   verifyWebhook(rawBody: string, signature: string): boolean;
   parseWebhook(rawBody: string): StoreEvent;
+  // (IOS-4, additive)
+  listStores(): Promise<StoreInfo[]>;
+  /** A checkout link for a variant with custom data (attribution) and an optional discount code. */
+  createCheckout(req: { storeId: string; variantId: string; customData?: Readonly<Record<string, string>>; discountCode?: string }): Promise<{ url: string }>;
+  /** A discount code (per-post coupons for attribution). */
+  createDiscount(req: { storeId: string; code: string; percent: number; productIds?: readonly string[]; expiresAt?: Date | null }): Promise<{ id: string; code: string }>;
 }
 
 // ─── Email (Resend) ───
+/** Transactional send (stream A: the Owner's sign-in links). Lists and sequences use `AudienceProvider` (IOS-4). */
 export interface EmailProvider {
   readonly name: string;
   send(req: { from: string; to: string; subject: string; html: string; tags?: Record<string, string> }): Promise<{ id: string }>;
+}
+
+// ─── Audience email (IOS-4: Resend audiences, contacts, broadcasts, sequence sends, webhooks) ───
+export type EmailWebhookEvent =
+  | { type: 'delivered' | 'opened' | 'clicked' | 'bounced' | 'complained'; emailId: string; to: string; at: Date; link?: string }
+  | { type: 'contact_unsubscribed'; audienceId: string; email: string; at: Date };
+export interface AudienceProvider {
+  readonly name: string;
+  /** Idempotent by name (one audience per persona list). */
+  ensureAudience(req: { name: string }): Promise<{ audienceId: string }>;
+  upsertContact(req: { audienceId: string; email: string; firstName?: string; unsubscribed?: boolean }): Promise<{ contactId: string }>;
+  /** One email to one subscriber (sequence steps, double opt-in confirmations). `headers` carries List-Unsubscribe. */
+  send(req: {
+    from: string;
+    to: string;
+    subject: string;
+    html: string;
+    text?: string;
+    replyTo?: string;
+    headers?: Readonly<Record<string, string>>;
+    tags?: Readonly<Record<string, string>>;
+  }): Promise<{ id: string }>;
+  sendBroadcast(req: { audienceId: string; from: string; subject: string; html: string; name?: string }): Promise<{ id: string }>;
+  /** Svix-signed webhooks (svix-id, svix-timestamp, svix-signature headers). */
+  verifyWebhook(rawBody: string, headers: Readonly<Record<string, string | null | undefined>>): boolean;
+  parseWebhook(rawBody: string): EmailWebhookEvent[];
 }
 
 // ─── Research (Apify) ───
@@ -237,6 +405,30 @@ export interface FeedProvider {
   fetchFeed(req: { url: string; limit?: number }): Promise<FeedItem[]>;
 }
 
+// ─── Media storage (IOS-3/4): rendered media, product files and site images ───
+/** A stored object. `url` is the dashboard URL (Owner-only `/api/media/<key>`; `public/…` keys also at `/api/public/media/<key>`). */
+export interface StoredObject {
+  readonly key: string;
+  readonly url: string;
+  readonly bytes: number;
+  readonly contentType: string;
+}
+/**
+ * Where generated files live. Keys are POSIX paths without `..`, e.g. `media/<personaId>/<slotId>/final.mp4`,
+ * `products/<personaId>/<productId>/v1/a4.pdf`, `public/<personaSlug>/cover.jpg` (only `public/` keys are ever
+ * served without the Owner session). Local disk on the Mac (`LocalMediaStore`); object storage when deployed (IOS-5).
+ */
+export interface MediaStore {
+  readonly name: string;
+  put(req: { key: string; data: Uint8Array | string; contentType: string }): Promise<StoredObject>;
+  putFile(req: { key: string; filePath: string; contentType: string }): Promise<StoredObject>;
+  get(key: string): Promise<{ data: Uint8Array; contentType: string } | null>;
+  /** A local file path for tools that need one (FFmpeg, Chrome, uploads); remote stores download to a temp file. */
+  localPath(key: string): Promise<string | null>;
+  /** The dashboard URL for a key (no I/O). */
+  url(key: string): string;
+}
+
 export interface Providers {
   readonly llm: LlmProvider;
   readonly imageVideo: ImageVideoProvider;
@@ -252,4 +444,9 @@ export interface Providers {
   readonly embeddings: EmbeddingProvider;
   readonly webResearch: WebResearchProvider;
   readonly feeds: FeedProvider;
+  // IOS-3/4 (docs/IOS-34-CONTRACTS.md)
+  /** Resend audiences, contacts, broadcasts and sequence sends (stream G owns the live adapter). */
+  readonly audience: AudienceProvider;
+  /** Media and product file storage (stream E owns the live member: local disk on the Mac). */
+  readonly storage: MediaStore;
 }

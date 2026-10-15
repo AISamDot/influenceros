@@ -159,3 +159,37 @@ board.ts         Pipeline board and slot-detail read models (apps/web /pipeline 
 - **Worker** (`worker.ts`, `apps/worker`): claim loop over core `runOnce` with `allJobs()` handlers (only kinds with a handler are claimed, so `media.render` waits for IOS-3), each handler gets `{ services, job, heartbeat }`. In dev it runs inline in the Next server (`IOS_WORKER`, default inline without `DATABASE_URL`); `pnpm worker [run|once|tick|status]` runs it standalone against Postgres (it refuses to open PGlite while the dev server is up).
 - **Money page** (`/money`): P&L by period and grain, 90-day fan chart and per-persona forecasts, ranked actions, lever log, credits vs caps and the weekly allocation. Read API: `/api/profit/{pnl,actions,card,forecast,levers}`. CLI: `pnpm profit pnl|forecast|actions|levers|measure|cycle|settings`.
 <!-- <<< stream D architecture -->
+
+## IOS-3/4 (media, distribution, commerce, products)
+Built by four parallel streams against the contracts in `docs/IOS-34-CONTRACTS.md`. New packages:
+
+```
+packages/media         Higgsfield adapter, voice, Remotion/FFmpeg render worker for the 5 formats, QC Q3/Q4 (stream E).
+packages/distribution  Zernio publishing, community worker, analytics ingestion, Settings → Accounts (stream F).
+packages/commerce      Lemon Squeezy, persona micro-sites, Resend lists and sequences, membership, attribution (G).
+packages/products      Product Builder (brief/manuscript → PDF A4 + Letter), QC QP, listing packs (stream H).
+```
+
+Shared since the contracts commit:
+- **Contracts** (`packages/agents/src/ios34.ts`): the cross-stream job payloads (`publish.prepare`, `product.build`), `ProductFile`, `COMMUNITY_CLASSES`, `METRIC_WINDOWS`, persona-site URLs (`personaSiteUrl`, `shortLinkUrl`), `loadPersonaKit` (bible palette → layout colours) and `enqueueOnceFor`.
+- **Providers:** additive members on Higgsfield, Zernio and Lemon Squeezy, plus two new members:
+  - `audience`: Resend audiences, contacts, broadcasts and sequence sends;
+  - `storage`: a `MediaStore`; keys are validated and only `public/…` keys are ever served without the Owner session.
+- **Public persona sites:**
+  - `<slug>.<IOS_STUDIO_DOMAIN>` is rewritten by the proxy to `/p/<slug>/…`. A persona host can't reach the dashboard.
+  - `/p/*`, `/l/*` and `/api/public/*` are public.
+  - The root layout renders site pages bare.
+
+Each stream documents what it built inside its own block below (append only).
+
+<!-- >>> stream E architecture -->
+<!-- <<< stream E architecture -->
+
+<!-- >>> stream F architecture -->
+<!-- <<< stream F architecture -->
+
+<!-- >>> stream G architecture -->
+<!-- <<< stream G architecture -->
+
+<!-- >>> stream H architecture -->
+<!-- <<< stream H architecture -->

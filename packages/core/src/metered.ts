@@ -94,6 +94,7 @@ export function meteredProviders(db: Db, raw: Providers, ctx: MeterContext): Pro
       // Unknown audio length: reserve for 60 s (2x the usual 30 s clip) rather than under-reserve.
       metered(db, ctx, spec('talking_with_audio', credits('talking_with_audio', req.durationS ?? 60)), () => hf.talkingWithAudio(req), (r) => r.credits),
     costProbe: (req) => hf.costProbe(req), // free
+    upload: (req) => hf.upload(req), // free
   };
 
   const talking: TalkingProvider = {

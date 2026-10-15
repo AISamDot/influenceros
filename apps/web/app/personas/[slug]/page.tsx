@@ -4,7 +4,11 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { AutonomyBadge, KillFlag, LifecycleBadge } from '@/components/badges';
 import { ChatPanel } from '@/components/chat-panel';
+import { CommercePersonaPanel } from '@/components/commerce-persona-panel';
+import { DistributionPersonaPanel } from '@/components/distribution-persona-panel';
 import { FormatIcon, PlatformMark } from '@/components/icons';
+import { MediaPersonaPanel } from '@/components/media-persona-panel';
+import { ProductsPersonaPanel } from '@/components/products-persona-panel';
 import { Profile } from '@/components/profile';
 import { Sparkline } from '@/components/sparkline';
 import { compact, daysSince, FORMAT_LABEL, localTime, money, shortDate, usd, weekday, zoneLabel } from '@/lib/format';
@@ -298,6 +302,12 @@ export default async function PersonaPage({ params, searchParams }: Props) {
                 </div>
               </section>
             </div>
+
+            {/* IOS-3/4 panels: each stream fills only its own component (docs/IOS-34-CONTRACTS.md §4). */}
+            <MediaPersonaPanel db={db} studioId={studio.id} personaId={p.id} slug={p.slug} />
+            <DistributionPersonaPanel db={db} studioId={studio.id} personaId={p.id} slug={p.slug} />
+            <CommercePersonaPanel db={db} studioId={studio.id} personaId={p.id} slug={p.slug} />
+            <ProductsPersonaPanel db={db} studioId={studio.id} personaId={p.id} slug={p.slug} />
           </div>
 
           <div id="chat" className="min-w-0 scroll-mt-20">

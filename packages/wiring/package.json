@@ -13,10 +13,14 @@
   },
   "dependencies": {
     "@ios/agents": "workspace:*",
+    "@ios/commerce": "workspace:*",
     "@ios/content": "workspace:*",
     "@ios/core": "workspace:*",
     "@ios/db": "workspace:*",
+    "@ios/distribution": "workspace:*",
     "@ios/knowledge": "workspace:*",
+    "@ios/media": "workspace:*",
+    "@ios/products": "workspace:*",
     "@ios/profit": "workspace:*",
     "@ios/providers": "workspace:*",
     "@ios/secrets": "workspace:*"

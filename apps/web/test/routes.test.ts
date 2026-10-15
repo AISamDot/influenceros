@@ -155,9 +155,10 @@ describe('session revocation reaches every non-public route and page', () => {
     const root = fileURLToPath(new URL('../app', import.meta.url));
     const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(dir, e.name)) : [join(dir, e.name)]));
     const all = files(root).map((f) => relative(root, f).split(sep).join('/'));
-    const PUBLIC_API = /^api\/(auth|cron|webhooks|health)\//;
+    // Public: sign-in, cron, webhooks, health, and the persona sites (IOS-4: /p/*, /l/*, /api/public/*).
+    const PUBLIC_API = /^api\/(auth|cron|webhooks|health|public)\//;
     const routes = all.filter((f) => f.startsWith('api/') && f.endsWith('/route.ts') && !PUBLIC_API.test(f));
-    const pages = all.filter((f) => f.endsWith('page.tsx') && !f.startsWith('login/'));
+    const pages = all.filter((f) => f.endsWith('page.tsx') && !f.startsWith('login/') && !f.startsWith('p/') && !f.startsWith('l/'));
     expect(routes.length).toBeGreaterThan(10);
     expect(pages.length).toBeGreaterThan(10);
     expect(routes.filter((f) => !readFileSync(join(root, f), 'utf8').includes('requireOwner('))).toEqual([]);

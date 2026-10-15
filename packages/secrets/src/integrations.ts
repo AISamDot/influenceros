@@ -18,11 +18,18 @@ export interface IntegrationDef {
 
 export const INTEGRATIONS: readonly IntegrationDef[] = [
   { id: 'anthropic', name: 'Anthropic', purpose: 'Claude Agent SDK: Studio Manager, persona managers, workers', secrets: ['anthropic.api_key'], liveAdapter: true, milestone: 'IOS-2', kind: 'provider' },
+  // IOS-3/4: each stream edits only its own integrations' entries (e.g. liveAdapter: true once its adapter lands).
+  // >>> stream E integrations
   { id: 'higgsfield', name: 'Higgsfield', purpose: 'Soul ID, stills, activity clips, Seedance talking, cost probe', secrets: ['higgsfield.api_key', 'higgsfield.api_secret'], liveAdapter: false, milestone: 'IOS-3', kind: 'provider' },
   { id: 'fal', name: 'fal.ai', purpose: 'Kling AI Avatar talking reels (pluggable with Seedance)', secrets: ['fal.api_key'], liveAdapter: false, milestone: 'IOS-3', kind: 'provider' },
   { id: 'elevenlabs', name: 'ElevenLabs', purpose: 'Synthetic voices (Voice Design) and TTS', secrets: ['elevenlabs.api_key'], liveAdapter: false, milestone: 'IOS-3', kind: 'provider' },
+  // <<< stream E integrations
+  // >>> stream F integrations
   { id: 'zernio', name: 'Zernio', purpose: 'Scheduling and publishing with AI labels, comments, DMs', secrets: ['zernio.api_key'], liveAdapter: false, milestone: 'IOS-4', kind: 'provider' },
+  // <<< stream F integrations
+  // >>> stream G integrations
   { id: 'lemonsqueezy', name: 'Lemon Squeezy', purpose: 'Store: products, orders and webhooks', secrets: ['lemonsqueezy.api_key', 'lemonsqueezy.webhook_secret'], liveAdapter: false, milestone: 'IOS-4', kind: 'provider' },
+  // <<< stream G integrations
   { id: 'resend', name: 'Resend', purpose: 'Owner sign-in links (IOS-2); email lists, sequences and the daily digest', secrets: ['resend.api_key'], liveAdapter: true, milestone: 'IOS-2', kind: 'provider' },
   { id: 'apify', name: 'Apify', purpose: 'Trend and competitor research scrapers', secrets: ['apify.token'], liveAdapter: false, milestone: 'IOS-2', kind: 'provider' },
   { id: 'pixabay', name: 'Pixabay', purpose: 'Royalty-free B-roll and music', secrets: ['pixabay.api_key'], liveAdapter: false, milestone: 'IOS-3', kind: 'provider' },

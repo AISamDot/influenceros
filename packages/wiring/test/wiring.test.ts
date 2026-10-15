@@ -9,7 +9,7 @@ import { allJobs, allSchedules, allTools, createStudioServices, MODULES, provide
  */
 describe('wiring', () => {
   it('composes every package without duplicate tools, job kinds or schedules', () => {
-    expect(Object.keys(MODULES).sort()).toEqual(['agents', 'content', 'knowledge', 'profit']);
+    expect(Object.keys(MODULES).sort()).toEqual(['agents', 'commerce', 'content', 'distribution', 'knowledge', 'media', 'products', 'profit']);
     expect(() => allTools()).not.toThrow();
     expect(() => allJobs()).not.toThrow();
     expect(() => allSchedules()).not.toThrow();
@@ -23,6 +23,9 @@ describe('wiring', () => {
     expect(p.llm.name).toBe('fake-llm');
     expect(p.transcribe.name).toBe('fake-whisper');
     expect(p.embeddings.dimensions).toBe(384);
+    // IOS-3/4 members exist on the fakes (live overlays come from the stream packages).
+    expect(typeof p.audience.ensureAudience).toBe('function');
+    expect(typeof p.storage.put).toBe('function');
   });
 
   it('builds studio services in fake mode', async () => {

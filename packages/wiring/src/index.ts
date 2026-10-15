@@ -1,8 +1,12 @@
 import * as agents from '@ios/agents';
 import { createServices, type JobHandlerMap, type ProviderEnv, type ScheduledTask, type StudioModule, type StudioServices, type ToolDef } from '@ios/agents';
+import * as commerce from '@ios/commerce';
 import * as content from '@ios/content';
 import type { Db } from '@ios/db';
+import * as distribution from '@ios/distribution';
 import * as knowledge from '@ios/knowledge';
+import * as media from '@ios/media';
+import * as products from '@ios/products';
 import * as profit from '@ios/profit';
 import { createFakeProviders, type Providers } from '@ios/providers';
 import { defaultBackend, integrationStates, isSecretName, readSecret, type SecretBackend } from '@ios/secrets';
@@ -10,10 +14,12 @@ import { defaultBackend, integrationStates, isSecretName, readSecret, type Secre
 /**
  * @ios/wiring: the composition root. The web app, the cron tick and the worker build their services here, so no
  * stream edits a shared file to plug in its tools, jobs, schedules, live adapters or policies: each package
- * exports them from its own index (StudioModule) and this file composes all four.
- * Owned by the integrator; streams don't edit it (docs/IOS-2-CONTRACTS.md §3).
+ * exports them from its own index (StudioModule) and this file composes them all (IOS-2: agents, content, knowledge,
+ * profit; IOS-3/4: media, distribution, commerce, products).
+ * Owned by the integrator; streams don't edit it (docs/IOS-2-CONTRACTS.md §3, docs/IOS-34-CONTRACTS.md §3).
  */
-export const MODULES: Readonly<Record<'agents' | 'content' | 'knowledge' | 'profit', StudioModule>> = { agents, content, knowledge, profit };
+export type ModuleName = 'agents' | 'content' | 'knowledge' | 'profit' | 'media' | 'distribution' | 'commerce' | 'products';
+export const MODULES: Readonly<Record<ModuleName, StudioModule>> = { agents, content, knowledge, profit, media, distribution, commerce, products };
 
 function mergeUnique<T>(kind: string, entries: Array<[string, T]>): Map<string, T> {
   const out = new Map<string, T>();

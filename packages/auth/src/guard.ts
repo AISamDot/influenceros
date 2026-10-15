@@ -46,11 +46,37 @@ export function verifySession(token: string | null | undefined, secret: string |
   }
 }
 
+/**
+ * Public persona-site routes (IOS-4 stream G, docs/IOS-34-CONTRACTS.md §5.5): site pages under /p/<slug>/…, short
+ * links /l/<code>, and the site's own endpoints under /api/public/… (opt-in, unsubscribe, member magic links, public
+ * media). They never carry the Owner session and never reach the dashboard.
+ */
+export const PUBLIC_SITE_PREFIXES = ['/p/', '/l/', '/api/public/'] as const;
+
 /** Routes anyone may reach. Everything else, including new routes from other streams, needs the Owner session. */
 export function isPublicPath(pathname: string): boolean {
   if (pathname === '/login' || pathname.startsWith('/login/')) return true;
   if (pathname === '/api/health') return true;
+  if (PUBLIC_SITE_PREFIXES.some((p) => pathname.startsWith(p))) return true;
   return ['/api/auth/', '/api/webhooks/', '/api/cron/'].some((p) => pathname.startsWith(p));
+}
+
+/** Subdomains of the studio domain that are never persona sites (keep in sync with @ios/agents RESERVED_SUBDOMAINS). */
+export const RESERVED_SUBDOMAINS: readonly string[] = ['www', 'app', 'api', 'admin', 'studio', 'mail', 'email', 'l', 'go', 'dashboard'];
+const SUBDOMAIN_RE = /^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/;
+
+/**
+ * The persona slug when `host` is `<slug>.<IOS_STUDIO_DOMAIN>` (a persona site), else null. Only one label deep;
+ * reserved names (www, app, api, …) are never personas.
+ */
+export function personaHostSlug(host: string | null | undefined, env: Readonly<Record<string, string | undefined>> = process.env): string | null {
+  const domain = env.IOS_STUDIO_DOMAIN?.trim().toLowerCase().replace(/^\.+|\.+$/g, '');
+  if (!domain || !host) return null;
+  const name = host.replace(/:\d+$/, '').toLowerCase();
+  if (!name.endsWith(`.${domain}`)) return null;
+  const sub = name.slice(0, -(domain.length + 1));
+  if (!SUBDOMAIN_RE.test(sub) || RESERVED_SUBDOMAINS.includes(sub)) return null;
+  return sub;
 }
 
 export const isDeployed = (env: Readonly<Record<string, string | undefined>> = process.env) => Boolean(env.VERCEL) || env.IOS_DEPLOYED === '1';

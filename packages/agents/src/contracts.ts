@@ -32,8 +32,21 @@ export type AgentName =
   | 'news-desk'
   // <<< stream C agents
   // >>> stream D agents
-  | 'profit-engine';
-// <<< stream D agents
+  | 'profit-engine'
+  // <<< stream D agents
+  // IOS-3/4 (docs/IOS-34-CONTRACTS.md): each stream adds members inside its own block only.
+  // >>> stream E agents
+  | 'video-producer'
+  // <<< stream E agents
+  // >>> stream F agents
+  | 'community-manager'
+  // <<< stream F agents
+  // >>> stream G agents
+  | 'email-writer'
+  // <<< stream G agents
+  // >>> stream H agents
+  | 'product-builder';
+// <<< stream H agents
 
 /** Who can call a tool: an agent, the Owner (dashboard action) or the system (jobs, cron). */
 export type Caller = AgentName | 'owner' | 'system';
@@ -68,6 +81,18 @@ export const DEFAULT_ROUTING: Readonly<Record<AgentName, ModelTier>> = {
   // >>> stream D routing
   'profit-engine': 'standard',
   // <<< stream D routing
+  // >>> stream E routing
+  'video-producer': 'standard',
+  // <<< stream E routing
+  // >>> stream F routing
+  'community-manager': 'standard',
+  // <<< stream F routing
+  // >>> stream G routing
+  'email-writer': 'standard',
+  // <<< stream G routing
+  // >>> stream H routing
+  'product-builder': 'strong',
+  // <<< stream H routing
 };
 
 /** The studio's own skills in `.claude/skills/<name>/SKILL.md` (stream C writes them). */

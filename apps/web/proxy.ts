@@ -1,4 +1,4 @@
-import { authorize, readCookie } from '@ios/auth/guard';
+import { authorize, personaHostSlug, readCookie } from '@ios/auth/guard';
 import { type NextRequest, NextResponse } from 'next/server';
 
 /**
@@ -7,9 +7,12 @@ import { type NextRequest, NextResponse } from 'next/server';
  *    (comma-separated) when deployed.
  * 2. State-changing /api calls must be same-origin (no cross-site form posts to approve a kill, clear a kill switch
  *    or sign in). Server-to-server routes are exempt: the cron tick (Bearer CRON_SECRET) and webhooks (signed).
- * 3. Owner login: every page and API route needs the Owner's signed session cookie, except /login, /api/auth/*,
- *    /api/webhooks/*, /api/cron/* and /api/health. Pages without a session go to /login; API calls get 401.
- *    Routes added by other streams are protected automatically.
+ * 3. Persona sites (IOS-4, docs/IOS-34-CONTRACTS.md §5.5): on `<slug>.<IOS_STUDIO_DOMAIN>` every path is rewritten
+ *    to /p/<slug>/… (public), except /l/*, /api/public/* and Next's own assets, so a persona host can never reach the
+ *    dashboard. Locally the same pages live at /p/<slug>.
+ * 4. Owner login: every page and API route needs the Owner's signed session cookie, except /login, /api/auth/*,
+ *    /api/webhooks/*, /api/cron/*, /api/health and the public site routes (/p/*, /l/*, /api/public/*). Pages without
+ *    a session go to /login; API calls get 401. Routes added by other streams are protected automatically.
  */
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 
@@ -23,9 +26,12 @@ function allowedHost(host: string | null): boolean {
   return extra.includes(name) || extra.includes(host.toLowerCase());
 }
 
+const SITE_PASSTHROUGH = ['/l/', '/api/public/', '/_next/', '/favicon.ico'];
+
 export function proxy(req: NextRequest) {
   const host = req.headers.get('host');
-  if (!allowedHost(host)) return new NextResponse('unknown host', { status: 421 });
+  const siteSlug = personaHostSlug(host);
+  if (!siteSlug && !allowedHost(host)) return new NextResponse('unknown host', { status: 421 });
 
   const { pathname, search } = req.nextUrl;
   const mutating = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
@@ -44,6 +50,18 @@ export function proxy(req: NextRequest) {
     }
   }
 
+  if (siteSlug) {
+    const headers = new Headers(req.headers);
+    headers.set('x-ios-site', siteSlug);
+    if (SITE_PASSTHROUGH.some((p) => pathname.startsWith(p))) {
+      headers.set('x-ios-path', pathname);
+      return NextResponse.next({ request: { headers } });
+    }
+    const target = `/p/${siteSlug}${pathname === '/' ? '' : pathname}`;
+    headers.set('x-ios-path', target);
+    return NextResponse.rewrite(new URL(`${target}${search}`, req.url), { request: { headers } });
+  }
+
   const decision = authorize({ pathname, search, cookie: readCookie(req.headers.get('cookie')), host });
   if (decision.action === 'deny') return NextResponse.json({ error: decision.message }, { status: decision.status });
   // The Location is built on the request's own (allowlisted) Host so the browser stays on the host it used
@@ -58,6 +76,8 @@ export function proxy(req: NextRequest) {
   // Pages read the path so the layout can skip the session-row check on /login (app/layout.tsx).
   const headers = new Headers(req.headers);
   headers.set('x-ios-path', pathname);
+  // Only the proxy marks a persona-site request (a client-sent header must never switch the layout to bare).
+  headers.delete('x-ios-site');
   return NextResponse.next({ request: { headers } });
 }
 

@@ -6,7 +6,7 @@ import { useEffect, useRef } from 'react';
 import { IconBell, IconSignOut } from './icons';
 import { ThemeToggle } from './theme-toggle';
 
-// IOS-2: each stream appends its own links inside its marked block only (docs/IOS-2-CONTRACTS.md §6).
+// Each stream appends its own links inside its marked block only (docs/IOS-2-CONTRACTS.md §6, docs/IOS-34-CONTRACTS.md §6).
 const LINKS: Array<{ href: string; label: string; badge?: 'approvals' }> = [
   { href: '/', label: 'Studio' },
   { href: '/pipeline', label: 'Pipeline' },
@@ -23,6 +23,14 @@ const LINKS: Array<{ href: string; label: string; badge?: 'approvals' }> = [
   // <<< stream C nav
   // >>> stream D nav (append only)
   // <<< stream D nav
+  // >>> stream E nav (append only)
+  // <<< stream E nav
+  // >>> stream F nav (append only)
+  // <<< stream F nav
+  // >>> stream G nav (append only)
+  // <<< stream G nav
+  // >>> stream H nav (append only)
+  // <<< stream H nav
   { href: '/settings', label: 'Settings' },
 ];
 
