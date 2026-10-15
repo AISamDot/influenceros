@@ -229,6 +229,70 @@
 /* >>> stream F css */
 /* <<< stream F css */
 /* >>> stream G css */
+/* Persona micro-sites (/p/<slug>, <slug>.<studio domain>): colours come from the persona's bible palette as
+   --s-bg / --s-ink / --s-accent / --s-accent2 on .site (set by app/p/[slug]/layout.tsx). */
+.site {
+  min-height: 100dvh;
+  background: var(--s-bg);
+  color: var(--s-ink);
+  font-family: "Geist Variable", -apple-system, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+.site a { color: inherit; }
+.site-wrap { max-width: 520px; margin: 0 auto; padding: 40px 18px 56px; }
+.site-wide { max-width: 680px; }
+.site-head { text-align: center; }
+.site-portrait {
+  width: 96px; height: 96px; border-radius: 999px; object-fit: cover; margin: 0 auto 14px; display: block;
+  box-shadow: 0 0 0 3px var(--s-bg), 0 0 0 5px color-mix(in srgb, var(--s-accent) 70%, transparent);
+}
+.site-monogram {
+  width: 96px; height: 96px; border-radius: 999px; margin: 0 auto 14px; display: grid; place-items: center;
+  background: var(--s-accent); color: #fff; font-family: "Instrument Serif", Georgia, serif; font-size: 44px;
+}
+.site-name { font-family: "Instrument Serif", Georgia, serif; font-size: 40px; line-height: 1.05; letter-spacing: -0.01em; margin: 0; }
+.site-niche { margin: 6px 0 0; opacity: 0.72; text-transform: capitalize; }
+.site-h2 { font-family: "Instrument Serif", Georgia, serif; font-size: 30px; line-height: 1.1; margin: 0 0 8px; }
+.site-lead { opacity: 0.8; margin: 0 0 20px; }
+.site-links { display: grid; gap: 12px; margin-top: 28px; }
+.site-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; padding: 12px 20px;
+  border-radius: 999px; font-weight: 600; text-decoration: none; text-align: center; cursor: pointer;
+  border: 1.5px solid color-mix(in srgb, var(--s-ink) 22%, transparent); background: color-mix(in srgb, var(--s-bg) 85%, #fff);
+  color: var(--s-ink); font-size: 15.5px; transition: transform 0.12s ease, box-shadow 0.12s ease; width: 100%;
+}
+.site-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px -10px color-mix(in srgb, var(--s-ink) 60%, transparent); }
+.site-btn:focus-visible, .site-input:focus-visible { outline: 3px solid color-mix(in srgb, var(--s-accent) 55%, transparent); outline-offset: 2px; }
+.site .site-btn-primary { background: var(--s-accent); border-color: var(--s-accent); color: #fff; }
+.site-card {
+  border-radius: 20px; padding: 18px; background: color-mix(in srgb, var(--s-bg) 70%, #fff);
+  border: 1px solid color-mix(in srgb, var(--s-ink) 12%, transparent);
+}
+.site-card + .site-card { margin-top: 12px; }
+.site-cover { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 14px; display: block; margin-bottom: 14px; }
+.site-price { font-weight: 700; color: var(--s-accent); }
+.site-list { margin: 12px 0 0; padding-left: 20px; }
+.site-list li + li { margin-top: 4px; }
+.site-form { display: grid; gap: 10px; margin-top: 18px; }
+.site-label { font-size: 13px; font-weight: 600; opacity: 0.8; }
+.site-input {
+  width: 100%; min-height: 48px; padding: 10px 16px; border-radius: 14px; font-size: 16px; color: var(--s-ink);
+  background: #fff; border: 1.5px solid color-mix(in srgb, var(--s-ink) 20%, transparent);
+}
+.site-check { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; opacity: 0.85; }
+.site-check input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--s-accent); }
+.site-hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.site-note { font-size: 13px; opacity: 0.7; margin-top: 12px; }
+.site-alert { border-radius: 14px; padding: 12px 16px; margin: 16px 0; background: color-mix(in srgb, var(--s-accent2) 18%, #fff); border: 1px solid color-mix(in srgb, var(--s-accent2) 45%, transparent); }
+.site-section { margin-top: 36px; }
+.site-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.6; margin: 0 0 10px; }
+.site-foot { margin-top: 48px; text-align: center; font-size: 12.5px; opacity: 0.6; }
+.site-foot a { text-decoration: underline; text-underline-offset: 2px; }
+.site-prose h2 { font-family: "Instrument Serif", Georgia, serif; font-size: 24px; margin: 28px 0 6px; }
+.site-prose p { margin: 0 0 12px; }
+@media (prefers-reduced-motion: reduce) { .site-btn { transition: none; } .site-btn:hover { transform: none; } }
 /* <<< stream G css */
 /* >>> stream H css */
 /* <<< stream H css */

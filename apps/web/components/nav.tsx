@@ -29,6 +29,7 @@ const LINKS: Array<{ href: string; label: string; badge?: 'approvals' }> = [
   { href: '/community', label: 'Community' },
   // <<< stream F nav
   // >>> stream G nav (append only)
+  { href: '/commerce', label: 'Commerce' },
   // <<< stream G nav
   // >>> stream H nav (append only)
   // <<< stream H nav
