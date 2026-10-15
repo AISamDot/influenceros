@@ -28,7 +28,7 @@ export const INTEGRATIONS: readonly IntegrationDef[] = [
   { id: 'zernio', name: 'Zernio', purpose: 'Scheduling and publishing with AI labels, comments, DMs', secrets: ['zernio.api_key'], liveAdapter: false, milestone: 'IOS-4', kind: 'provider' },
   // <<< stream F integrations
   // >>> stream G integrations
-  { id: 'lemonsqueezy', name: 'Lemon Squeezy', purpose: 'Store: products, orders and webhooks', secrets: ['lemonsqueezy.api_key', 'lemonsqueezy.webhook_secret'], liveAdapter: false, milestone: 'IOS-4', kind: 'provider' },
+  { id: 'lemonsqueezy', name: 'Lemon Squeezy', purpose: 'Stores, products (read-only), checkouts, discount codes, order and subscription webhooks', secrets: ['lemonsqueezy.api_key', 'lemonsqueezy.webhook_secret'], liveAdapter: true, milestone: 'IOS-4', kind: 'provider' },
   // <<< stream G integrations
   { id: 'resend', name: 'Resend', purpose: 'Owner sign-in links (IOS-2); email lists, sequences and the daily digest', secrets: ['resend.api_key'], liveAdapter: true, milestone: 'IOS-2', kind: 'provider' },
   { id: 'apify', name: 'Apify', purpose: 'Trend and competitor research scrapers', secrets: ['apify.token'], liveAdapter: false, milestone: 'IOS-2', kind: 'provider' },
