@@ -242,10 +242,22 @@ export class FakeZernio extends Recorder implements PublishProvider {
   readonly posts = new Map<string, FakePost>();
   /** Set to make the next N publish calls throw (for retry tests). */
   failNext = 0;
+  /** externalIds sent to the app inbox as drafts (draft_inbox): processing until `completeDraft`. */
+  readonly drafts = new Set<string>();
+  /** Comments per externalId (tests push into it). Posts without an entry get two default comments. */
+  readonly comments = new Map<string, PublishComment[]>();
+  /** Comment ids hidden through `hideComment`. */
+  readonly hidden = new Set<string>();
+  /** Metrics overrides per externalId (tests set growth); otherwise deterministic from the id. */
+  readonly metrics = new Map<string, PostMetrics>();
 
   private guard(req: PublishRequest): void {
     // The type already forces `true`; this catches untyped callers.
     if (req.aiLabel !== true) throw new Error('AI label is required on every post');
+    // Mirrors AI_FLAG_FIELDS (types.ts): an explicit platform option may only ever say true.
+    const field = { tiktok: 'video_made_with_ai', instagram: 'is_ai_generated', youtube: 'containsSyntheticMedia', pinterest: 'is_ai_generated' }[req.platform];
+    const opt = req.platformOptions?.[field];
+    if (opt !== undefined && opt !== true) throw new Error(`refusing ${field}=${String(opt)}: the AI flag is always on`);
   }
   async schedule(req: PublishRequest) {
     this.guard(req);
@@ -258,21 +270,31 @@ export class FakeZernio extends Recorder implements PublishProvider {
   async publish(req: PublishRequest) {
     this.guard(req);
     const seen = req.idempotencyKey ? this.byKey.get(req.idempotencyKey) : undefined;
-    if (seen) return { externalId: seen, status: 'published' as const };
+    if (seen) return { externalId: seen, status: this.drafts.has(seen) ? ('processing' as const) : ('published' as const) };
     if (this.failNext > 0) {
       this.failNext -= 1;
       this.record('publish:failed', req);
       throw new Error('fake zernio: upstream 503');
     }
     const id = this.record('publish', req);
-    this.posts.set(id, { req, status: 'live' });
+    const draft = req.mode === 'draft_inbox';
+    this.posts.set(id, { req, status: draft ? 'scheduled' : 'live' });
+    if (draft) this.drafts.add(id);
     if (req.idempotencyKey) this.byKey.set(req.idempotencyKey, id);
-    return { externalId: id, status: 'published' as const };
+    return { externalId: id, status: draft ? ('processing' as const) : ('published' as const) };
+  }
+  /** Simulates the creator posting an inbox draft from the app. */
+  completeDraft(externalId: string): void {
+    const p = this.posts.get(externalId);
+    if (!p || !this.drafts.has(externalId)) throw new Error(`no draft ${externalId}`);
+    this.drafts.delete(externalId);
+    this.posts.set(externalId, { req: p.req, status: 'live' });
   }
   async verify(externalId: string) {
     this.record('verify', { externalId });
     const p = this.posts.get(externalId);
     if (!p) return { status: 'failed' as const, url: null, aiLabel: false };
+    if (p.status === 'failed') return { status: 'failed' as const, url: null, aiLabel: p.req.aiLabel };
     return {
       status: p.status === 'live' ? ('live' as const) : ('processing' as const),
       url: p.status === 'live' ? `https://fake.${p.req.platform}.local/p/${externalId}` : null,
@@ -281,10 +303,12 @@ export class FakeZernio extends Recorder implements PublishProvider {
   }
   async listComments(externalId: string): Promise<PublishComment[]> {
     this.record('listComments', { externalId });
+    const set = this.comments.get(externalId);
+    if (set) return set.filter((c) => !this.hidden.has(c.id));
     return [
       { id: `c_${shortHash(externalId + '1')}`, authorRef: 'user_a', text: 'Where can I get the template?', at: new Date(0) },
       { id: `c_${shortHash(externalId + '2')}`, authorRef: 'user_b', text: 'This helped, thanks!', at: new Date(0) },
-    ];
+    ].filter((c) => !this.hidden.has(c.id));
   }
   async replyToComment(req: { externalId: string; commentId: string; text: string }) {
     return { id: `r_${this.record('replyToComment', req)}` };
@@ -298,6 +322,7 @@ export class FakeZernio extends Recorder implements PublishProvider {
   }
   async hideComment(req: { externalId: string; commentId: string }) {
     this.record('hideComment', req);
+    this.hidden.add(req.commentId);
     return { ok: true };
   }
   /** DMs the fake inbox returns (tests push into it). */
@@ -308,6 +333,8 @@ export class FakeZernio extends Recorder implements PublishProvider {
   }
   async fetchMetrics(req: { externalId: string; platform: Platform }): Promise<PostMetrics> {
     this.record('fetchMetrics', req);
+    const set = this.metrics.get(req.externalId);
+    if (set) return { ...set };
     const n = parseInt(shortHash(req.externalId, 6), 16);
     const views = 500 + (n % 20_000);
     return {
@@ -335,7 +362,7 @@ export class FakeZernio extends Recorder implements PublishProvider {
     return safeEqualHex(this.sign(rawBody), signature);
   }
   parseWebhook(rawBody: string): DistributionEvent[] {
-    const v = JSON.parse(rawBody) as DistributionEvent | DistributionEvent[];
+    const v = JSON.parse(rawBody, (k, val) => (k === 'at' && typeof val === 'string' ? new Date(val) : val)) as DistributionEvent | DistributionEvent[];
     return Array.isArray(v) ? v : [v];
   }
 }

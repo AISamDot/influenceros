@@ -751,8 +751,11 @@ export async function evaluateValidations(services: StudioServices, personaId: s
       [personaId, v.starts_at, v.keyword],
     );
     const views = await db.one<{ v: number }>(
-      `SELECT COALESCE(sum(m.views), 0)::int AS v FROM metric_snapshot m JOIN post p ON p.id = m.post_id JOIN calendar_slot s ON s.id = p.calendar_slot_id
-        WHERE s.persona_id = $1 AND s.cta_keyword = $2 AND s.slot_at >= $3`,
+      // Latest snapshot per post: metric windows (1h/24h/72h/7d) are cumulative, so summing them would double-count.
+      `SELECT COALESCE(sum(x.views), 0)::int AS v FROM (
+         SELECT DISTINCT ON (m.post_id) m.views FROM metric_snapshot m JOIN post p ON p.id = m.post_id JOIN calendar_slot s ON s.id = p.calendar_slot_id
+          WHERE s.persona_id = $1 AND s.cta_keyword = $2 AND s.slot_at >= $3
+          ORDER BY m.post_id, m.captured_on DESC, m.created_at DESC) x`,
       [personaId, v.keyword, v.starts_at],
     );
     const passed = c.n >= VALIDATION_PASS.comments || (views.v >= VALIDATION_PASS.minViews && c.n / views.v >= VALIDATION_PASS.rate) ? true : v.ends_at && v.ends_at < now ? false : null;

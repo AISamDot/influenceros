@@ -160,3 +160,56 @@ describe('publishPost', () => {
     expect(n.n).toBe(1);
   });
 });
+
+describe('publishPost (IOS-4 request fields)', () => {
+  it('passes the vendor account ref, vendor media, cover, kind, title, mode and platform options, and keeps aiLabel true', async () => {
+    const pub = createFakeProviders().publish;
+    const id = await makePersona(ctx);
+    const p = await ownerApproved(id);
+    await ctx.db.query(`UPDATE account SET token_ref = 'zr_acc_1' WHERE id = (SELECT account_id FROM post WHERE id = $1)`, [p]);
+    await ctx.db.query(
+      `UPDATE post SET thumbnail_url = 'https://dash/cover.jpg', meta = $2::jsonb WHERE id = $1`,
+      [p, JSON.stringify({ kind: 'video', title: 'A title', mode: 'publish', platform_options: { video_made_with_ai: true }, vendor_media_urls: ['https://cdn.zernio/v.mp4'], vendor_cover_url: 'https://cdn.zernio/c.jpg' })],
+    );
+    await publishPost(ctx.db, pub, p);
+    expect(pub.callsTo('publish')[0]?.args).toEqual({
+      accountRef: 'zr_acc_1',
+      platform: 'tiktok',
+      mediaUrls: ['https://cdn.zernio/v.mp4'],
+      caption: 'hi',
+      aiLabel: true,
+      idempotencyKey: p,
+      kind: 'video',
+      title: 'A title',
+      coverUrl: 'https://cdn.zernio/c.jpg',
+      mode: 'publish',
+      platformOptions: { video_made_with_ai: true },
+    });
+  });
+
+  it('without IOS-4 fields the request is unchanged (dashboard media URLs, handle as account ref)', async () => {
+    const pub = createFakeProviders().publish;
+    const id = await makePersona(ctx);
+    const p = await ownerApproved(id);
+    await publishPost(ctx.db, pub, p);
+    const args = pub.callsTo('publish')[0]?.args as Record<string, unknown>;
+    expect(args).toMatchObject({ mediaUrls: ['m.mp4'], aiLabel: true, idempotencyKey: p });
+    expect(String(args.accountRef)).toMatch(/^h_/);
+    expect(args.mode).toBeUndefined();
+  });
+
+  it('an inbox draft is kept pending past maxAttempts until draftWaitMs, then failed', async () => {
+    const pub = createFakeProviders().publish;
+    const id = await makePersona(ctx);
+    const p = await ownerApproved(id);
+    await ctx.db.query(`UPDATE post SET meta = '{"mode":"draft_inbox"}'::jsonb WHERE id = $1`, [p]);
+    expect((await publishPost(ctx.db, pub, p)).status).toBe('verifying');
+    const meta = (await ctx.db.one<{ meta: Record<string, unknown> }>('SELECT meta FROM post WHERE id = $1', [p])).meta;
+    expect(meta.inbox_sent_at).toBeTruthy();
+    const soon = new Date(Date.now() + 10 * 60_000);
+    for (let i = 0; i < 3; i++) await recoverPublishing(ctx.db, pub, { now: soon, maxAttempts: 2 });
+    expect(await status(p)).toBe('publishing');
+    const late = new Date(Date.now() + 73 * 3_600_000);
+    expect((await recoverPublishing(ctx.db, pub, { now: late, maxAttempts: 2 })).failed).toEqual([p]);
+  });
+});
