@@ -1,6 +1,7 @@
 import { requireOwner } from '@/lib/auth';
 import { enqueueSlot, pipelineBoard, planWeek, runSlot } from '@ios/content';
 import { PUBLISHING_STATES } from '@ios/core';
+import { rerenderSlot } from '@ios/media';
 import { createStudioServices } from '@ios/wiring';
 import { backTo, isFormPost, isJson, UUID_RE } from '@/lib/http';
 import { studioContext } from '@/lib/server';
@@ -33,7 +34,9 @@ export async function GET(req: Request) {
  * - {action: "plan_week", week: "this"|"next", persona_id?}: plans the week now for one or every active persona
  *   and queues each new slot for the pipeline (the scheduler does the same on its own every day);
  * - {action: "run_slot", slot_id}: queues one slot for the pipeline (a slot blocked by repeated pipeline failures is
- *   reopened first).
+ *   reopened first);
+ * - {action: "render_slot", slot_id}: re-runs a post's media (a slot blocked by Q2/Q3/Q4 is reopened with fresh fix
+ *   loops) and queues one media.render.
  */
 export async function POST(req: Request) {
   const denied = await requireOwner(req);
@@ -86,5 +89,13 @@ export async function POST(req: Request) {
     return done(jobId ? (reopened ? 'reopened and queued for the pipeline' : 'queued for the pipeline') : 'already queued', { jobId, reopened });
   }
 
-  return fail('action must be plan_week or run_slot');
+  if (input.action === 'render_slot') {
+    if (!input.slot_id || !UUID_RE.test(input.slot_id)) return fail('slot_id must be a uuid');
+    const slot = await db.maybeOne(`SELECT 1 FROM calendar_slot s JOIN persona p ON p.id = s.persona_id WHERE s.id = $1 AND p.studio_id = $2`, [input.slot_id, studio.id]);
+    if (!slot) return fail('slot not found', 404);
+    const { jobId, reopened } = await rerenderSlot(services, input.slot_id);
+    return done(jobId ? (reopened ? 'reopened and queued for rendering' : 'queued for rendering') : 'nothing to render (or already queued)', { jobId, reopened });
+  }
+
+  return fail('action must be plan_week, run_slot or render_slot');
 }

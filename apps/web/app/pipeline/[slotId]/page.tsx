@@ -1,9 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
 import { slotDetail } from '@ios/content';
+import { slotMedia } from '@ios/media';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { GateChecks, QcChecks } from '@/components/content-checks';
+import { MediaSlot } from '@/components/media-slot';
 import { FormatIcon } from '@/components/icons';
 import { localTime, PURPOSE_STYLE, VERDICT_STYLE } from '@/components/pipeline-card';
 import { SubmitButton } from '@/components/submit-button';
@@ -51,6 +53,8 @@ export default async function SlotPage({ params }: { params: Promise<{ slotId: s
   const { db, studio } = await studioContext();
   const d = await slotDetail(db, studio.id, slotId);
   if (!d) notFound();
+  const media = await slotMedia(db, slotId).catch(() => null);
+  const mediaBlocked = d.slot.stage === 'blocked' && /^(Q2|Q3|Q4|media failed)/.test(d.slot.blockReason ?? '');
   const { slot, script } = d;
   const purpose = PURPOSE_STYLE[slot.purpose];
   const lastGate = d.gate.at(-1);
@@ -60,7 +64,7 @@ export default async function SlotPage({ params }: { params: Promise<{ slotId: s
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-        <img src={slot.thumbnailUrl ?? ''} alt="" className="h-[160px] w-[90px] shrink-0 rounded-xl bg-surface-3 object-cover" />
+        <img src={(media?.cover?.url ?? slot.renderThumbUrl ?? slot.thumbnailUrl) || ''} alt="" className="h-[160px] w-[90px] shrink-0 rounded-xl bg-surface-3 object-cover" />
         <div className="min-w-0 flex-1">
           <Link href={`/pipeline?persona=${slot.personaSlug}`} className="text-[12.5px] text-muted hover:text-fg">
             ← Pipeline · {slot.personaName}
@@ -95,6 +99,8 @@ export default async function SlotPage({ params }: { params: Promise<{ slotId: s
           ) : null}
         </div>
       </div>
+
+      {media ? <MediaSlot media={media} slotId={slot.slotId} blocked={mediaBlocked} /> : null}
 
       {!script ? (
         <p className="rounded-xl border border-dashed border-line-strong p-4 text-center text-[13px] text-muted">No script yet: the Scriptwriter picks this slot up automatically.</p>
@@ -197,8 +203,8 @@ export default async function SlotPage({ params }: { params: Promise<{ slotId: s
             {d.media ? (
               <Section title="Queued for media" aside={<span className="pill bg-surface-2 text-muted">{d.media.status}</span>}>
                 <p className="text-[12.5px] text-muted">
-                  A <span className="font-mono">media.render</span> job carries the TTS-safe voice text, on-screen text, caption, keyword, hashtags, visual brief and evidence to the
-                  video producer (IOS-3).
+                  The <span className="font-mono">media.render</span> job: voice and Q2, Higgsfield generations, avatar QC (Q3), the render at 1080×1920 with captions in the safe zones,
+                  final QC (Q4) with up to 2 fix loops, then the final Gate.
                 </p>
               </Section>
             ) : null}

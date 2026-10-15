@@ -13,6 +13,7 @@ onlyBuiltDependencies:
   # >>> stream D built deps
   # <<< stream D built deps
   # >>> stream E built deps
+  - ffmpeg-static
   # <<< stream E built deps
   # >>> stream F built deps
   # <<< stream F built deps
