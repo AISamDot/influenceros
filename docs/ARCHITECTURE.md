@@ -198,6 +198,25 @@ Without keys everything runs on `FakeToolkit` / `FakeOcr` / `FakeFaceMatcher` (J
 <!-- <<< stream E architecture -->
 
 <!-- >>> stream F architecture -->
+### Stream F: distribution, community, analytics (IOS-4)
+
+**Publishing** (`packages/distribution/src/publishing.ts`, core `publishPost`):
+- `publish.prepare` (E enqueues once per slot) creates one `post` per target platform with `ai_flag` true and the platform's AI field in `post.meta.platform_options` (TikTok `video_made_with_ai`, Instagram `is_ai_generated`, YouTube `containsSyntheticMedia`). Video goes to TikTok + Instagram, plus YouTube Shorts from the persona's day 30; static and carousel go to Instagram only, because TikTok refuses the AI flag on direct photo posts. Then post-level Q4 (`qc_report` subject `post`), `gatePost`, and core `propose({ kind: 'post' })`; the slot goes `scheduled`. No active account → `DeferJob` 6 h + one Owner notification.
+- `publish.due` (every minute) queues `publish.post` for approved posts at their time, skipping anything behind a kill switch. `publish.post` uploads the stored media to Zernio once (`post.meta.vendor_media_urls`), then core `publishPost` (kill switches, approval, Gate, QC, idempotency key = post id, `aiLabel: true`, IOS-4 request fields from `post.meta`) → verify → `live` + URL → slot `live`.
+- Trending-sound posts (`trendingSound`) go to the TikTok app inbox as drafts (`mode: 'draft_inbox'`); recovery keeps them pending for 72 h instead of failing them.
+- Live adapter: `ZernioPublisher` (REST, `ROUTES` in `zernio.ts`), on when `zernio.api_key` is present. It writes the AI flag last and refuses any option that says otherwise. Webhooks (`/api/webhooks/zernio`) need `zernio.webhook_secret`; without it the worker polls.
+
+**Community** (`community.ts`): `community.poll` (every 10 min) and the webhook store `comment` / `dm_thread` rows (unique per external id); `community.handle` classifies (`COMMUNITY_CLASSES`: rules first, then a fast model on fenced, untrusted text; the rules' safety classes always win) and acts:
+- spam/abuse hidden; threats, crisis, minors and legal/press are S1 (`community_pause`, thread `bot_paused`, critical notification); crisis gets only the Owner-approved helpline text (an Owner-only `legal_text_change` with `payload.purpose = 'crisis_helpline'`, proposed automatically the first time);
+- partnership, personal health/money/legal questions and hostile "are you real?" are S2 (warn notification, holding reply where it fits);
+- keyword comments get a DM with the post's short link (G) or the persona's `/free` page; other comments get a reply in voice.
+- Every reply/DM passes `gateReply` and is sent only when green; a denial of being AI falls back to the honest template. Budgets: 25 replies per post, 20 replies and 15 DMs per persona per hour.
+
+**Analytics** (`analytics.ts`): `analytics.pull` (every 15 min) captures cumulative metrics per post at 1h/24h/72h/7d (`metric_snapshot."window"`, unique per post and window; a capture later than the next window is skipped) and rolls up one account row per persona, platform and day (the day's growth, followers carried forward). The Profit Engine reads the latest snapshot per post; `personaScorecard` feeds the persona panel and `analytics.scorecard`.
+
+**Accounts** (`accounts.ts`, `/settings/accounts`): the setup sheet per persona (handle suggestion, bio without an AI line, portrait, link-in-bio `personaSiteUrl`, AI-label steps; YouTube from day 30). Only the Owner records and changes accounts; `accounts.sync` (every 6 h) links accounts connected in Zernio by handle (`token_ref` = Zernio account id), activates them and reads the AI profile label when the vendor exposes it. The Gate ambers posts from accounts without the label.
+
+Migration `0010_f_distribution.sql`: `post.meta`, `account.meta`, comment/DM/escalation columns, `metric_snapshot."window"`, `community_pause`. CLI: `pnpm distribution status|sheet|accounts|sync|scorecard|pull|poll|due|crisis-text`.
 <!-- <<< stream F architecture -->
 
 <!-- >>> stream G architecture -->

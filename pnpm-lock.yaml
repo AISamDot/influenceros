@@ -229,9 +229,15 @@ importers:
       '@ios/db':
         specifier: workspace:*
         version: link:../db
+      '@ios/profit':
+        specifier: workspace:*
+        version: link:../profit
       '@ios/providers':
         specifier: workspace:*
         version: link:../providers
+      '@ios/secrets':
+        specifier: workspace:*
+        version: link:../secrets
 
   packages/knowledge:
     dependencies:

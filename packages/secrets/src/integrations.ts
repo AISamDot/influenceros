@@ -25,7 +25,7 @@ export const INTEGRATIONS: readonly IntegrationDef[] = [
   { id: 'elevenlabs', name: 'ElevenLabs', purpose: 'Synthetic voices (Voice Design), TTS and Speech-to-Text for QC Q2', secrets: ['elevenlabs.api_key'], liveAdapter: true, milestone: 'IOS-3', kind: 'provider' },
   // <<< stream E integrations
   // >>> stream F integrations
-  { id: 'zernio', name: 'Zernio', purpose: 'Scheduling and publishing with AI labels, comments, DMs', secrets: ['zernio.api_key'], liveAdapter: false, milestone: 'IOS-4', kind: 'provider' },
+  { id: 'zernio', name: 'Zernio', purpose: 'Scheduling and publishing with AI labels, comments, DMs, analytics', secrets: ['zernio.api_key'], liveAdapter: true, milestone: 'IOS-4', kind: 'provider' },
   // <<< stream F integrations
   // >>> stream G integrations
   { id: 'lemonsqueezy', name: 'Lemon Squeezy', purpose: 'Store: products, orders and webhooks', secrets: ['lemonsqueezy.api_key', 'lemonsqueezy.webhook_secret'], liveAdapter: false, milestone: 'IOS-4', kind: 'provider' },
