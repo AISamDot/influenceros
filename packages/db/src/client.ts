@@ -3,6 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { PGlite, types } from '@electric-sql/pglite';
 import { vector } from '@electric-sql/pglite-pgvector';
 import pg from 'pg';
+import { acquirePgliteLock } from './lock';
 
 export type Row = Record<string, unknown>;
 
@@ -101,15 +102,41 @@ export function wrapPglite(pgl: PGlite): Db {
   return self;
 }
 
-export async function createPglite(dataDir?: string, loadDataDir?: Blob | File): Promise<Db> {
-  if (dataDir) mkdirSync(dataDir, { recursive: true });
-  const pgl = await PGlite.create({
-    ...(dataDir ? { dataDir } : {}),
-    ...(loadDataDir ? { loadDataDir } : {}),
-    parsers: PGLITE_PARSERS,
-    extensions: PGLITE_EXTENSIONS,
-  });
-  return wrapPglite(pgl);
+/**
+ * A PGlite database: in memory, or stored in `dataDir`. A stored one first takes the single-process lock
+ * (`<dataDir>.lock`, see lock.ts) and throws DbLockedError when another live process has the dir open; `close()`
+ * releases it.
+ */
+export async function createPglite(dataDir?: string, loadDataDir?: Blob | File, lock: { role?: string; origin?: string | null } = {}): Promise<Db> {
+  if (!dataDir) {
+    const pgl = await PGlite.create({ ...(loadDataDir ? { loadDataDir } : {}), parsers: PGLITE_PARSERS, extensions: PGLITE_EXTENSIONS });
+    return wrapPglite(pgl);
+  }
+  mkdirSync(dirname(resolve(dataDir)), { recursive: true });
+  const release = acquirePgliteLock(dataDir, lock);
+  try {
+    mkdirSync(dataDir, { recursive: true });
+    const pgl = await PGlite.create({
+      dataDir,
+      ...(loadDataDir ? { loadDataDir } : {}),
+      parsers: PGLITE_PARSERS,
+      extensions: PGLITE_EXTENSIONS,
+    });
+    const db = wrapPglite(pgl);
+    return {
+      ...db,
+      async close() {
+        try {
+          await db.close();
+        } finally {
+          release();
+        }
+      },
+    };
+  } catch (err) {
+    release();
+    throw err;
+  }
 }
 
 export function createPostgres(connectionString: string): Db {
@@ -158,12 +185,12 @@ export function defaultPgliteDir(): string {
 
 /**
  * `DATABASE_URL` set → Postgres (Supabase). Otherwise → PGlite stored under `.data/pglite` (git-ignored).
- * One PGlite process per data dir: stop `pnpm dev` before running seed/reset scripts.
+ * One PGlite process per data dir: a second process gets DbLockedError (lock.ts) instead of corrupting it.
  */
-export async function openDb(): Promise<Db> {
+export async function openDb(lock: { role?: string; origin?: string | null } = {}): Promise<Db> {
   const url = process.env.DATABASE_URL;
   if (url) return createPostgres(url);
-  return createPglite(defaultPgliteDir());
+  return createPglite(defaultPgliteDir(), undefined, lock);
 }
 
 const GLOBAL_KEY = Symbol.for('influencer-os.db');

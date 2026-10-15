@@ -295,4 +295,6 @@
 @media (prefers-reduced-motion: reduce) { .site-btn { transition: none; } .site-btn:hover { transform: none; } }
 /* <<< stream G css */
 /* >>> stream H css */
+.products-card code { font-size: 12px; }
+.products-card { break-inside: avoid; }
 /* <<< stream H css */

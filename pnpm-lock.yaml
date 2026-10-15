@@ -317,6 +317,9 @@ importers:
       '@ios/providers':
         specifier: workspace:*
         version: link:../providers
+      '@ios/secrets':
+        specifier: workspace:*
+        version: link:../secrets
 
   packages/profit:
     dependencies:
