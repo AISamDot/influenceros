@@ -2,10 +2,10 @@
 //
 // Commands that cost money queue jobs by default; the worker runs them with the Keychain keys. `--inline` runs here
 // instead, with live research only when ANTHROPIC_API_KEY is set in this shell (the CLI never reads the Keychain).
-// Local PGlite allows one process per data dir: stop `pnpm dev` first, or set DATABASE_URL.
+// Local PGlite allows one process per data dir: while `pnpm dev` runs these commands refuse (lock), so stop it first or set DATABASE_URL.
 import { createServices, type ProviderEnv, type StudioServices } from '@ios/agents';
 import { getStudio, OWNER } from '@ios/core';
-import { type Db, openDb } from '@ios/db';
+import { type Db, exitOnOpenError, openDb } from '@ios/db';
 import { migrate } from '@ios/db/migrate';
 import { createFakeProviders, type Providers } from '@ios/providers';
 import { buildFieldBrain, fieldBrainStatus } from './field-brain';
@@ -50,7 +50,7 @@ function services(db: Db): StudioServices {
 }
 
 async function withDb<T>(fn: (db: Db, studioId: string) => Promise<T>): Promise<T> {
-  const db = await openDb();
+  const db = await openDb().catch((err) => exitOnOpenError('knowledge', err));
   try {
     await migrate(db);
     const studio = await getStudio(db);

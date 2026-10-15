@@ -3,10 +3,10 @@
 //   plan <persona-slug> [--this-week]       plan a week on the real database and queue its slots (the worker runs them)
 //   run <persona-slug>                      run every planned slot of this and next week inline (idea → … → media_queued)
 //   monetize <persona-slug>                 run the Monetization Agent's cycle inline
-// The real-database commands need DATABASE_URL, or a stopped dev server when using local PGlite (one process per data dir).
+// The real-database commands need DATABASE_URL, or a stopped dev server when using local PGlite (they refuse while it runs).
 import { createServices } from '@ios/agents';
 import { getStudio } from '@ios/core';
-import { getDb } from '@ios/db';
+import { exitOnOpenError, getDb } from '@ios/db';
 import { planWeek } from './calendar';
 import { enqueueSlot } from './jobs';
 import { runMonetizationCycle } from './monetization';
@@ -23,7 +23,7 @@ const pad = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` 
 
 async function realServices(slug: string | undefined) {
   if (!slug) throw new Error('give a persona slug');
-  const db = await getDb();
+  const db = await getDb().catch((err) => exitOnOpenError('content', err));
   const studio = await getStudio(db);
   const p = await db.maybeOne<{ id: string; name: string }>('SELECT id, name FROM persona WHERE studio_id = $1 AND slug = $2', [studio.id, slug]);
   if (!p) throw new Error(`no persona "${slug}"`);

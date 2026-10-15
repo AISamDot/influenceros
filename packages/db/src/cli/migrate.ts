@@ -1,7 +1,9 @@
 import { migrate } from '../migrate';
 import { openDb } from '../client';
+import { exitOnOpenError } from '../lock';
 
-const db = await openDb();
+// Refuses (DbLockedError) while another process, e.g. the dev server, has the local PGlite dir open.
+const db = await openDb().catch((err) => exitOnOpenError('db:migrate', err));
 try {
   const applied = await migrate(db);
   console.log(

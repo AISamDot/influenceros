@@ -1,5 +1,6 @@
 import type { Db } from '@ios/db';
 import { budgetStatus, type BudgetStatus } from './governor';
+import { PUBLISHING_STATES } from './lifecycle';
 import type { PersonaRow, PostFormat, PostPurpose } from './types';
 
 /** Read models for the dashboard. */
@@ -130,13 +131,22 @@ export async function studioWall(db: Db, studioId: string, now = new Date()): Pr
   });
 }
 
-export async function studioTotals(db: Db, studioId: string): Promise<{ active: number; pending: number; kills: number; unread: number }> {
+/**
+ * Header counts. `live` counts only personas that publish (TESTING and later: PUBLISHING_STATES); `setup` counts
+ * those still being set up (PROPOSED or SETUP) and `active` everything not killed or retired.
+ */
+export async function studioTotals(
+  db: Db,
+  studioId: string,
+): Promise<{ active: number; live: number; setup: number; pending: number; kills: number; unread: number }> {
   return db.one(
     `SELECT (SELECT count(*) FROM persona WHERE studio_id = $1 AND state NOT IN ('KILLED','RETIRED'))::int AS active,
+            (SELECT count(*) FROM persona WHERE studio_id = $1 AND state = ANY($2::text[]))::int AS live,
+            (SELECT count(*) FROM persona WHERE studio_id = $1 AND state IN ('PROPOSED','SETUP'))::int AS setup,
             (SELECT count(*) FROM approval WHERE studio_id = $1 AND status = 'pending')::int AS pending,
             (SELECT count(*) FROM approval WHERE studio_id = $1 AND status = 'pending' AND kind IN ('persona_kill','persona_retire'))::int AS kills,
             (SELECT count(*) FROM notification WHERE studio_id = $1 AND read_at IS NULL)::int AS unread`,
-    [studioId],
+    [studioId, [...PUBLISHING_STATES]],
   );
 }
 

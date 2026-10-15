@@ -1,6 +1,6 @@
 // `pnpm owner <command>`: Owner account commands. Input is hidden; nothing secret is printed except the one-time
 // sign-in link `login-link` exists to print (on the Owner's own machine).
-import { openDb } from '@ios/db';
+import { DbLockedError, openDb } from '@ios/db';
 import { migrate } from '@ios/db/migrate';
 import { promptSecret } from '@ios/secrets';
 import { authStatus, issueLoginLink, MAGIC_LINK_TTL_MS, MIN_PASSWORD_LENGTH, revokeAllSessions, setOwnerPassword } from './owner';
@@ -10,6 +10,22 @@ const USAGE = `Usage: pnpm owner <command>
   sessions revoke    sign out every session
   login-link         print a one-time sign-in link (recovery when web sign-in is throttled or email is down)
   status             password set?, active sessions, email sign-in configured?`;
+
+/**
+ * The dashboard origin links point at: IOS_PUBLIC_URL, else http://localhost:<PORT>, else port 3100 (the same rule as
+ * `appOrigin()` in @ios/agents, which this package can't import).
+ */
+function loginBaseUrl(env: Readonly<Record<string, string | undefined>> = process.env): string {
+  return (env.IOS_PUBLIC_URL?.trim() || `http://localhost:${env.PORT?.trim() || 3100}`).replace(/\/+$/, '');
+}
+
+/** What to do instead while another process (normally the dev server) has the local database open. */
+function lockedHint(cmd: string, holder: { role: string; origin: string | null }): string {
+  const origin = holder.origin ?? (holder.role === 'server' ? loginBaseUrl() : null);
+  if (cmd === 'login-link' && origin) return `The server is running, so sign in at ${origin}/login instead (email link or password).`;
+  if (cmd === 'set-password' && origin) return `Signed in at ${origin}? Stop the server for a moment, run this, then start it again.`;
+  return '';
+}
 
 async function main(argv: string[]): Promise<number> {
   const [cmd, sub] = argv;
@@ -21,7 +37,15 @@ async function main(argv: string[]): Promise<number> {
   try {
     db = await openDb();
   } catch (err) {
-    console.error(`Couldn't open the database (${(err as Error).message}). With local PGlite, stop \`pnpm dev\` first.`);
+    if (err instanceof DbLockedError) {
+      // Another process (the dev server) holds the local PGlite dir: refuse clearly instead of corrupting it.
+      const hint = lockedHint(cmd, err.holder);
+      const lines = err.message.split('\n');
+      if (hint) lines.splice(2, 0, hint);
+      console.error(lines.join('\n'));
+      return 1;
+    }
+    console.error(`Couldn't open the database (${(err as Error).message}).`);
     return 1;
   }
   try {
@@ -38,8 +62,7 @@ async function main(argv: string[]): Promise<number> {
       return 0;
     }
     if (cmd === 'login-link') {
-      const base = process.env.IOS_PUBLIC_URL?.trim() || `http://localhost:${process.env.PORT ?? 3000}`;
-      console.log(await issueLoginLink(db, { baseUrl: base }));
+      console.log(await issueLoginLink(db, { baseUrl: loginBaseUrl() }));
       console.log(`Works once, for ${MAGIC_LINK_TTL_MS / 60_000} minutes.`);
       return 0;
     }

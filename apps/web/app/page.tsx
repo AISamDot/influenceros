@@ -38,13 +38,13 @@ export default async function StudioWall() {
           <div className="eyebrow">{today}</div>
           <h1 className="font-[family-name:var(--font-display)] text-[44px] leading-none tracking-tight sm:text-[52px]">The studio</h1>
           <p className="mt-2 text-[14px] text-muted">
-            {totals.active} personas live · {testing} testing · every post AI-labelled
+            {totals.live} {totals.live === 1 ? 'persona' : 'personas'} live · {testing} testing · {totals.setup} in setup · every post AI-labelled
           </p>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Active personas" value={totals.active} hint={`${cards.length} on the wall`} />
+        <Kpi label="Live personas" value={totals.live} hint={`${totals.setup} in setup · ${cards.length} on the wall`} />
         <Kpi label="Views · 7 days" value={compact(views)} hint="all platforms" />
         <Kpi label="Revenue · 7 days" value={usd(revenue)} hint="store orders" tone="ok" />
         <Link href="/approvals" className="block">

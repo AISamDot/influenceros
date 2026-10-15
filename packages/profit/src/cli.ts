@@ -1,7 +1,7 @@
 // `pnpm profit <command>`: Profit Engine commands. With local PGlite, stop `pnpm dev` first (one process per data
 // dir) or set DATABASE_URL.
 import { getStudio, OWNER } from '@ios/core';
-import { openDb } from '@ios/db';
+import { exitOnOpenError, openDb } from '@ios/db';
 import { rankActions } from './actions';
 import { forecastStudio, storeForecasts } from './forecast';
 import { leverInputs, measureLevers, planLevers, runLevers } from './levers';
@@ -38,7 +38,7 @@ async function main(argv: string[]): Promise<number> {
     console.log(HELP);
     return cmd ? 0 : 1;
   }
-  const db = await openDb();
+  const db = await openDb().catch((err) => exitOnOpenError('profit', err));
   try {
     const studio = await getStudio(db);
     const now = new Date();
