@@ -31,17 +31,17 @@ describe('Lemon Squeezy live adapter (no network: fetch is faked)', () => {
       if (c.url.endsWith('/discounts')) return { status: 201, body: { data: { id: 'd1', attributes: { code: 'RESETAB12' } } } };
       return { status: 404, body: { errors: [{ detail: 'not found' }] } };
     });
-    const ls = new LemonSqueezyStore({ apiKey: 'sk_live_secret', webhookSecret: 'whs', fetch: f });
+    const ls = new LemonSqueezyStore({ apiKey: 'ls-test-key-123', webhookSecret: 'whs', fetch: f });
     expect(await ls.listStores()).toEqual([{ id: '11', name: 'Ava', slug: 'ava', domain: 'ava.lemonsqueezy.com', currency: 'USD' }]);
     const [p] = await ls.listProducts({ storeId: '11' });
     expect(p).toMatchObject({ id: '7', storeId: '11', variantId: '70', status: 'published', priceCents: 1700, checkoutUrl: 'https://ava.lemonsqueezy.com/buy/x' });
     expect(calls[1]!.url).toContain('filter[store_id]=11');
-    expect(calls[1]!.headers.Authorization).toBe('Bearer sk_live_secret');
+    expect(calls[1]!.headers.Authorization).toBe('Bearer ls-test-key-123');
     expect(await ls.createCheckout({ storeId: '11', variantId: '70', customData: { post_id: 'abc' }, discountCode: 'RESETAB12' })).toEqual({ url: 'https://ava.lemonsqueezy.com/checkout/custom/c1' });
     expect(calls.at(-1)!.body).toMatchObject({ data: { attributes: { checkout_data: { custom: { post_id: 'abc' }, discount_code: 'RESETAB12' } }, relationships: { variant: { data: { id: '70' } } } } });
     expect(await ls.createDiscount({ storeId: '11', code: 'RESETAB12', percent: 10 })).toEqual({ id: 'd1', code: 'RESETAB12' });
     expect(await ls.getProduct('99')).toBeNull();
-    expect(JSON.stringify({ ls })).not.toContain('sk_live_secret');
+    expect(JSON.stringify({ ls })).not.toContain('ls-test-key-123');
   });
 
   it('verifies X-Signature (hex HMAC-SHA256) and maps webhook bodies to store events', () => {
@@ -79,7 +79,7 @@ describe('Resend audience live adapter', () => {
       if (c.url.endsWith('/send')) return { body: { id: 'bc_1' } };
       return { status: 500, body: {} };
     });
-    const r = new ResendAudience({ apiKey: 're_secret', fetch: f });
+    const r = new ResendAudience({ apiKey: 'resend-test-key', fetch: f });
     expect(await r.ensureAudience({ name: 'Ava (ava)' })).toEqual({ audienceId: 'aud_existing' });
     expect(await r.ensureAudience({ name: 'Bo (bo)' })).toEqual({ audienceId: 'aud_new' });
     expect(await r.upsertContact({ audienceId: 'aud_existing', email: 'a@example.com', unsubscribed: true })).toEqual({ contactId: 'ct_1' });
@@ -88,7 +88,7 @@ describe('Resend audience live adapter', () => {
     expect(calls.at(-1)!.body).toMatchObject({ to: ['a@example.com'], headers: { 'List-Unsubscribe': '<https://x/u>' }, tags: [{ name: 'persona', value: 'ava' }, { name: 'kind', value: 'welcome_step' }] });
     expect(await r.sendBroadcast({ audienceId: 'aud_existing', from: 'Ava <ava@mail.test>', subject: 's', html: 'h' })).toEqual({ id: 'bc_1' });
     expect(calls.at(-1)!.url).toMatch(/\/broadcasts\/bc_1\/send$/);
-    expect(JSON.stringify(r)).not.toContain('re_secret');
+    expect(JSON.stringify(r)).not.toContain('resend-test-key');
   });
 
   it('verifies Svix signatures with a timestamp tolerance; no secret means no webhooks', () => {
