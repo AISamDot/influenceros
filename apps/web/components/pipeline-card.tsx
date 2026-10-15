@@ -27,14 +27,32 @@ export function localTime(d: Date, timeZone: string, opts: { date?: boolean } = 
   }
 }
 
+/** IOS-3 media steps as short card labels. */
+export const MEDIA_STEP_LABEL: Record<string, string> = {
+  voice: 'voice',
+  generate: 'generating',
+  q3: 'avatar QC',
+  render: 'rendering',
+  q4: 'final QC',
+  done: 'rendered',
+  blocked: 'blocked',
+};
+
+/** The card's image: the render cover once Q4 passed (thumbnail_url), else the newest generated still, else the script art. */
+export function cardThumb(item: BoardItem): string {
+  const covered = item.thumbnailUrl?.startsWith('/api/');
+  return (covered ? item.thumbnailUrl : (item.renderThumbUrl ?? item.thumbnailUrl)) ?? '';
+}
+
 export function PipelineCard({ item }: { item: BoardItem }) {
   const purpose = PURPOSE_STYLE[item.purpose];
+  const rendering = item.mediaStep && !['done', 'blocked'].includes(item.mediaStep) && item.stage !== 'blocked';
   return (
     <Link
       href={`/pipeline/${item.slotId}`}
       className={`flex gap-2 rounded-xl border bg-surface p-1.5 transition hover:border-line-strong ${item.stage === 'blocked' ? 'border-danger/40' : 'border-line'}`}
     >
-      <img src={item.thumbnailUrl ?? ''} alt="" className="h-[60px] w-[34px] shrink-0 rounded-md bg-surface-3 object-cover" />
+      <img src={cardThumb(item)} alt="" className={`h-[60px] w-[34px] shrink-0 rounded-md bg-surface-3 object-cover ${rendering ? 'opacity-80' : ''}`} />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-1">
           <span className="truncate text-[11px] font-semibold">{item.personaName}</span>
@@ -51,6 +69,12 @@ export function PipelineCard({ item }: { item: BoardItem }) {
           {item.ctaKeyword ? <span className="rounded-full bg-surface-2 px-1.5 py-px font-mono text-[9.5px] font-semibold text-muted">{item.ctaKeyword}</span> : null}
           {item.gateVerdict ? <span className={`rounded-full px-1.5 py-px text-[9.5px] font-bold uppercase ${VERDICT_STYLE[item.gateVerdict]}`}>Gate {item.gateVerdict}</span> : null}
           {item.queued ? <span className="rounded-full bg-accent-soft px-1.5 py-px text-[9.5px] font-semibold text-accent">queued</span> : null}
+          {rendering ? <span className="rounded-full bg-accent-soft px-1.5 py-px text-[9.5px] font-semibold text-accent">{MEDIA_STEP_LABEL[item.mediaStep!] ?? item.mediaStep}</span> : null}
+          {item.mediaCredits ? (
+            <span className="rounded-full bg-surface-2 px-1.5 py-px text-[9.5px] tabular-nums text-muted" title="Higgsfield credits spent on this post">
+              {Math.round(item.mediaCredits)} cr
+            </span>
+          ) : null}
         </div>
         {item.blockReason && item.stage === 'blocked' ? <p className="mt-1 line-clamp-3 text-[10.5px] leading-snug text-danger">{item.blockReason}</p> : null}
         {item.waiting && item.stage !== 'blocked' ? <p className="mt-1 line-clamp-2 text-[10.5px] leading-snug text-warn">{item.waiting}</p> : null}

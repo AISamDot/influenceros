@@ -183,6 +183,18 @@ Shared since the contracts commit:
 Each stream documents what it built inside its own block below (append only).
 
 <!-- >>> stream E architecture -->
+### Media pipeline (IOS-3, stream E: `packages/media`)
+
+`media.render` (queued by B's pipeline after the pre-render Gate) runs on the Mac worker and resumes from `media_render.state`:
+
+1. **Voice** (talking, voiceover): `providers.voice.tts` (ElevenLabs Creator; Higgsfield TTS with `IOS_VOICE_PROVIDER=higgsfield`) → stored track → **Q2** (`@ios/content` `voiceCheck`). A failed Q2 re-voices (≤ 2), then blocks. The persona's voice is designed once (`media_profile.voice_id`).
+2. **Generate** (Higgsfield via the official CLI, 720p): Soul ID from the look prompts (once per persona, after Q2), stills (Soul / Nano Banana), image-to-video clips (Kling 3.0 Turbo → Kling → Wan), talking clips via Seedance with `--audio` (the voice split at sentence ends into ≤ 15 s chunks, uploaded with `higgsfield upload`). fal Kling AI Avatar v2 is the pluggable fallback (`IOS_TALKING_PROVIDER=fal`). Every call goes through `metered()`: `hf_credits` estimated from `media_price` (the weekly `higgsfield generate cost` probe), settled at the credits the CLI reports; USD calls in `media_usd`; each logged in `media_generation`.
+3. **Q3** (talking): face similarity of sampled frames against the persona's face reference (Apple Vision feature prints via `vision/ios-vision.swift`), one face per frame, freezedetect. Failing clips are regenerated (≤ 2), then the slot blocks.
+4. **Render** (`FfmpegToolkit`: pinned `ffmpeg-static`/`ffprobe-static`, sharp for text layers and cards): talking = 2 clips stitched with a b-roll cutaway; activity + text = an 8 s loop with timed on-screen lines; voiceover = 3 clips + narration + captions; static = 1080×1920 image + headline; carousel = 6–8 slides at 1080×1350. Upscale with lanczos + unsharp, the persona grade (`eq` + `colorbalance` from the bible palette), captions inside the platform safe zones, single-pass loudnorm, AI-generated container metadata, `render_meta.ai` on every asset.
+5. **Q4**: ebur128 (−14 LUFS ±1, true peak ≤ −1 dBTP), silencedetect (> 0.7 s), blackdetect, freezedetect, ffprobe size/fps/duration, caption OCR (Apple Vision) against the script, safe zones, AI flag, cover, CTA, caption length, hashtags. The maker fixes (re-normalise two-pass, re-size captions, regenerate the clip, re-voice, re-render) at most twice, then the slot is `blocked` with the report and an Owner notification.
+6. **Hand-over**: cover asset → `calendar_slot.thumbnail_url` (the Pipeline board) → status `final_gate` → exactly one `publish.prepare` (`enqueueOnceFor`, key `slot:<id>`) with `aiGenerated: true`.
+
+Without keys everything runs on `FakeToolkit` / `FakeOcr` / `FakeFaceMatcher` (JSON stand-ins, SVG frames), so every format renders end to end in tests and the dev server. A spoken post never mixes a live voice with fake generations: it waits with "pending key". Owner-only files are served by `/api/media/<key>`; `/api/public/media/<key>` serves only `public/…` keys. Schedules: `media.cost_probe` (weekly), `media.prepare_personas` (daily Soul ID + voice + look pack), `media.sweep` (hourly re-queue of dead renders, block after 3). CLI: `pnpm media status | sample <format> | probe-costs` (samples run on a scratch database).
 <!-- <<< stream E architecture -->
 
 <!-- >>> stream F architecture -->

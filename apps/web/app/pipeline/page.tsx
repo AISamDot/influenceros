@@ -77,8 +77,8 @@ export default async function Pipeline({ searchParams }: { searchParams: Promise
           <div className="eyebrow">Content pipeline</div>
           <h1 className="font-[family-name:var(--font-display)] text-[44px] leading-none tracking-tight">Pipeline</h1>
           <p className="mt-2 max-w-2xl text-muted">
-            Idea → script → QC → Gate → queued for media. Every post is planned, written, checked and queued automatically; this board shows where each one is
-            and why anything stopped.
+            Idea → script → QC → Gate → voice → render → QC → final Gate. Every post is planned, written, rendered and checked automatically; this board shows
+            where each one is, what it cost and why anything stopped.
           </p>
         </div>
         <form action="/api/pipeline" method="post" className="flex flex-col items-end gap-1">
@@ -126,7 +126,7 @@ export default async function Pipeline({ searchParams }: { searchParams: Promise
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Planned" value={items.length} hint={`${count('idea')} waiting for a script`} />
         <Kpi label="In QC and Gate" value={count('script', 'q1', 'gate')} hint={`Gate: ${gate.green} green · ${gate.amber} amber · ${gate.red} red`} />
-        <Kpi label="Queued for media" value={count('media_queued', 'media')} hint="voice, render and final QC (IOS-3)" tone="ok" />
+        <Kpi label="Media" value={count('media_queued', 'media', 'final_gate')} hint={`${count('media')} rendering · ${count('final_gate')} at the final Gate`} tone="ok" />
         <Kpi label="Blocked" value={count('blocked')} hint={count('blocked') ? 'QC blockers and Gate reds never ship' : 'nothing stopped'} tone={count('blocked') ? 'danger' : undefined} />
       </div>
 
@@ -134,7 +134,7 @@ export default async function Pipeline({ searchParams }: { searchParams: Promise
         <Empty>Nothing planned in this window yet. The calendar plans every active persona automatically; “Plan now” does it immediately.</Empty>
       ) : (
         <div className="scroll-x pb-2">
-          <div className="grid min-w-[1720px] grid-cols-9 gap-3">
+          <div className="grid min-w-[1900px] grid-cols-10 gap-3">
             {BOARD_COLUMNS.map((col) => {
               const list = byColumn.get(col.key) ?? [];
               return (
@@ -143,7 +143,6 @@ export default async function Pipeline({ searchParams }: { searchParams: Promise
                     <span className="text-[12.5px] font-semibold">{col.label}</span>
                     <span className="text-[11px] tabular-nums text-muted">{list.length}</span>
                   </div>
-                  {col.later && !list.length ? <p className="px-1 text-[11px] text-faint">Voice, Q2, render, Q3/Q4 and the final Gate arrive with IOS-3.</p> : null}
                   <div className="space-y-2">
                     {list.slice(0, 14).map((i) => (
                       <PipelineCard key={i.slotId} item={i} />

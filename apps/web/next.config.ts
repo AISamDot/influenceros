@@ -40,6 +40,9 @@ const config: NextConfig = {
     // >>> stream D server externals
     // <<< stream D server externals
     // >>> stream E server externals
+    'sharp',
+    'ffmpeg-static',
+    'ffprobe-static',
     // <<< stream E server externals
     // >>> stream F server externals
     // <<< stream F server externals

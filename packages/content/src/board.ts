@@ -30,6 +30,12 @@ export interface BoardItem {
   q1Pass: boolean | null;
   q1Score: number | null;
   queued: boolean;
+  /** IOS-3: the media render's step (voice, generate, q3, render, q4, done, blocked) and what it has cost so far. */
+  mediaStep: string | null;
+  mediaCredits: number | null;
+  mediaUsd: number | null;
+  /** The newest generated still while a render is in progress (the cover replaces it once Q4 passes). */
+  renderThumbUrl: string | null;
 }
 
 export interface BoardColumn {
@@ -46,7 +52,8 @@ export const BOARD_COLUMNS: readonly BoardColumn[] = [
   { key: 'q1', label: 'QC · Q1', stages: ['q1'] },
   { key: 'gate', label: 'Gate', stages: ['gate'] },
   { key: 'media_queued', label: 'Queued for media', stages: ['media_queued'] },
-  { key: 'media', label: 'Voice · render · QC', stages: ['voice', 'q2', 'render', 'q3', 'q4', 'final_gate'], later: true },
+  { key: 'media', label: 'Voice · render · QC', stages: ['voice', 'q2', 'render', 'q3', 'q4'] },
+  { key: 'final_gate', label: 'Final Gate', stages: ['final_gate'] },
   { key: 'scheduled', label: 'Scheduled', stages: ['scheduled'] },
   { key: 'live', label: 'Live', stages: ['live'] },
   { key: 'blocked', label: 'Blocked', stages: ['blocked'] },
@@ -62,15 +69,19 @@ export async function pipelineBoard(db: Db, studioId: string, opts: { from?: Dat
     id: string; persona_id: string; name: string; slug: string; timezone: string; portrait_url: string | null; slot_at: Date; posting_window: string | null;
     format: PostFormat; purpose: PostPurpose; pillar: string | null; title: string; status: string; thumbnail_url: string | null;
     cta_keyword: string | null; block_reason: string | null; waiting: string | null; hook: string | null; gate_verdict: GateVerdict | null;
-    q1_pass: boolean | null; q1_score: number | null; queued: boolean;
+    q1_pass: boolean | null; q1_score: number | null; queued: boolean; media_step: string | null; media_credits: string | null; media_usd: string | null;
+    render_thumb: string | null;
   }>(
     `SELECT s.id, s.persona_id, p.name, p.slug, p.timezone, p.portrait_url, s.slot_at, s.posting_window, s.format, s.purpose, s.pillar, s.title, s.status,
-            s.thumbnail_url, s.cta_keyword, s.block_reason, s.meta->>'waiting' AS waiting, sc.hook,
+            s.thumbnail_url, s.cta_keyword, s.block_reason, COALESCE(mr.waiting, s.meta->>'waiting') AS waiting, sc.hook,
+            mr.step AS media_step, mr.credits AS media_credits, mr.usd_cost AS media_usd,
+            (SELECT a.url FROM asset a WHERE a.slot_id = s.id AND a.role = 'still' AND COALESCE(a.render_meta->>'fake', 'false') <> 'true' ORDER BY a.created_at DESC LIMIT 1) AS render_thumb,
             (SELECT g.verdict FROM gate_result g WHERE g.subject_type = 'script' AND g.subject_id = s.script_id ORDER BY g.created_at DESC LIMIT 1) AS gate_verdict,
             (SELECT q.pass FROM qc_report q WHERE q.subject_type = 'script' AND q.subject_id = s.script_id AND q.stage = 'Q1' ORDER BY q.created_at DESC LIMIT 1) AS q1_pass,
             (SELECT q.score FROM qc_report q WHERE q.subject_type = 'script' AND q.subject_id = s.script_id AND q.stage = 'Q1' ORDER BY q.created_at DESC LIMIT 1) AS q1_score,
             EXISTS (SELECT 1 FROM job j WHERE j.kind = 'pipeline.slot' AND j.payload->>'slotId' = s.id::text AND j.status IN ('queued','running')) AS queued
        FROM calendar_slot s JOIN persona p ON p.id = s.persona_id LEFT JOIN script sc ON sc.id = s.script_id
+       LEFT JOIN media_render mr ON mr.slot_id = s.id AND mr.script_id IS NOT DISTINCT FROM s.script_id
       WHERE p.studio_id = $1 AND ($5::uuid IS NOT NULL OR s.status <> 'skipped')
         AND ($2::timestamptz IS NULL OR s.slot_at >= $2) AND ($3::timestamptz IS NULL OR s.slot_at < $3)
         AND ($4::uuid IS NULL OR s.persona_id = $4) AND ($5::uuid IS NULL OR s.id = $5)
@@ -101,6 +112,10 @@ export async function pipelineBoard(db: Db, studioId: string, opts: { from?: Dat
     q1Pass: r.q1_pass,
     q1Score: r.q1_score === null ? null : Number(r.q1_score),
     queued: r.queued,
+    mediaStep: r.media_step,
+    mediaCredits: r.media_credits === null ? null : Number(r.media_credits),
+    mediaUsd: r.media_usd === null ? null : Number(r.media_usd),
+    renderThumbUrl: r.render_thumb,
   }));
 }
 
