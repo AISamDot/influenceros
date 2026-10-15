@@ -30,6 +30,7 @@ const LINKS: Array<{ href: string; label: string; badge?: 'approvals' }> = [
   // >>> stream G nav (append only)
   // <<< stream G nav
   // >>> stream H nav (append only)
+  { href: '/products', label: 'Products' },
   // <<< stream H nav
   { href: '/settings', label: 'Settings' },
 ];
