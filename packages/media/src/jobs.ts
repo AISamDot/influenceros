@@ -1,8 +1,9 @@
 import { enqueueOnceFor, MEDIA_RENDER_JOB, type JobHandlerMap, type MediaRenderPayload, type ScheduledTask, type StudioServices } from '@ios/agents';
-import { BudgetExceededError, DeferJob, enqueue, notify } from '@ios/core';
+import { BudgetExceededError, DeferJob, enqueue, notify, POST_FORMATS } from '@ios/core';
+import { PRODUCTION_JOB } from '@ios/production';
 import { BUDGET_DEFER_MS } from './config';
 import { mediaDeps } from './deps';
-import { buildLookPack, ensureProfile } from './profile';
+import { buildLookPack, buildProductionIdentity, ensureProfile, lockPersonaLocations } from './profile';
 import { renderSlot } from './render';
 import { probePrices } from './spend';
 
@@ -17,7 +18,8 @@ export const MEDIA_JOB = {
 } as const;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const FORMATS = ['talking', 'activity_text', 'voiceover', 'static', 'carousel'];
+/** Every format renders (IOS-5: the format library's templates too). */
+const FORMATS: readonly string[] = POST_FORMATS;
 /** Slot statuses the media pipeline owns (a slot stuck in one without a live job gets re-queued). */
 export const MEDIA_SLOT_STATUSES = ['media_queued', 'voice', 'q2', 'rendering', 'q3', 'q4'] as const;
 /** After this many dead media.render jobs a slot is blocked ("media failed: …") until the Owner re-runs it. */
@@ -98,7 +100,42 @@ export const jobs: JobHandlerMap = {
       throw err;
     }
   },
+  /** (IOS-5 stream K) The production identity: 5-view sheet, detail strip, identity stack, 4 core refs, BOPA. */
+  [PRODUCTION_JOB.lookBuild]: async (ctx) => {
+    const personaId = personaOf(ctx.job);
+    const deps = mediaDeps(ctx.services);
+    const scope = { studioId: await studioOf(ctx.services, personaId), personaId, slotId: null, ref: { type: 'persona' as const, id: personaId } };
+    try {
+      const profile = await ensureProfile(ctx.services, deps, scope, { soul: true, voice: false });
+      return await buildProductionIdentity(ctx.services, deps, scope, profile);
+    } catch (err) {
+      if (err instanceof BudgetExceededError) throw new DeferJob(BUDGET_DEFER_MS, `budget cap: ${err.message}`);
+      throw err;
+    }
+  },
+  /** (IOS-5 stream K) Location lock: 5 candidates per place, the pick and a second anchor angle. */
+  [PRODUCTION_JOB.lockLocations]: async (ctx) => {
+    const personaId = personaOf(ctx.job);
+    const p = (ctx.job.payload ?? {}) as { place?: unknown; pick?: unknown };
+    const deps = mediaDeps(ctx.services);
+    const scope = { studioId: await studioOf(ctx.services, personaId), personaId, slotId: null, ref: { type: 'persona' as const, id: personaId } };
+    try {
+      return await lockPersonaLocations(ctx.services, deps, scope, {
+        place: typeof p.place === 'string' ? p.place : null,
+        pick: typeof p.pick === 'number' && Number.isInteger(p.pick) ? p.pick : null,
+      });
+    } catch (err) {
+      if (err instanceof BudgetExceededError) throw new DeferJob(BUDGET_DEFER_MS, `budget cap: ${err.message}`);
+      throw err;
+    }
+  },
 };
+
+function personaOf(job: { payload: unknown; persona_id: string | null }): string {
+  const personaId = String((job.payload as { personaId?: string } | null)?.personaId ?? job.persona_id ?? '');
+  if (!UUID_RE.test(personaId)) throw new Error('needs payload.personaId');
+  return personaId;
+}
 
 const hoursSince = (now: Date, last: Date | null) => (last ? (now.getTime() - last.getTime()) / 3_600_000 : Number.POSITIVE_INFINITY);
 
@@ -161,6 +198,32 @@ export const schedules: readonly ScheduledTask[] = [
       let queued = 0;
       for (const r of rows) if (await enqueueOnce(services, MEDIA_JOB.preparePersona, { personaId: r.id }, r.id)) queued += 1;
       return { queued };
+    },
+  },
+  {
+    /**
+     * (IOS-5 stream K) Daily: a live persona whose Soul ID is ready gets its production identity (sheet, stack, core
+     * refs, BOPA) and its location locks, each made once.
+     */
+    name: 'production.prepare',
+    due: (now, last) => hoursSince(now, last) >= 24,
+    async run(services) {
+      const rows = await services.db.query<{ id: string; identity: boolean; pending: boolean }>(
+        `SELECT p.id,
+                COALESCE((m.meta->>'identity_done')::boolean, false) AS identity,
+                (NOT EXISTS (SELECT 1 FROM location_lock l WHERE l.persona_id = p.id)
+                  OR EXISTS (SELECT 1 FROM location_lock l WHERE l.persona_id = p.id AND l.status = 'pending')) AS pending
+           FROM persona p JOIN media_profile m ON m.persona_id = p.id
+          WHERE p.state IN ('SETUP','TESTING','MONETISING','RE_ANGLE','SCALING','BRAND') AND m.soul_status = 'ready'
+          ORDER BY p.created_at LIMIT 20`,
+      );
+      let looks = 0;
+      let locks = 0;
+      for (const r of rows) {
+        if (!r.identity && (await enqueueOnce(services, PRODUCTION_JOB.lookBuild, { personaId: r.id }, r.id))) looks += 1;
+        if (r.pending && (await enqueueOnce(services, PRODUCTION_JOB.lockLocations, { personaId: r.id }, r.id))) locks += 1;
+      }
+      return { looks, locks };
     },
   },
   {

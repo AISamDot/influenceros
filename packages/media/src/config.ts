@@ -1,3 +1,4 @@
+import { CLIP_MAX_S } from '@ios/agents';
 import type { PostFormat } from '@ios/core';
 import type { HiggsfieldOperation, MediaResolution } from '@ios/providers';
 
@@ -54,8 +55,13 @@ export function mediaModels(env: Readonly<Record<string, string | undefined>> = 
   return { soul: pick('soul'), still: pick('still'), activity: pick('activity'), activityFallback: fallback, talking: pick('talking'), tts: pick('tts') };
 }
 
-/** One Seedance talking clip is at most 15 s, so a 30 s reel is two clips. */
+/** The most one Seedance talking clip takes (the adapter refuses longer). */
 export const TALK_CLIP_MAX_S = 15;
+/**
+ * (IOS-5) What the renderer asks for: clips are generated at ≤ 10 s each and stitched (Owner, 16 Oct), so a 30 s
+ * talking reel is three clips.
+ */
+export const RENDER_CLIP_MAX_S = CLIP_MAX_S;
 /** Activity clip lengths the image-to-video models take. */
 export const CLIP_SECONDS = 5;
 
@@ -72,12 +78,35 @@ export const FORMAT_SPEC: Readonly<Record<PostFormat, { minS: number; maxS: numb
   photo_dump: { minS: 0, maxS: 0, kind: 'carousel' },
   text_note: { minS: 0, maxS: 0, kind: 'image' },
   facecam_screen: { minS: 12, maxS: 60, kind: 'video' },
+  // reply_comment / news_greenscreen: talking reels with an overlay (comment sticker) or a News Desk card behind.
   reply_comment: { minS: 12, maxS: 60, kind: 'video' },
   news_greenscreen: { minS: 12, maxS: 60, kind: 'video' },
   meme: { minS: 0, maxS: 0, kind: 'image' },
 };
 export const ACTIVITY_LOOP_S = 8;
 export const CAROUSEL_SLIDES = { min: 6, max: 8 } as const;
+
+/** (IOS-5) Export frame per format: carousels and photo dumps at 4:5, everything else 1080×1920. */
+export function formatFrame(format: PostFormat): { width: number; height: number } {
+  return format === 'carousel' || format === 'photo_dump' ? EXPORT.carousel : EXPORT.video;
+}
+/** (IOS-5) Slides per multi-image format. */
+export const SLIDE_RANGE: Readonly<Partial<Record<PostFormat, { min: number; max: number }>>> = {
+  carousel: CAROUSEL_SLIDES,
+  photo_dump: { min: 5, max: 10 },
+};
+/**
+ * (IOS-5) Picture-in-picture boxes on the 1080×1920 frame, inside the platform safe zone: the persona in the corner of
+ * a facecam-over-screen post, and large over the lower frame of a News Desk green-screen post.
+ */
+export const PIP_BOX = {
+  facecam_screen: { x: 540, y: 960, w: 380, h: 500 },
+  news_greenscreen: { x: 200, y: 700, w: 640, h: 760 },
+} as const;
+/** (IOS-5) The News Desk card's label: our own generic desk, never a real outlet's name or logo. */
+export const NEWS_DESK_LABEL = 'NEWS DESK';
+/** (IOS-5) Talking-to-camera formats (lip-synced clips from the voice track). */
+export const TALKING_SHAPED: readonly PostFormat[] = ['talking', 'facecam_screen', 'reply_comment', 'news_greenscreen'];
 
 /**
  * Platform safe zones on a 1080×1920 frame (the union of TikTok, Reels and Shorts UI): nothing important above

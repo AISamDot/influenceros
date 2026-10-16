@@ -1,11 +1,11 @@
-import type { QcCheck, StudioServices } from '@ios/agents';
-import { type CostRef, metered, type PostFormat } from '@ios/core';
+import { CLIP_MAX_S, type QcCheck, SPEECH_WPS, speechSeconds, type StudioServices } from '@ios/agents';
+import { type CostRef, metered, type PostFormat, scriptShape } from '@ios/core';
 import { json } from '@ios/db';
 import type { TranscriptWord } from '@ios/providers';
 import type { PersonaContext } from './persona';
-import { SECONDS, SPOKEN, uncitedClaims, WORDS, type ScriptDraft } from './script';
+import { FACECAM_LINES, MEME_WORDS, mentionsOutlet, ON_SCREEN_WORDS, PHOTO_DUMP, SECONDS, showsHandle, SPOKEN, TEXT_NOTE_WORDS, uncitedClaims, WORDS, type ScriptDraft } from './script';
 import { residualTtsRisks, ttsNormalize, type TtsRisk } from './tts';
-import { sentences, similarity, wordCount } from './util';
+import { asRecord, asString, sentences, similarity, wordCount } from './util';
 
 /**
  * Quality Control (PRD §3.6, FR-21). Independent of the makers: it grades, it never writes the fix itself.
@@ -35,14 +35,65 @@ const MISSPELLINGS: Record<string, string> = {
   buisness: 'business', foward: 'forward', freind: 'friend', excercise: 'exercise', grammer: 'grammar', libary: 'library', truely: 'truly',
 };
 
-/** The spoken (or shown) text Q1 grades, plus where the CTA must be. */
+// ───────────────────────────── Timing and motion rules (IOS-5 stream K; PRD §3.15.5) ─────────────────────────────
+
+/** Timecodes ("0:03", "[2s]", "at 4 s", "0–3 s:") never go in a visual brief or a video prompt: actions bind to words. */
+const TIMECODE_RE =
+  /(?<![\d:.])(?!9:16\b)0?\d:[0-5]\d(?::[0-5]\d)?(?!\d|\s?(?:am|pm)\b)|\[\s*\d+(?:\.\d+)?\s*s?\s*\]|\b(?:at|from|until)\s+\d+(?:\.\d+)?\s?(?:s|secs?|seconds)\b|\b\d+(?:\.\d+)?\s?(?:s|secs?)?\s?[-–]\s?\d+(?:\.\d+)?\s?(?:s|secs?|seconds)\s*[:)]/i;
+export const hasTimecodes = (text: string): boolean => TIMECODE_RE.test(text);
+
+/** A generation asked to carry readable text (captions are added in the edit, so they can be re-captioned per platform). */
+const BAKED_TEXT_RE =
+  /\b(?:text|captions?|subtitles?|title|words?|letters|lettering|sign|label|banner)\s+(?:that\s+)?(?:says|saying|reads|reading)\b|\b(?:with|showing|displaying)\s+(?:the\s+)?(?:words?|text|captions?|lettering)\b|["“][^"”]{3,}["”]\s+(?:written|printed|painted|spelled)\b/i;
+export function asksBakedText(text: string): boolean {
+  return sentences(text).some((s) => !/^(?:no|never|avoid|without|don'?t)\b/i.test(s.trim()) && BAKED_TEXT_RE.test(s));
+}
+
+/** Two-handed fine-motor actions: high-risk for video models (melted fingers), so they are flagged to simplify or split. */
+const TWO_HANDED_RE =
+  /\b(?:ty(?:ing|e)\s+(?:(?:her|his|my|the)\s+)?(?:shoe)?laces?|tying\s+a\s+(?:tie|knot|bow)|knit(?:s|ting)?|crochet(?:s|ing)?|sew(?:s|ing)|thread(?:s|ing)?\s+a\s+needle|braid(?:s|ing)|plait(?:s|ing)|shuffl(?:e|es|ing)\s+(?:a\s+deck|cards)|typing|play(?:s|ing)?\s+(?:the\s+)?(?:piano|guitar|violin)|fold(?:s|ing)\s+(?:paper|origami|a\s+(?:shirt|towel|letter|napkin))|origami|button(?:s|ing)\s+(?:up\s+)?(?:a|her|his)\s+(?:shirt|coat|cardigan)|chopping|peel(?:s|ing)\s+an?\s+\w+|wrap(?:s|ping)\s+a\s+(?:gift|present)|count(?:s|ing)\s+(?:cash|money|notes|coins|banknotes))\b/i;
+export function twoHandedActions(text: string): string[] {
+  return sentences(text)
+    .filter((s) => !/^(?:no|never|avoid|without|don'?t)\b/i.test(s.trim()))
+    .flatMap((s) => [...s.matchAll(new RegExp(TWO_HANDED_RE.source, 'gi'))].map((m) => m[0]));
+}
+
+/** The visual-brief rules every format shares: no timecodes, no baked-in text, two-handed actions flagged. */
+export function motionChecks(visualBrief: string): QcCheck[] {
+  const checks: QcCheck[] = [];
+  checks.push(
+    hasTimecodes(visualBrief)
+      ? fail('no_timecodes', 'major', 'The visual brief carries timecodes: bind actions to the words that trigger them instead.')
+      : ok('no_timecodes', 'major', 'No timecodes in the visual brief.'),
+  );
+  checks.push(
+    asksBakedText(visualBrief)
+      ? fail('no_baked_text', 'major', 'The visual brief asks for text inside the generation: captions and on-screen text are added in the edit.')
+      : ok('no_baked_text', 'major', 'No text baked into generations.'),
+  );
+  const hands = twoHandedActions(visualBrief);
+  checks.push(
+    hands.length
+      ? fail('two_handed_action', 'minor', `High-risk two-handed action ("${hands[0]}"): simplify it or split it into separate shots.`)
+      : ok('two_handed_action', 'minor', 'No two-handed fine-motor actions.'),
+  );
+  return checks;
+}
+
+/** The spoken text Q1 grades, plus where the CTA must be. */
 function surfaces(d: ScriptDraft, format: PostFormat): { primary: string[]; ctaHost: string } {
+  const shape = scriptShape(format);
   if (SPOKEN.includes(format)) {
     const lines = sentences(d.body);
     return { primary: lines, ctaHost: lines.slice(-2).join(' ') };
   }
-  if (format === 'activity_text') return { primary: d.onScreenText, ctaHost: d.onScreenText.at(-1) ?? '' };
-  if (format === 'carousel') {
+  if (shape === 'activity_text') return { primary: d.onScreenText, ctaHost: d.onScreenText.at(-1) ?? '' };
+  if (format === 'photo_dump') {
+    // The photos carry the story; the caption carries the CTA.
+    const items = d.carousel?.length ? d.carousel.map((s) => s.title) : d.onScreenText;
+    return { primary: items, ctaHost: d.caption };
+  }
+  if (shape === 'carousel') {
     const slides = (d.carousel ?? []).map((s) => `${s.title}. ${s.body}`);
     return { primary: slides, ctaHost: slides.at(-1) ?? '' };
   }
@@ -55,9 +106,10 @@ function surfaces(d: ScriptDraft, format: PostFormat): { primary: string[]; ctaH
  */
 export function checkScript(
   d: ScriptDraft,
-  o: { format: PostFormat; expectedKeyword: string; ctx: Pick<PersonaContext, 'voice'>; evidenceIds: readonly string[] },
+  o: { format: PostFormat; expectedKeyword: string; ctx: Pick<PersonaContext, 'voice'> & Partial<Pick<PersonaContext, 'bible'>>; evidenceIds: readonly string[] },
 ): QcResult & { voiceover: string | null; ttsRisks: TtsRisk[]; wordCount: number; estSeconds: number | null } {
   const checks: QcCheck[] = [];
+  const shape = scriptShape(o.format);
   const all = [d.body, d.caption, ...d.onScreenText, ...(d.carousel ?? []).flatMap((s) => [s.title, s.body])].join('\n');
   const { primary, ctaHost } = surfaces(d, o.format);
 
@@ -98,7 +150,31 @@ export function checkScript(
         ? ok('duration', 'minor', `About ${estSeconds} s at ${o.ctx.voice.wpm} wpm.`)
         : fail('duration', 'minor', `About ${estSeconds} s at ${o.ctx.voice.wpm} wpm (target ${SECONDS.min}–${SECONDS.max} s).`),
     );
-  } else if (o.format === 'activity_text') {
+    // (IOS-5) Clip length is set from the word count at 2.5–3 words a second; clips are ≤ 10 s and stitched.
+    const slow = speechSeconds(words);
+    const fast = Math.round((words / SPEECH_WPS.max) * 10) / 10;
+    const clips = Math.max(1, Math.ceil(slow / CLIP_MAX_S - 1e-9));
+    checks.push(
+      slow >= 12 && slow <= 60
+        ? ok('speech_pace', 'major', `${fast}–${slow} s of speech at ${SPEECH_WPS.min}–${SPEECH_WPS.max} words a second: ${clips} clip(s) of ≤ ${CLIP_MAX_S} s.`)
+        : fail('speech_pace', 'major', `${fast}–${slow} s of speech at ${SPEECH_WPS.min}–${SPEECH_WPS.max} words a second: spoken posts run 12–60 s.`),
+    );
+    const accent = asString(asRecord(asRecord(o.ctx.bible).voice).accent).trim();
+    checks.push(
+      accent
+        ? ok('accent', 'minor', `Accent in every talking prompt: ${accent}.`)
+        : fail('accent', 'minor', 'No accent in the bible: talking prompts fall back to a neutral English accent.'),
+    );
+    if (o.format === 'facecam_screen') {
+      const n = d.onScreenText.length;
+      const long = d.onScreenText.filter((l) => wordCount(l) > FACECAM_LINES.words);
+      checks.push(
+        n >= FACECAM_LINES.min && n <= FACECAM_LINES.max && !long.length
+          ? ok('screen_lines', 'major', `${n} slide lines for the screen.`)
+          : fail('screen_lines', 'major', `Facecam posts need ${FACECAM_LINES.min}–${FACECAM_LINES.max} slide lines of at most ${FACECAM_LINES.words} words (${n} lines${long.length ? `, ${long.length} too long` : ''}).`),
+      );
+    }
+  } else if (shape === 'activity_text') {
     const long = d.onScreenText.filter((l) => wordCount(l) > 8);
     const n = d.onScreenText.length;
     checks.push(
@@ -106,12 +182,37 @@ export function checkScript(
         ? ok('length', 'major', `${n} on-screen lines.`)
         : fail('length', 'major', `Activity posts need 3–5 on-screen lines of at most 8 words (${n} lines${long.length ? `, ${long.length} too long` : ''}).`),
     );
-  } else if (o.format === 'carousel') {
+  } else if (o.format === 'photo_dump') {
+    const n = primary.length;
+    const long = primary.slice(1).filter((l) => wordCount(l) > PHOTO_DUMP.captionWords);
+    checks.push(
+      n >= PHOTO_DUMP.min && n <= PHOTO_DUMP.max && !long.length
+        ? ok('length', 'major', `${n} photos.`)
+        : fail('length', 'major', `Photo dumps have ${PHOTO_DUMP.min}–${PHOTO_DUMP.max} photos with captions of at most ${PHOTO_DUMP.captionWords} words (${n}${long.length ? `, ${long.length} too long` : ''}).`),
+    );
+  } else if (shape === 'carousel') {
     const n = d.carousel?.length ?? 0;
     checks.push(n >= 6 && n <= 8 ? ok('length', 'major', `${n} slides.`) : fail('length', 'major', `Carousels have 6–8 slides (${n}).`));
   } else {
     const n = wordCount(d.onScreenText[0] ?? d.body);
-    checks.push(n <= 10 ? ok('length', 'major', `Image line is ${n} words.`) : fail('length', 'major', `The image line is ${n} words (10 max).`));
+    const max = o.format === 'text_note' ? TEXT_NOTE_WORDS : o.format === 'meme' ? MEME_WORDS : ON_SCREEN_WORDS.static;
+    const what = o.format === 'text_note' ? 'The note' : o.format === 'meme' ? 'The meme line' : 'The image line';
+    checks.push(n <= max ? ok('length', 'major', `${what} is ${n} words.`) : fail('length', 'major', `${what} is ${n} words (${max} max).`));
+  }
+  if (o.format === 'news_greenscreen') {
+    const outlet = mentionsOutlet(all);
+    checks.push(
+      outlet
+        ? fail('no_outlet', 'major', `Names a real news outlet (${outlet}): the News Desk card is our own, with the headline in our words.`)
+        : ok('no_outlet', 'major', 'No real outlet named; the headline is in our own words.'),
+    );
+  }
+  if (o.format === 'reply_comment') {
+    checks.push(
+      showsHandle(all)
+        ? fail('handle_anonymised', 'major', "Shows a viewer's @handle: the comment overlay anonymises it and the script never names the commenter.")
+        : ok('handle_anonymised', 'major', 'No viewer handle in the script.'),
+    );
   }
 
   // CTA: every post has one, with the slot's keyword.
@@ -188,6 +289,8 @@ export function checkScript(
       ? fail('visual_brief', 'major', 'The visual brief asks for a real person or lookalike.')
       : ok('visual_brief', 'minor', d.visualBrief ? 'Visual brief set.' : 'Default visual brief.'),
   );
+
+  checks.push(...motionChecks(d.visualBrief));
 
   return { pass: qcPass(checks), score: qcScore(checks), checks, voiceover, ttsRisks, wordCount: words, estSeconds };
 }

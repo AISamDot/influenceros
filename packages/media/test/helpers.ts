@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MEDIA_RENDER_JOB, type MediaRenderPayload } from '@ios/agents';
+import { type CreateServicesOptions, MEDIA_RENDER_JOB, type MediaRenderPayload } from '@ios/agents';
 import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
 import { attachSampleBible, planWeek, processSlot } from '@ios/content';
 import type { PostFormat } from '@ios/core';
@@ -17,13 +17,26 @@ export interface MediaFixture extends TestStudio {
   toolkit: FakeToolkit;
   /** Runs one slot of the format through B's pipeline and returns its media.render payload. */
   queued(format: PostFormat): Promise<MediaRenderPayload>;
+  /**
+   * (IOS-5) Turns an unused planned slot into `format` (the format library's optional formats are booked by stream L's
+   * plan; here the test books one), runs it through the pipeline and returns its media.render payload.
+   */
+  queuedAs(format: PostFormat, o?: { title?: string; meta?: Record<string, unknown> }): Promise<MediaRenderPayload>;
 }
 
 export async function mediaFixture(
-  o: { toolkit?: FakeToolkit; face?: FakeFaceMatcher; ocr?: FakeOcr; mishear?: (t: string) => string; budget?: Record<string, number> } = {},
+  o: {
+    toolkit?: FakeToolkit;
+    face?: FakeFaceMatcher;
+    ocr?: FakeOcr;
+    mishear?: (t: string) => string;
+    budget?: Record<string, number>;
+    /** (IOS-5) Cross-stream services for the test (e.g. stream K's real compiler, a world stub). */
+    services?: Pick<Partial<CreateServicesOptions>, 'prompts' | 'world'>;
+  } = {},
 ): Promise<MediaFixture> {
   const providers = createFakeProviders({ mishear: o.mishear });
-  const t = await createTestStudio({ now: () => NOW, providers });
+  const t = await createTestStudio({ now: () => NOW, providers, ...(o.services ?? {}) });
   const p = await makeTestPersona(t, { name: 'Nora Vale', budget: o.budget });
   await attachSampleBible(t.db, p.id);
   const { slotIds } = await planWeek(t.services, p.id, NEXT_MONDAY);
@@ -41,6 +54,17 @@ export async function mediaFixture(
       const slot = rows.find((r) => !used.has(r.id) && slotIds.includes(r.id));
       if (!slot) throw new Error(`no unused ${format} slot`);
       used.add(slot.id);
+      const out = await processSlot(t.services, slot.id);
+      if (out.status !== 'media_queued') throw new Error(`slot ${format} did not reach media_queued: ${out.status} ${out.blockReason ?? ''}`);
+      const job = await t.db.one<{ payload: MediaRenderPayload }>(`SELECT payload FROM job WHERE kind = $1 AND payload->>'slotId' = $2`, [MEDIA_RENDER_JOB, slot.id]);
+      return job.payload;
+    },
+    async queuedAs(format, opts = {}) {
+      const rows = await t.db.query<{ id: string }>(`SELECT id FROM calendar_slot WHERE persona_id = $1 AND status = 'planned' ORDER BY slot_at`, [p.id]);
+      const slot = rows.find((r) => !used.has(r.id) && slotIds.includes(r.id));
+      if (!slot) throw new Error('no unused planned slot');
+      used.add(slot.id);
+      await t.db.query(`UPDATE calendar_slot SET format = $2, title = COALESCE($3, title), meta = meta || $4::jsonb WHERE id = $1`, [slot.id, format, opts.title ?? null, JSON.stringify(opts.meta ?? {})]);
       const out = await processSlot(t.services, slot.id);
       if (out.status !== 'media_queued') throw new Error(`slot ${format} did not reach media_queued: ${out.status} ${out.blockReason ?? ''}`);
       const job = await t.db.one<{ payload: MediaRenderPayload }>(`SELECT payload FROM job WHERE kind = $1 AND payload->>'slotId' = $2`, [MEDIA_RENDER_JOB, slot.id]);

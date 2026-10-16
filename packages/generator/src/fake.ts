@@ -1,4 +1,5 @@
 import { portraitUri } from '@ios/core';
+import { characterSheetPrompt } from '@ios/production';
 import {
   type Archetype,
   type ArchetypeFamily,
@@ -357,14 +358,27 @@ export function fakeLookProfile(concept: ConceptOption, character: CharacterProf
   return profile;
 }
 
-/** The prompt for one character-sheet variant (never asks to pass as a real person). */
-export function sheetPrompt(name: string, age: number, look: LookProfile, i: number): string {
+/**
+ * The prompt for one character-sheet variant (never asks to pass as a real person): the production sheet (IOS-5
+ * stream K, PRD §3.15.2): five views (front, side, back, front close-up, top-down) on neutral grey, in the method's
+ * order. `mood` is text from the inspiration board (descriptors only; a pin is never an identity reference).
+ */
+export function sheetPrompt(name: string, age: number, look: LookProfile, i: number, mood: readonly string[] = []): string {
   const wardrobe = look.wardrobe[i % look.wardrobe.length] ?? look.wardrobe[0] ?? '';
   const setting = look.settings[i % look.settings.length] ?? '';
-  return `Character sheet of ${name}, a fictional ${age}-year-old AI character: front, three-quarter and profile views plus two expressions. ${look.anchors.join(', ')}. Wearing ${wardrobe}. Background: ${setting}. ${look.stylisation}. Palette ${look.palette.map((p) => p.name).join(', ')}. One person only, no text, no logos, no celebrity likeness.`;
+  return characterSheetPrompt({
+    name,
+    age,
+    anchors: look.anchors,
+    wardrobe: [wardrobe],
+    settings: setting ? [setting] : [],
+    palette: look.palette.map((p) => p.name),
+    stylisation: look.stylisation,
+    mood,
+  });
 }
 
-export function placeholderLook(concept: ConceptOption, character: CharacterProfile | null, steer: Steer = {}, profileIn?: LookProfile): LookStep {
+export function placeholderLook(concept: ConceptOption, character: CharacterProfile | null, steer: Steer = {}, profileIn?: LookProfile, mood: readonly string[] = []): LookStep {
   const profile = profileIn ?? fakeLookProfile(concept, character, steer);
   const name = character?.name ?? concept.name;
   const age = character?.age ?? concept.age;
@@ -372,7 +386,7 @@ export function placeholderLook(concept: ConceptOption, character: CharacterProf
   const variants = [0, 1, 2].map((i) => ({
     id: LETTERS[i]!,
     label: `Sheet ${LETTERS[i]}: ${profile.wardrobe[i % profile.wardrobe.length]}`,
-    prompt: sheetPrompt(name, age, profile, i),
+    prompt: sheetPrompt(name, age, profile, i, mood),
     url: portraitUri(name, (profile.hue + i * 24) % 360, { variant: i + g * 3, label: profile.wardrobe[i % profile.wardrobe.length] }),
     provider: 'placeholder' as const,
   }));

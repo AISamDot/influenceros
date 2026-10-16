@@ -5,7 +5,8 @@ import { mediaLiveProviders } from './live';
 import { tools as mediaTools } from './tools';
 
 /**
- * @ios/media (IOS-3 stream E): Higgsfield adapter (Soul ID, stills, activity clips, Seedance talking, cost probe),
+ * @ios/media (IOS-3 stream E; IOS-5 stream K adds the format-library templates, the compiler in every generation, the
+ * production identity and the location lock): Higgsfield adapter (Soul ID, stills, activity clips, Seedance talking, cost probe),
  * ElevenLabs / Higgsfield TTS voice, the render worker for the 5 formats (FFmpeg + sharp), QC Q3/Q4 with ≤ 2 maker
  * fix loops, and the media.render job that hands finished posts to distribution. See docs/IOS-34-CONTRACTS.md.
  */
@@ -20,7 +21,7 @@ export { FalKlingAvatar } from './fal';
 export { ElevenLabsVoice, mp3Seconds } from './voice';
 export { AppleVisionFaces, AppleVisionOcr, appleVisionAvailable } from './vision';
 export { mediaDeps, setMediaDeps, talkingProvider, type MediaDeps } from './deps';
-export { ensureProfile, SOUL_ID_MAX_FAILURES, buildLookPack, getProfile, lookPromptsFor, parseLookPrompts, type MediaProfile } from './profile';
+export { ensureProfile, SOUL_ID_MAX_FAILURES, buildLookPack, buildProductionIdentity, characterBrief, getProfile, lockPersonaLocations, lookPromptsFor, parseLookPrompts, type MediaProfile } from './profile';
 export { estimateCredits, hfSpend, probePrices, usdSpend, type SpendScope } from './spend';
 export { renderSlot, type RenderOutcome } from './render';
 export { MEDIA_JOB, MEDIA_SLOT_STATUSES, latestRenderPayload, parseRenderPayload, rerenderSlot, sweepStuckRenders } from './jobs';

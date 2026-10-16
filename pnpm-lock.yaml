@@ -296,6 +296,9 @@ importers:
       '@ios/media':
         specifier: workspace:*
         version: link:../media
+      '@ios/production':
+        specifier: workspace:*
+        version: link:../production
       '@ios/providers':
         specifier: workspace:*
         version: link:../providers
@@ -341,6 +344,9 @@ importers:
       '@ios/db':
         specifier: workspace:*
         version: link:../db
+      '@ios/production':
+        specifier: workspace:*
+        version: link:../production
       '@ios/providers':
         specifier: workspace:*
         version: link:../providers

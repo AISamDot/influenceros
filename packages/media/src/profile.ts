@@ -9,6 +9,28 @@ import type { MediaDeps } from './deps';
 import { extFor, materialize, storeAsset } from './files';
 import { estimateCredits, hfSpend, type SpendScope, usdSpend } from './spend';
 import { type ColorGrade, gradeFromKit } from './toolkit';
+import { Q3_TARGETS } from './config';
+import {
+  bopaPlan,
+  type CharacterBrief,
+  characterSheetPrompt,
+  coreRefPrompts,
+  defaultPick,
+  detailStripPrompt,
+  ensureLocations,
+  type IdentityKind,
+  type IdentityRef,
+  identityRefs,
+  identityStackPrompts,
+  locationAnchorPrompt,
+  locationCandidatePrompts,
+  locationLocks,
+  lockLocation,
+  personaPlaces,
+  placeKey,
+  saveIdentityRef,
+  upscaleCellPrompt,
+} from '@ios/production';
 
 /**
  * A persona's media identity (FR-5.1): the Soul ID trained from its look prompts, the face reference every talking
@@ -236,4 +258,180 @@ export async function buildLookPack(services: StudioServices, deps: MediaDeps, s
     [scope.personaId, json(pack)],
   );
   return pack;
+}
+
+// ───────────────────────────── IOS-5 stream K: production identity and location lock ─────────────────────────────
+
+const asRec = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && !!x.trim()) : []);
+
+/** The character brief the production prompts are written from (the bible's look; mood descriptors as text only). */
+export async function characterBrief(services: StudioServices, personaId: string): Promise<CharacterBrief> {
+  const c = await loadPersonaContext(services.db, personaId);
+  const look = asRec(c.bible.look);
+  const identity = asRec(c.bible.identity);
+  const palette = (Array.isArray(look.palette) ? look.palette : []).map((p) => (typeof p === 'string' ? p : String(asRec(p).name ?? ''))).filter(Boolean);
+  const mood = await services.world.moodBoard({ personaId }).catch(() => ({ descriptors: [] as string[] }));
+  return {
+    name: c.persona.name,
+    age: typeof identity.age === 'number' || typeof identity.age === 'string' ? (identity.age as number | string) : null,
+    anchors: [...strs(look.anchors), ...strs(look.features)].slice(0, 4),
+    wardrobe: c.look.outfits,
+    settings: c.look.settings,
+    palette,
+    stylisation: c.look.stylisation,
+    mood: mood.descriptors.slice(0, 6),
+  };
+}
+
+/**
+ * The production identity (PRD §3.15.2, §3.12 BOPA), each piece made once and stored in `production_identity`:
+ * the 5-view character sheet, the detail strip, the identity stack (face close-up + 2 full-body), 4 core references in
+ * varied settings, and the BOPA look pack (a 3×3 background grid with the pick upscaled, keep-identity outfit edits, a
+ * 2×2 pose grid with the pick upscaled, and angles in degrees). Grids are picked automatically (the Owner can re-pick
+ * with `look.pick`). Identity shots that drift from the face reference stay candidates, never in the stack.
+ * Paid stills go through the governor (persona overhead); a cap refusal propagates so the job defers.
+ */
+export async function buildProductionIdentity(services: StudioServices, deps: MediaDeps, scope: SpendScope, profile: MediaProfile): Promise<{ made: number; total: number }> {
+  if (!profile.soulId) return { made: 0, total: 0 };
+  const { db } = services;
+  const personaId = scope.personaId;
+  scope = { ...scope, slotId: null, ref: { type: 'persona', id: personaId } };
+  const brief = await characterBrief(services, personaId);
+  const models = mediaModels();
+  const hf = services.providers.imageVideo;
+  const fake = deps.toolkit.name === 'fake-toolkit';
+  const refPath = profile.referenceKey ? await services.providers.storage.localPath(profile.referenceKey).catch(() => null) : null;
+  let made = 0;
+  let total = 0;
+  const have = async (kind: IdentityKind, label: string) =>
+    (await identityRefs(db, personaId, [kind])).find((r) => r.label === label.slice(0, 200)) ?? null;
+
+  const make = async (kind: IdentityKind, label: string, prompt: string, o: { aspect: '9:16' | '1:1' | '4:5'; refs?: readonly string[]; check?: boolean; meta?: Record<string, unknown> }): Promise<IdentityRef> => {
+    total += 1;
+    const existing = await have(kind, label);
+    if (existing) return existing;
+    const refs = [...new Set((o.refs ?? []).filter(Boolean))];
+    const still = await hfSpend(services, scope, { operation: 'still', model: models.soul }, () =>
+      hf.generateStill({ soulId: profile.soulId!, prompt, aspect: o.aspect, model: models.soul, resolution: GEN_RESOLUTION, ...(refs.length ? { referenceImageUrls: refs } : {}) }),
+    );
+    const safe = `${kind}-${label}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60);
+    const file = await materialize(services, deps.toolkit, still.url, join(deps.workRoot, 'profiles', personaId, `${safe}.png`), { kind: 'image' });
+    const asset = await storeAsset(services, {
+      personaId,
+      key: `media/${personaId}/production/${safe}.png`,
+      file,
+      contentType: 'image/png',
+      type: 'image',
+      role: 'identity',
+      provider: hf.name,
+      credits: still.credits,
+      tools: [hf.name],
+      meta: { kind, label, ...(fake ? { fake: true } : {}) },
+    });
+    // QC: an identity shot whose face drifted from the reference never joins the stack (it stays a candidate).
+    let status: 'active' | 'candidate' = 'active';
+    let similarity: number | null = null;
+    if (o.check && refPath) {
+      const r = await deps.face.compare(refPath, file);
+      similarity = r.similarity;
+      if (r.faces !== 1 || r.similarity === null || r.similarity < Q3_TARGETS.faceMin) status = 'candidate';
+    }
+    made += 1;
+    return saveIdentityRef(db, { personaId, kind, label, prompt, url: still.url, assetKey: asset.key, status, meta: { ...(o.meta ?? {}), similarity, asset_url: asset.url, ...(fake ? { fake: true } : {}) } });
+  };
+
+  const sheet = await make('sheet', '5-view sheet', characterSheetPrompt(brief), { aspect: '1:1' });
+  await make('detail_strip', 'detail strip', detailStripPrompt(brief), { aspect: '1:1', refs: [sheet.url] });
+  const stack: IdentityRef[] = [];
+  for (const s of identityStackPrompts(brief)) stack.push(await make(s.kind, s.label, s.prompt, { aspect: s.kind === 'face' ? '4:5' : '9:16', refs: [sheet.url], check: true }));
+  const stackUrls = stack.filter((r) => r.status === 'active').map((r) => r.url);
+  const core: IdentityRef[] = [];
+  for (const c of coreRefPrompts(brief)) core.push(await make('core', c.label, c.prompt, { aspect: '9:16', refs: stackUrls, check: true }));
+
+  // BOPA.
+  const plan = bopaPlan(brief);
+  const bgGrid = await make('bopa_background_grid', 'backgrounds 3x3', plan.backgrounds.gridPrompt, { aspect: '1:1', refs: stackUrls, meta: { cells: plan.backgrounds.cells } });
+  const bgPick = typeof bgGrid.meta.pick === 'number' ? (bgGrid.meta.pick as number) : defaultPick(`${personaId}:bg`, 3);
+  await make('bopa_background', `background ${bgPick + 1}`, upscaleCellPrompt(plan.backgrounds.cells[bgPick] ?? plan.backgrounds.cells[0]!, bgPick, 3, 'background'), {
+    aspect: '9:16',
+    refs: [bgGrid.url, ...stackUrls.slice(0, 1)],
+    check: true,
+    meta: { cell: bgPick, grid: bgGrid.id },
+  });
+  const base = core.find((c) => c.status === 'active') ?? stack[0];
+  for (const o of plan.outfits) await make('bopa_outfit', o.label, o.prompt, { aspect: '9:16', refs: [...(base ? [base.url] : []), ...stackUrls.slice(0, 1)], check: true });
+  const poseGrid = await make('bopa_pose_grid', 'poses 2x2', plan.poses.gridPrompt, { aspect: '1:1', refs: stackUrls, meta: { cells: plan.poses.cells } });
+  const posePick = typeof poseGrid.meta.pick === 'number' ? (poseGrid.meta.pick as number) : defaultPick(`${personaId}:pose`, 2);
+  await make('bopa_pose', `pose ${posePick + 1}`, upscaleCellPrompt(plan.poses.cells[posePick] ?? plan.poses.cells[0]!, posePick, 2, 'pose'), { aspect: '9:16', refs: [poseGrid.url, ...stackUrls.slice(0, 1)], check: true, meta: { cell: posePick, grid: poseGrid.id } });
+  for (const a of plan.angles) await make('bopa_angle', a.label, a.prompt, { aspect: '9:16', refs: stackUrls, check: true, meta: { degrees: a.degrees } });
+
+  // The look pack the dashboard shows: the BOPA picks and outfits (real renders only; fakes keep the placeholder).
+  if (!fake) {
+    const pack = (await identityRefs(db, personaId, ['bopa_background', 'bopa_outfit', 'bopa_pose', 'bopa_angle']))
+      .filter((r) => r.status === 'active')
+      .map((r) => ({ label: r.label, url: String(r.meta.asset_url ?? r.url) }));
+    if (pack.length) await db.query(`UPDATE persona SET look_pack = $2::jsonb, updated_at = now() WHERE id = $1`, [personaId, json(pack)]);
+  }
+  await db.query(`UPDATE media_profile SET meta = meta || '{"identity_done": true}'::jsonb WHERE persona_id = $1`, [personaId]);
+  return { made, total };
+}
+
+/**
+ * The location lock (PRD §3.15.3): each recurring place (World Bible places, then the bible's settings; at most 5)
+ * gets 5 candidates from one prompt, a pick (automatic, or the Owner's `location.lock` re-pick) and a second anchor
+ * angle referencing the pick; the pick and the angle become the place's locked reference set. No people in anchor
+ * frames. Stills go through the governor.
+ */
+export async function lockPersonaLocations(
+  services: StudioServices,
+  deps: MediaDeps,
+  scope: SpendScope,
+  opts: { place?: string | null; pick?: number | null } = {},
+): Promise<{ locked: number; pending: number }> {
+  const { db } = services;
+  const personaId = scope.personaId;
+  scope = { ...scope, slotId: null, ref: { type: 'persona', id: personaId } };
+  const c = await loadPersonaContext(db, personaId);
+  await ensureLocations(db, personaId, await personaPlaces(db, personaId, c.look.settings));
+  const models = mediaModels();
+  const hf = services.providers.imageVideo;
+  const fake = deps.toolkit.name === 'fake-toolkit';
+  const still = async (prompt: string, name: string, refs: readonly string[] = []) => {
+    const r = await hfSpend(services, scope, { operation: 'still', model: models.still }, () =>
+      hf.generateStill({ prompt, aspect: '9:16', model: models.still, resolution: GEN_RESOLUTION, ...(refs.length ? { referenceImageUrls: [...refs] } : {}) }),
+    );
+    const safe = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 70);
+    const file = await materialize(services, deps.toolkit, r.url, join(deps.workRoot, 'profiles', personaId, 'locations', `${safe}.png`), { kind: 'image' });
+    const a = await storeAsset(services, { personaId, key: `media/${personaId}/locations/${safe}.png`, file, contentType: 'image/png', type: 'image', role: 'location', provider: hf.name, credits: r.credits, tools: [hf.name], meta: { place: name, ...(fake ? { fake: true } : {}) } });
+    return { url: r.url, assetKey: a.key };
+  };
+  const wanted = opts.place ? placeKey(opts.place) : null;
+  let lockedNow = 0;
+  for (const l of await locationLocks(db, personaId)) {
+    if (wanted ? l.placeKey !== wanted : l.status === 'locked') continue;
+    // One prompt across 5 variations (made once; a re-pick reuses them).
+    const candidates: Array<{ label: string; prompt: string; url: string; assetKey: string | null }> = [...l.candidates];
+    for (const [i, cand] of locationCandidatePrompts(l.place, l.description, c.look.stylisation).entries()) {
+      if (i < candidates.length) continue;
+      candidates.push({ ...cand, ...(await still(cand.prompt, `${l.placeKey}-candidate-${i + 1}`)) });
+      // Stored as they come, so a deferred job never buys the same candidate twice.
+      await db.query(`UPDATE location_lock SET candidates = $3::jsonb, updated_at = now() WHERE persona_id = $1 AND place_key = $2`, [personaId, l.placeKey, json(candidates)]);
+    }
+    const pick = Math.max(0, Math.min(candidates.length - 1, opts.pick ?? defaultPick(`${personaId}:${l.placeKey}`, 2) % candidates.length));
+    const chosen = candidates[pick]!;
+    const anchor = await still(locationAnchorPrompt(l.place, l.description), `${l.placeKey}-anchor-${pick + 1}`, [chosen.url]);
+    await lockLocation(db, personaId, l.placeKey, {
+      refs: [
+        { url: chosen.url, assetKey: chosen.assetKey, angle: 'doorway wide' },
+        { url: anchor.url, assetKey: anchor.assetKey, angle: 'opposite corner' },
+      ],
+      candidates,
+      chosen: pick,
+      at: services.now(),
+    });
+    lockedNow += 1;
+  }
+  const all = await locationLocks(db, personaId);
+  return { locked: lockedNow, pending: all.filter((x) => x.status === 'pending').length };
 }

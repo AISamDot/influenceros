@@ -1,7 +1,7 @@
 import type { QcCheck } from '@ios/agents';
-import { alignWords, diffTokens, qcPass, qcScore } from '@ios/content';
+import { alignWords, diffTokens, MEME_WORDS, mentionsOutlet, qcPass, qcScore, showsHandle, TEXT_NOTE_WORDS } from '@ios/content';
 import type { PostFormat } from '@ios/core';
-import { CAROUSEL_SLIDES, EXPORT, FORMAT_SPEC, Q3_TARGETS, Q4_TARGETS } from './config';
+import { FORMAT_SPEC, formatFrame, Q3_TARGETS, Q4_TARGETS, SAFE_ZONE, SLIDE_RANGE } from './config';
 import { type Analysis, insideSafeZone, type Interval, type MediaInfo, type TextBox } from './toolkit';
 
 /**
@@ -106,6 +106,10 @@ export interface Q4Input {
   readonly ctaKeyword: string;
   readonly caption: string;
   readonly hashtags: readonly string[];
+  /** (IOS-5) The picture-in-picture box (facecam over screen, News Desk green-screen). */
+  readonly pip?: { readonly x: number; readonly y: number; readonly w: number; readonly h: number } | null;
+  /** (IOS-5) Text a card layout draws outside `texts` (the News Desk banner). */
+  readonly chromeText?: readonly string[];
 }
 
 export interface Q4Result {
@@ -121,10 +125,11 @@ export function gradeQ4(i: Q4Input): Q4Result {
   const checks: QcCheck[] = [];
   const fixes: Q4Fix[] = [];
   const spec = FORMAT_SPEC[i.format];
-  const frame = i.format === 'carousel' ? EXPORT.carousel : EXPORT.video;
+  const frame = formatFrame(i.format);
+  const range = SLIDE_RANGE[i.format];
 
   // Visuals: size, fps, duration.
-  const sizes = i.format === 'carousel' ? (i.slides ?? []) : [i.info];
+  const sizes = spec.kind === 'carousel' ? (i.slides ?? []) : [i.info];
   const wrongSize = sizes.find((s) => s.width !== frame.width || s.height !== frame.height);
   if (wrongSize) {
     checks.push(fail('resolution', 'blocker', `${wrongSize.width}×${wrongSize.height}, expected ${frame.width}×${frame.height}`));
@@ -140,10 +145,33 @@ export function gradeQ4(i: Q4Input): Q4Result {
       fixes.push({ kind: 'rerender' });
     } else checks.push(ok('duration', 'major', `${i.info.durationS.toFixed(1)} s`));
   }
-  if (i.format === 'carousel') {
+  if (range) {
     const n = i.slides?.length ?? 0;
-    if (n < CAROUSEL_SLIDES.min || n > CAROUSEL_SLIDES.max) checks.push(fail('slide_count', 'blocker', `${n} slides, expected ${CAROUSEL_SLIDES.min}–${CAROUSEL_SLIDES.max}`));
+    if (n < range.min || n > range.max) checks.push(fail('slide_count', 'blocker', `${n} slides, expected ${range.min}–${range.max}`));
     else checks.push(ok('slide_count', 'blocker', `${n} slides`));
+  }
+
+  // (IOS-5) Format-library expectations.
+  const shown = [...i.texts.map((t) => t.text), ...(i.chromeText ?? [])].join('\n');
+  if (i.format === 'reply_comment') {
+    const sticker = i.texts.find((t) => t.style === 'sticker');
+    checks.push(sticker ? ok('comment_overlay', 'major', 'The comment is shown as a sticker overlay') : fail('comment_overlay', 'major', 'No comment sticker on the reply'));
+    checks.push(showsHandle(shown) ? fail('handle_anonymised', 'blocker', "A viewer's @handle is visible: the overlay must anonymise it") : ok('handle_anonymised', 'blocker', "The commenter's handle is anonymised"));
+  }
+  if (i.format === 'news_greenscreen') {
+    const outlet = mentionsOutlet(shown);
+    checks.push(outlet ? fail('no_outlet_logo', 'blocker', `The card names a real outlet (${outlet}): the News Desk is our own`) : ok('no_outlet_logo', 'blocker', 'Our own News Desk card, no real outlet name or logo'));
+  }
+  if (i.pip !== undefined && (i.format === 'facecam_screen' || i.format === 'news_greenscreen')) {
+    const b = i.pip;
+    const inside = !!b && b.x >= SAFE_ZONE.left && b.x + b.w <= frame.width - SAFE_ZONE.right && b.y >= SAFE_ZONE.top && b.y + b.h <= frame.height - SAFE_ZONE.bottom;
+    checks.push(inside ? ok('pip_safe_zone', 'major', 'The persona box sits inside the safe zone') : fail('pip_safe_zone', 'major', b ? 'The persona box crosses the platform safe zone' : 'No persona box on a facecam / green-screen post'));
+    if (!b) fixes.push({ kind: 'rerender' });
+  }
+  if (i.format === 'text_note' || i.format === 'meme') {
+    const max = i.format === 'text_note' ? TEXT_NOTE_WORDS : MEME_WORDS;
+    const n = (i.texts[0]?.text ?? '').split(/\s+/).filter(Boolean).length;
+    checks.push(n > 0 && n <= max ? ok('text_length', 'major', `${n} words on the card`) : fail('text_length', 'major', `${n} words on the card (1–${max})`));
   }
 
   // Audio (voiced reels): loudness, true peak, silences.

@@ -3,7 +3,7 @@ import { type CostRef, type PostFormat, type PostPurpose, scriptShape } from '@i
 import type { Hook } from './hooks';
 import { shortenHook, topicOf } from './hooks';
 import type { PersonaContext } from './persona';
-import { asRecord, asString, asStrings, lowerFirst, pick, sentences, similarity, slugify, upperFirst, wordCount } from './util';
+import { asRecord, asString, asStrings, hashInt, lowerFirst, pick, sentences, similarity, slugify, upperFirst, wordCount } from './util';
 
 /**
  * Scriptwriter (FR-4.2): from the shipped hook, a script written for the ear (15–30 s, 40–90 words for talking and
@@ -42,7 +42,8 @@ export interface ScriptBrief {
   readonly beat?: string | null;
 }
 
-export const SPOKEN: readonly PostFormat[] = ['talking', 'voiceover'];
+/** Formats with a voice track (talking-shaped and voiceover): the TTS text, Q2 and the talking clips. */
+export const SPOKEN: readonly PostFormat[] = ['talking', 'voiceover', 'facecam_screen', 'reply_comment', 'news_greenscreen'];
 const PADDING = [
   'Start small, and keep it simple.',
   "You don't need a perfect plan to begin.",
@@ -53,6 +54,77 @@ export const WORDS = { min: 40, max: 90 } as const;
 export const SECONDS = { min: 15, max: 30 } as const;
 /** Max words on one on-screen line (the hook line of activity and static posts). */
 export const ON_SCREEN_WORDS = { activity_text: 8, static: 10 } as const;
+
+// ───────────────────────────── IOS-5 format library rules (stream K; FR-4.3c) ─────────────────────────────
+
+/** Photo dump: 5–10 casual camera-roll stills (an IG carousel); each photo caption at most 8 words. */
+export const PHOTO_DUMP = { min: 5, max: 10, captionWords: 8 } as const;
+/** Text-on-image note / quote card: at most 25 words on the card. */
+export const TEXT_NOTE_WORDS = 25;
+/** Meme / relatable text post: at most 15 words. */
+export const MEME_WORDS = 15;
+/** Facecam over screen: 3–6 screen lines (the steps on the slides), each at most 8 words. */
+export const FACECAM_LINES = { min: 3, max: 6, words: 8 } as const;
+/** Reply-to-comment overlay: the comment text shown (sanitised), at most this many characters. */
+export const COMMENT_OVERLAY_CHARS = 120;
+
+/**
+ * Real news outlets (and their usual short forms). The News Desk card is our own generic design: no outlet's name or
+ * logo ever appears on it, and a script that names one as the source of a headline is sent back.
+ */
+export const REAL_OUTLETS: readonly string[] = [
+  'BBC', 'CNN', 'Fox News', 'Reuters', 'Associated Press', 'AP News', 'New York Times', 'NYT', 'Washington Post', 'Wall Street Journal', 'WSJ',
+  'The Guardian', 'Sky News', 'Al Jazeera', 'NBC', 'CBS', 'ABC News', 'Bloomberg', 'CNBC', 'Financial Times', 'Daily Mail', 'Mail Online',
+  'The Telegraph', 'The Independent', 'Daily Mirror', 'USA Today', 'NPR', 'Politico', 'Axios', 'BuzzFeed', 'HuffPost', 'Forbes', 'Business Insider',
+  'Yahoo News', 'MSNBC', 'ITV News', 'Channel 4 News', 'Daily Express', 'Times of India', 'Le Monde', 'Der Spiegel',
+];
+const escapeRe = (x: string): string => x.replace(/[.*+?^$()|[\]\\{}]/g, (c) => `\\${c}`).replace(/\s+/g, '\\s+');
+const OUTLET_ALT = REAL_OUTLETS.map(escapeRe).join('|');
+// Proper nouns: matched case-sensitively, so "the sun is out" or "a mirror selfie" never trips it.
+const OUTLET_RE = new RegExp(`(?:^|[^A-Za-z])(${OUTLET_ALT})(?![A-Za-z])`);
+/** The first real outlet a text names, or null. */
+export function mentionsOutlet(text: string): string | null {
+  const m = OUTLET_RE.exec(text);
+  return m ? m[1]! : null;
+}
+/** Drops a trailing " - BBC News" / " | Reuters" source tag and any outlet name from a headline (our own wording). */
+export function newsDeskHeadline(title: string): string {
+  let t = title.replace(/\s+/g, ' ').trim();
+  const tail = /\s+[|–—-]\s+([^|–—-]{2,40})$/.exec(t);
+  if (tail && mentionsOutlet(tail[1]!)) t = t.slice(0, tail.index).trim();
+  for (let i = 0; i < 4; i++) {
+    const o = mentionsOutlet(t);
+    if (!o) break;
+    t = t.replace(new RegExp(escapeRe(o)), 'a news report').replace(/\s+/g, ' ').trim();
+  }
+  return t.slice(0, 140);
+}
+
+/**
+ * A commenter's handle, anonymised for the reply-to-comment overlay: nothing of the handle survives except that it
+ * was one (`@••••••`). The overlay never shows a real account name.
+ */
+export const anonymiseHandle = (_handle?: string | null): string => '@••••••';
+/** True when a text still shows something that looks like a real @handle (anything but the anonymised form). */
+export const showsHandle = (text: string): boolean => /@(?!•)[A-Za-z0-9_.]{2,}/.test(text);
+
+/**
+ * Third-party text (a viewer's comment) made safe to show on screen: links, e-mail addresses, @mentions and phone
+ * numbers removed, whitespace collapsed, cut at a word boundary. Returns '' when nothing usable is left.
+ */
+export function sanitizeOverlay(text: string, max = COMMENT_OVERLAY_CHARS): string {
+  let t = text
+    .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069]/g, ' ')
+    .replace(/\bhttps?:\/\/\S+|\bwww\.\S+|\b\S+\.(?:com|net|org|io|co|uk|ly|me)\b\S*/gi, '')
+    .replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, '')
+    .replace(/@[A-Za-z0-9_.]+/g, '')
+    .replace(/\+?\d[\d\s().-]{7,}\d/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (t.length > max) t = `${t.slice(0, max).replace(/\s+\S*$/, '')}…`;
+  return /[A-Za-z]{2,}/.test(t) ? t : '';
+}
+
 
 /** Sentences that state facts (statistics, studies, "proven"): each needs a cited knowledge hit. */
 export const CLAIM_RE =
@@ -80,7 +152,8 @@ export function deliverable(delivers: string): string {
 
 export function ctaLine(keyword: string, delivers: string, purpose: PostPurpose, format: PostFormat): string {
   const what = delivers ? deliverable(delivers) : 'the free guide';
-  if (format === 'activity_text' || format === 'static') return purpose === 'sell' ? `Comment ${keyword} for the link` : `Comment ${keyword} for ${what}`;
+  const shape = scriptShape(format);
+  if (shape === 'activity_text' || shape === 'static') return purpose === 'sell' ? `Comment ${keyword} for the link` : `Comment ${keyword} for ${what}`;
   return purpose === 'sell' ? `Comment ${keyword} and I'll send you the link.` : `Comment ${keyword} and I'll send you ${what}.`;
 }
 
@@ -92,6 +165,8 @@ function hashtagsFor(ctx: PersonaContext, pillar: string | null): string[] {
 
 export function visualBrief(ctx: PersonaContext, format: PostFormat, title: string): string {
   const shape = scriptShape(format);
+  const own = FORMAT_BRIEF[format];
+  if (own) return own(ctx, title);
   if (shape !== format) return `${FORMAT_LABEL[format]}: ${visualBrief(ctx, shape, title)}`;
   const setting = pick(ctx.look.settings.length ? ctx.look.settings : ['a bright home office'], `${ctx.persona.id}:${title}:set`);
   const outfit = ctx.look.outfits.length ? `, ${lowerFirst(pick(ctx.look.outfits, `${ctx.persona.id}:${title}:fit`))}` : '';
@@ -111,6 +186,23 @@ export function visualBrief(ctx: PersonaContext, format: PostFormat, title: stri
   }
 }
 const lower = (s: string) => lowerFirst(s);
+const BRIEF_RULES = 'No logos, brands, real people or celebrity lookalikes; no on-image text unless listed. AI-generated character: the post carries the platform AI label.';
+const briefWho = (ctx: PersonaContext) => `${ctx.persona.name} (same face as the look pack)`;
+const briefSetting = (ctx: PersonaContext, title: string) => lower(pick(ctx.look.settings.length ? ctx.look.settings : ['a bright home office'], `${ctx.persona.id}:${title}:set`));
+/** (IOS-5) Visual briefs for the format library: what the renderer composes, in plain words (no timecodes, no baked-in text). */
+const FORMAT_BRIEF: Partial<Record<PostFormat, (ctx: PersonaContext, title: string) => string>> = {
+  photo_dump: (ctx, title) =>
+    `Photo dump, 4:5, 5–10 casual camera-roll stills from ${briefWho(ctx)}'s week: an arm's-length selfie, a mirror shot, a propped-phone shot in ${briefSetting(ctx, title)}, and two or three details without people (a coffee, a desk, the view). Unposed, slightly imperfect phone photos. ${ctx.look.stylisation}. ${BRIEF_RULES}`,
+  text_note: (ctx) => `Text note card, 9:16: the note is typeset in the edit on a plain card in ${ctx.persona.name}'s palette; no photo generation. ${BRIEF_RULES}`,
+  meme: (ctx, title) =>
+    `Meme, 9:16: a reaction still of ${briefWho(ctx)} in ${briefSetting(ctx, title)}, an expressive, relatable face; the meme line is typeset in a white band above the photo in the edit. ${ctx.look.stylisation}. ${BRIEF_RULES}`,
+  facecam_screen: (ctx, title) =>
+    `Facecam over screen, 9:16: ${briefWho(ctx)} talking to a propped phone, head and shoulders against a plain wall in ${briefSetting(ctx, title)}, shown in a corner over clean generated slides of the steps (slide text added in the edit). ${ctx.look.stylisation}. ${BRIEF_RULES}`,
+  reply_comment: (ctx, title) =>
+    `Reply to a comment, 9:16: ${briefWho(ctx)} answering a viewer, chest-up in ${briefSetting(ctx, title)}, natural gestures and eye contact; the comment is shown as a sticker overlay in the edit with the handle anonymised. ${ctx.look.stylisation}. ${BRIEF_RULES}`,
+  news_greenscreen: (ctx, title) =>
+    `News green-screen, 9:16: ${briefWho(ctx)} reacting to a headline, head and shoulders against a plain wall in ${briefSetting(ctx, title)}, composited over our own generic News Desk headline card (never a real outlet's name or logo; the headline is added in the edit). ${ctx.look.stylisation}. ${BRIEF_RULES}`,
+};
 const FORMAT_LABEL: Readonly<Record<PostFormat, string>> = {
   talking: 'Talking reel',
   activity_text: 'Activity + on-screen text',
@@ -136,6 +228,31 @@ function stepsFor(ctx: PersonaContext, title: string, pillar: string | null): st
   return ['Pick one small thing you can do today', 'Set it up once so it runs without you', 'Check in once a week and adjust'];
 }
 
+/** The first `n` words of a text, ending cleanly. */
+function clipWords(text: string, n: number): string {
+  const w = text.replace(/\s+/g, ' ').trim().split(' ');
+  return w.length <= n ? w.join(' ') : `${w.slice(0, n).join(' ').replace(/[,;:—–-]+$/, '')}.`;
+}
+
+/** Every real outlet name in a text replaced (the News Desk never names one). */
+function scrubOutlets(text: string): string {
+  let t = text;
+  for (let i = 0; i < 6; i++) {
+    const o = mentionsOutlet(t);
+    if (!o) break;
+    t = t.replace(new RegExp(escapeRe(o)), 'a news report');
+  }
+  return t;
+}
+
+/** Casual photo-dump captions from the persona's world (deterministic; the model writes its own). */
+function dumpCaptions(ctx: PersonaContext, title: string): string[] {
+  const set = (ctx.look.settings.length ? ctx.look.settings : ['my kitchen', 'the desk', 'the walk home']).map((x) => lowerFirst(x).replace(/^(?:a|an|the)\s+/i, ''));
+  const pool = [`Morning light in the ${set[0]}`, 'Coffee first, always', `The ${set[1 % set.length]} this week`, 'Tiny win of the week', 'The list that keeps me sane', 'Golden hour on the way home', 'Sunday reset, done'];
+  const start = hashInt(`${ctx.persona.id}:${title}`) % pool.length;
+  return Array.from({ length: 5 }, (_, i) => shortenHook(pool[(start + i) % pool.length]!, PHOTO_DUMP.captionWords));
+}
+
 /** Deterministic script for fake mode and the shape the model returns. */
 export function fakeScript(b: ScriptBrief): ScriptDraft {
   const { ctx } = b;
@@ -151,10 +268,21 @@ export function fakeScript(b: ScriptBrief): ScriptDraft {
   let body: string;
   let onScreenText: string[] = [];
   let carousel: ScriptDraft['carousel'] = null;
-  if (b.format === 'talking' || b.format === 'voiceover') {
+  const shape = scriptShape(b.format);
+  if (SPOKEN.includes(b.format)) {
+    const opener =
+      b.format === 'reply_comment'
+        ? `You asked me about ${topic}, so here's my honest answer.`
+        : b.format === 'news_greenscreen'
+          ? `Everyone's sharing this headline about ${topic}, so here's my take.`
+          : b.format === 'facecam_screen'
+            ? "I'll show you on screen, step by step."
+            : sell
+              ? `This is the ${b.productName}, and here's what's inside.`
+              : `Here's the simple version of ${topic}.`;
     const lines = [
       b.hook.text,
-      sell ? `This is the ${b.productName}, and here's what's inside.` : `Here's the simple version of ${topic}.`,
+      opener,
       `First, ${lowerFirst(steps[0]!)}.`,
       `Then, ${lowerFirst(steps[1]!)}.`,
       `Finally, ${lowerFirst(steps[2]!)}.`,
@@ -163,13 +291,25 @@ export function fakeScript(b: ScriptBrief): ScriptDraft {
       cta,
     ];
     body = lines.join(' ');
-    onScreenText = [b.hook.text];
-  } else if (b.format === 'activity_text') {
+    onScreenText =
+      b.format === 'facecam_screen'
+        ? [shortenHook(b.hook.text, FACECAM_LINES.words), ...steps.map((x) => shortenHook(x, 7)), ctaLine(b.ctaKeyword, b.ctaDelivers, b.purpose, 'activity_text')]
+        : b.format === 'news_greenscreen'
+          ? [newsDeskHeadline(shortenHook(upperFirst(topicOf(b.title)), 12))]
+          : [b.hook.text];
+  } else if (shape === 'activity_text') {
     onScreenText = [shortenHook(b.hook.text, ON_SCREEN_WORDS.activity_text), ...steps.map((s) => shortenHook(s, 7)), cta];
     body = onScreenText.join('\n');
-  } else if (b.format === 'static') {
-    onScreenText = [shortenHook(b.hook.text, ON_SCREEN_WORDS.static)];
+  } else if (shape === 'static') {
+    onScreenText =
+      b.format === 'text_note'
+        ? [clipWords(`${b.hook.text} ${catchphrase}`, TEXT_NOTE_WORDS)]
+        : [shortenHook(b.hook.text, b.format === 'meme' ? MEME_WORDS : ON_SCREEN_WORDS.static)];
     body = onScreenText[0]!;
+  } else if (b.format === 'photo_dump') {
+    carousel = [{ title: b.hook.text, body: '' }, ...dumpCaptions(ctx, b.title).map((t) => ({ title: t, body: '' }))];
+    body = carousel.map((c) => c.title).join('\n');
+    onScreenText = carousel.map((c) => c.title);
   } else {
     carousel = [
       { title: b.hook.text, body: sell ? `Inside the ${b.productName}.` : `Swipe for the simple version of ${topic}.` },
@@ -187,7 +327,7 @@ export function fakeScript(b: ScriptBrief): ScriptDraft {
     cta.endsWith('.') ? cta : `${cta}.`,
   ].join('\n\n');
   return {
-    hook: b.format === 'activity_text' || b.format === 'static' ? onScreenText[0]! : b.hook.text,
+    hook: shape === 'activity_text' || (shape === 'static' && b.format !== 'text_note') ? onScreenText[0]! : b.hook.text,
     body,
     caption,
     ctaKeyword: b.ctaKeyword,
@@ -300,7 +440,7 @@ export function normaliseHashtags(tags: readonly string[]): string[] {
   return [...new Set(out.map((t) => t.toLowerCase()))].slice(0, 5);
 }
 
-const FORMAT_RULES: Record<PostFormat, string> = {
+export const FORMAT_RULES: Record<PostFormat, string> = {
   talking: 'Talking reel, 15–30 s spoken: 40–90 words (aim for 55–75). The body is exactly what the persona says, starting with the hook.',
   voiceover: 'Voiceover reel, about 24 s of narration: 40–90 words (aim for 50–70), starting with the hook, over three activity shots.',
   activity_text: 'Activity + on-screen text, 6–10 s loop: 3–5 on-screen lines of at most 8 words, first line is the hook, last line is the CTA. No voice.',
@@ -309,12 +449,12 @@ const FORMAT_RULES: Record<PostFormat, string> = {
   // Optional formats (FR-4.3c library). Written in their script shape (FORMAT_SHAPE) until stream K gives each its own rules.
   product_in_hand: 'Product in hand, 6–10 s loop: the persona holds or uses our own product; 3–5 on-screen lines of at most 8 words, first line is the hook, last line is the CTA. No voice.',
   trend_reenactment: 'Trend reenactment, 6–10 s: the persona performs a trending movement (motion only, never the original audio); 3–5 on-screen lines, first line is the hook, last line is the CTA. No voice.',
-  photo_dump: 'Photo dump, 5–10 casual camera-roll stills from the week: slide 1 is the hook line, then one short caption per photo, the last slide is the CTA.',
-  text_note: 'Text note / quote card: one note or quote of at most 25 words on a plain card (the hook); the caption carries the value and ends with the CTA.',
-  facecam_screen: 'Facecam over screen, 15–30 s spoken: 40–90 words while a screen recording or slides show the steps. The body is exactly what the persona says, starting with the hook.',
-  reply_comment: 'Reply to a comment, 15–30 s spoken: 40–90 words answering the top comment (shown as an overlay, handle anonymised), starting with the hook.',
-  news_greenscreen: 'News green-screen, 15–30 s spoken: 40–90 words reacting to a News Desk headline card (never a real outlet logo), starting with the hook.',
-  meme: 'Meme / relatable text post: one relatable line of at most 15 words (the hook); the caption ends with the CTA.',
+  photo_dump: 'Photo dump, 5–10 casual camera-roll stills from the week, as carousel items: item 1 is the hook line, then one short caption per photo (at most 8 words each, no CTA item); the caption carries the story and ends with the CTA.',
+  text_note: 'Text note / quote card: one note or quote of at most 25 words on a plain card, starting with the hook; the caption carries the value and ends with the CTA.',
+  facecam_screen: 'Facecam over screen, 15–30 s spoken: 40–90 words while slides show the steps. The body is exactly what the persona says, starting with the hook; on_screen_text holds 3–6 slide lines of at most 8 words (hook, steps, CTA).',
+  reply_comment: 'Reply to a comment, 15–30 s spoken: 40–90 words answering the top comment (shown as a sticker overlay, handle anonymised), starting with the hook. Never quote or name the commenter.',
+  news_greenscreen: "News green-screen, 15–30 s spoken: 40–90 words reacting to a headline on our own News Desk card, starting with the hook. Never name a real news outlet; on_screen_text[0] is the headline in our own words.",
+  meme: 'Meme / relatable text post: one relatable line of at most 15 words (the hook), typeset above a reaction photo; the caption ends with the CTA.',
 };
 
 const SCRIPT_SYSTEM = `You are the Scriptwriter. Write one short-form post for the persona, in their voice, English only, written for the ear:
@@ -345,7 +485,7 @@ export async function writeScript(
     label: opts.revise ? `script: revise (${b.format})` : `script: ${b.format}`,
     system: SCRIPT_SYSTEM,
     cached: ctx.cached,
-    skills: b.format === 'carousel' ? ['hook-lab', 'carousel-designer'] : ['hook-lab', 'video-prompt-pack'],
+    skills: scriptShape(b.format) === 'carousel' ? ['hook-lab', 'carousel-designer'] : ['hook-lab', 'video-prompt-pack'],
     prompt: `Idea: ${b.title}\nPillar: ${b.pillar ?? 'n/a'}\nPurpose: ${b.purpose}${b.productName ? ` (product: ${b.productName})` : ''}\nFormat: ${FORMAT_RULES[b.format]}
 Hook (ship this): ${b.hook.text}\nA/B variants (for reference): ${b.variants.map((v) => v.text).join(' | ')}
 CTA keyword: ${b.ctaKeyword} (sends: ${b.ctaDelivers || 'the free guide'})${b.beat ? `\nStoryline beat to carry: ${b.beat}` : ''}${
@@ -393,6 +533,7 @@ export function enforceScript(d: ScriptDraft, b: Pick<ScriptBrief, 'ctx' | 'form
   let body = d.body;
   let onScreenText = [...d.onScreenText];
   let carousel = d.carousel ? [...d.carousel] : null;
+  const shape = scriptShape(b.format);
 
   if (SPOKEN.includes(b.format)) {
     let lines = clean(sentences(body));
@@ -404,7 +545,22 @@ export function enforceScript(d: ScriptDraft, b: Pick<ScriptBrief, 'ctx' | 'form
     for (const f of PADDING) if (total() < WORDS.min + 5 && !lines.includes(f)) lines.push(f);
     body = [...lines, cta].join(' ');
     if (!onScreenText.length) onScreenText = [d.hook];
-  } else if (b.format === 'activity_text') {
+    if (b.format === 'facecam_screen') {
+      // 3–6 slide lines of at most 8 words: the hook, the steps, the CTA last.
+      const short = cta.replace(/\s+and I'll send you.*$/i, '').replace(/[.]$/, '');
+      let slides = clean(onScreenText, false)
+        .filter((x) => !hasCta(x))
+        .map((x) => shortenHook(x, FACECAM_LINES.words));
+      if (!slides[0] || similarity(slides[0], shortenHook(d.hook, FACECAM_LINES.words)) < 0.8) slides.unshift(shortenHook(d.hook, FACECAM_LINES.words));
+      slides = slides.slice(0, FACECAM_LINES.max - 1);
+      for (const f of filler) if (slides.length < FACECAM_LINES.min - 1 && !slides.includes(shortenHook(f, 7))) slides.push(shortenHook(f, 7));
+      onScreenText = [...slides, shortenHook(short, FACECAM_LINES.words)];
+    }
+    if (b.format === 'news_greenscreen') {
+      onScreenText = [newsDeskHeadline(onScreenText[0] && onScreenText[0] !== d.hook ? onScreenText[0] : upperFirst(topicOf(b.title))), ...onScreenText.slice(1)];
+      body = scrubOutlets(body);
+    }
+  } else if (shape === 'activity_text') {
     hook = shortenHook(d.hook, ON_SCREEN_WORDS.activity_text);
     let lines = clean(onScreenText.length ? onScreenText : sentences(body), false).map((s) => shortenHook(s, ON_SCREEN_WORDS.activity_text));
     lines = lines.filter((s) => similarity(s, hook) < 0.8 && similarity(s, d.hook) < 0.8 && !hasCta(s));
@@ -412,10 +568,25 @@ export function enforceScript(d: ScriptDraft, b: Pick<ScriptBrief, 'ctx' | 'form
     for (const f of filler) if (lines.length < 3 && !lines.includes(shortenHook(f, 7))) lines.push(shortenHook(f, 7));
     onScreenText = [...lines, cta];
     body = onScreenText.join('\n');
-  } else if (b.format === 'static') {
-    hook = shortenHook(d.hook, ON_SCREEN_WORDS.static);
-    onScreenText = [hook];
-    body = hook;
+  } else if (shape === 'static') {
+    if (b.format === 'text_note') {
+      const note = (onScreenText[0] ?? body).trim();
+      const opens = note.startsWith(d.hook) || similarity(note.slice(0, d.hook.length + 10), d.hook) >= 0.8;
+      onScreenText = [clipWords(opens ? note : `${d.hook} ${note}`, TEXT_NOTE_WORDS)];
+    } else {
+      hook = shortenHook(d.hook, b.format === 'meme' ? MEME_WORDS : ON_SCREEN_WORDS.static);
+      onScreenText = [hook];
+    }
+    body = onScreenText[0]!;
+  } else if (b.format === 'photo_dump') {
+    const source = (carousel?.length ? carousel.map((x) => x.title) : onScreenText.length ? onScreenText : sentences(body)).map((x) => x.trim()).filter(Boolean);
+    let items = clean(source, false).filter((x) => !hasCta(x) && !uncitedClaims(x, claims, evidence).length);
+    if (!items[0] || similarity(items[0], d.hook) < 0.8) items.unshift(d.hook);
+    items = [items[0]!, ...items.slice(1).map((x) => shortenHook(x, PHOTO_DUMP.captionWords))].slice(0, PHOTO_DUMP.max);
+    for (const c of dumpCaptions(b.ctx, b.title)) if (items.length < PHOTO_DUMP.min + 1 && !items.includes(c)) items.push(c);
+    carousel = items.map((t) => ({ title: t, body: '' }));
+    onScreenText = [...items];
+    body = items.join('\n');
   } else {
     let slides = (carousel ?? []).filter((s) => !uncitedClaims(`${s.title}. ${s.body}`, claims, evidence).length && !offVoice(`${s.title} ${s.body}`));
     if (!slides[0] || similarity(slides[0].title, d.hook) < 0.8) slides.unshift({ title: d.hook, body: 'Swipe for the simple version.' });
@@ -429,6 +600,7 @@ export function enforceScript(d: ScriptDraft, b: Pick<ScriptBrief, 'ctx' | 'form
   }
 
   let caption = d.caption.trim() || d.hook;
+  if (b.format === 'news_greenscreen') caption = scrubOutlets(caption);
   caption = sentences(caption)
     .filter((s) => !uncitedClaims(s, claims, evidence).length)
     .join(' ');
