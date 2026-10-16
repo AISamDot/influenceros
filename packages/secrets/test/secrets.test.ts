@@ -124,8 +124,9 @@ describe('secrets', () => {
     expect(by.apify?.status).toBe('connected');
     expect(by.anthropic?.status).toBe('connected');
     expect(by.resend?.status).toBe('pending_key');
-    // Live only where a key is present and a live adapter exists (Anthropic and Resend have one from IOS-2).
-    expect(states.filter((s) => s.mode === 'live').map((s) => s.def.id)).toEqual(['anthropic']);
+    // Live only where a key is present and a live adapter exists (Anthropic and Resend have one from IOS-2; Apify from
+    // IOS-5 stream I, whose contract flips its entry to liveAdapter: true).
+    expect(states.filter((s) => s.mode === 'live').map((s) => s.def.id)).toEqual(['anthropic', 'apify']);
     expect(integrationStates(kc, { ANTHROPIC_API_KEY: 'x', IOS_FAKE_PROVIDERS: '1' }).every((s) => s.mode === 'fake')).toBe(true);
     expect(integrationStates(kc, { IOS_FAKE_PROVIDERS: 'apify' }).find((s) => s.def.id === 'apify')?.status).toBe(
       'fake_mode',
