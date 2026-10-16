@@ -77,6 +77,11 @@ export interface PublishPreparePayload {
   readonly q4ReportId: string;
   /** A winner's activity post that should get a trending sound: F sends a draft to the app inbox instead. */
   readonly trendingSound?: boolean;
+  /**
+   * (IOS-4 fix, additive) The Owner approved publishing past failed QC majors (qc_override card, with a reason).
+   * Post Q4 then lets majors through; blockers still block.
+   */
+  readonly qcOverride?: { readonly approvalId: string; readonly reason: string; readonly stage: string };
 }
 
 // ───────────────────────────── Products (H builds; G sells) ─────────────────────────────
@@ -196,21 +201,84 @@ export interface PersonaKit {
   readonly portraitUrl: string | null;
   /** Every palette row in bible order (may be empty for personas without a palette table). */
   readonly palette: readonly PersonaKitColor[];
-  /** Picks for layouts: background, ink (text), accent (CTAs), and a second accent. Always valid hex. */
-  readonly colors: { readonly bg: string; readonly ink: string; readonly accent: string; readonly accent2: string };
+  /**
+   * Picks for layouts: background, ink (text), accent (brand colour), and a second accent. Always valid hex.
+   * (IOS-4 fix, additive) `cta` is a button fill that `onCta` text (ink or white) reads on at WCAG AA (4.5:1): the
+   * accent when it passes, else accent2, else the accent darkened. Text in the accent colour on `bg` should use
+   * `accentText` (the accent when it reaches 4.5:1 on bg, else ink).
+   */
+  readonly colors: {
+    readonly bg: string;
+    readonly ink: string;
+    readonly accent: string;
+    readonly accent2: string;
+    readonly cta?: string;
+    readonly onCta?: string;
+    readonly accentText?: string;
+  };
 }
 
-const HEX_ROW = /^\|\s*([^|]+?)\s*\|\s*(#[0-9a-fA-F]{6})\s*\|\s*([^|]*?)\s*\|/;
+const HEX_CELL = /^#[0-9a-fA-F]{6}$/;
 
-/** Palette rows from markdown text (bible "Palette | Hex | Used for" tables). */
+/**
+ * Palette rows from markdown text: any table row with a `#rrggbb` cell. The cell before the hex is the name and the
+ * cell after it the use, so both "| Name | #hex | Use |" and "| Role | Name | #hex | Use |" tables parse (a leading
+ * role is kept in the use, e.g. "… (Pattern only)").
+ */
 export function parsePalette(text: string): PersonaKitColor[] {
   const out: PersonaKitColor[] = [];
   for (const line of text.split('\n')) {
-    const m = HEX_ROW.exec(line.trim());
-    if (m && !out.some((c) => c.hex.toLowerCase() === m[2]!.toLowerCase())) out.push({ name: m[1]!.replace(/\*/g, ''), hex: m[2]!.toUpperCase(), use: m[3]! });
+    const t = line.trim();
+    if (!t.startsWith('|')) continue;
+    const cells = t.replace(/^\|/, '').replace(/\|\s*$/, '').split('|').map((c) => c.trim());
+    const i = cells.findIndex((c) => HEX_CELL.test(c));
+    if (i < 1) continue;
+    const hex = cells[i]!.toUpperCase();
+    if (out.some((c) => c.hex === hex)) continue;
+    const role = i > 1 ? cells.slice(0, i - 1).join(' ').replace(/\*/g, '').trim() : '';
+    const use = cells[i + 1] ?? '';
+    out.push({ name: cells[i - 1]!.replace(/\*/g, ''), hex, use: role ? `${use} (${role})` : use });
   }
   return out;
 }
+
+/** WCAG relative luminance of a #rrggbb colour. */
+export function relativeLuminance(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+}
+
+/** WCAG contrast ratio between two #rrggbb colours (1–21). */
+export function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x);
+  return (hi! + 0.05) / (lo! + 0.05);
+}
+
+const darken = (hex: string, f: number): string =>
+  `#${[1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * f).toString(16).padStart(2, '0')).join('')}`.toUpperCase();
+
+/** The better of ink / white for text on `fill`. */
+const textOn = (fill: string, ink: string): string => (contrastRatio(fill, ink) >= contrastRatio(fill, '#FFFFFF') ? ink : '#FFFFFF');
+
+/** A CTA fill with AA text on it (4.5:1): the accent, else accent2, else the accent darkened step by step. */
+export function ctaColors(c: { ink: string; accent: string; accent2: string }): { cta: string; onCta: string } {
+  for (const fill of [c.accent, c.accent2]) {
+    const on = textOn(fill, c.ink);
+    if (contrastRatio(fill, on) >= 4.5) return { cta: fill, onCta: on };
+  }
+  let fill = c.accent;
+  for (let i = 0; i < 20 && contrastRatio(fill, '#FFFFFF') < 4.5; i++) fill = darken(fill, 0.9);
+  return { cta: fill, onCta: '#FFFFFF' };
+}
+
+const withContrast = (c: { bg: string; ink: string; accent: string; accent2: string }): PersonaKit['colors'] => ({
+  ...c,
+  ...ctaColors(c),
+  accentText: contrastRatio(c.accent, c.bg) >= 4.5 ? c.accent : c.ink,
+});
 
 const luminance = (hex: string): number => {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
@@ -219,9 +287,9 @@ const luminance = (hex: string): number => {
 
 /** Layout picks from a palette: the lightest as background, the darkest as ink, the most saturated others as accents. */
 export function kitColors(palette: readonly PersonaKitColor[], fallbackAccent: string | null): PersonaKit['colors'] {
-  const usable = palette.filter((c) => !/hair only|never on/i.test(`${c.name} ${c.use}`));
+  const usable = palette.filter((c) => !/hair only|never on|pattern only|never a solid/i.test(`${c.name} ${c.use}`));
   const accentFallback = fallbackAccent && /^#[0-9a-f]{6}$/i.test(fallbackAccent) ? fallbackAccent.toUpperCase() : '#2F6FB0';
-  if (usable.length < 2) return { bg: '#FAF7F2', ink: '#1C1A17', accent: accentFallback, accent2: accentFallback };
+  if (usable.length < 2) return withContrast({ bg: '#FAF7F2', ink: '#1C1A17', accent: accentFallback, accent2: accentFallback });
   const byLum = [...usable].sort((a, b) => luminance(a.hex) - luminance(b.hex));
   const ink = byLum[0]!.hex;
   const bg = byLum.at(-1)!.hex;
@@ -232,7 +300,7 @@ export function kitColors(palette: readonly PersonaKitColor[], fallbackAccent: s
   };
   const accents = [...rest].sort((a, b) => sat(b.hex) - sat(a.hex));
   const accent = accents[0]?.hex ?? accentFallback;
-  return { bg, ink, accent, accent2: accents[1]?.hex ?? accent };
+  return withContrast({ bg, ink, accent, accent2: accents[1]?.hex ?? accent });
 }
 
 /** Loads the kit for one persona from its latest bible version (any string section holding a palette table counts). */

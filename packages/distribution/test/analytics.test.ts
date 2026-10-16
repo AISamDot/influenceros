@@ -2,7 +2,7 @@ import { METRIC_WINDOW_MS } from '@ios/agents';
 import { pnlWithTotals } from '@ios/profit';
 import type { PostMetrics } from '@ios/providers';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { dueWindows, personaScorecard, pullMetrics } from '../src';
+import { detectAnomalies, dueWindows, ingestEvents, personaScorecard, pullMetrics } from '../src';
 import { account, type Ctx, persona, setup } from './helpers';
 
 let ctx: Ctx;
@@ -103,5 +103,51 @@ describe('metric windows', () => {
     const r = await pullMetrics(ctx.svc, { now: new Date(published.getTime() + 2 * H) });
     expect(r.captured).toBe(1);
     expect(r.errors[0]).toMatch(/rate limited/);
+  });
+});
+
+describe('anomalies and circuit breakers (FR-13.4, FR-17.2)', () => {
+  it('a takedown of a live post pauses the persona (kill switch + L0) and raises an S1 alert', async () => {
+    const p = await persona(ctx);
+    await ctx.db.query(`UPDATE persona SET autonomy = 'L2' WHERE id = $1`, [p.id]);
+    const acc = await account(ctx, p.id, 'tiktok');
+    await ctx.db.query(`INSERT INTO post (persona_id, account_id, platform, format, caption, status, external_id, published_at) VALUES ($1, $2, 'tiktok', 'talking', 'x', 'live', 'ext_td', now())`, [p.id, acc.id]);
+    const res = await ingestEvents(ctx.svc, [{ type: 'post_status', externalId: 'ext_td', status: 'failed', url: null }]);
+    expect(res.statuses).toBe(1);
+    expect((await ctx.db.one<{ status: string }>(`SELECT status FROM post WHERE external_id = 'ext_td'`)).status).toBe('failed');
+    expect((await ctx.db.one<{ autonomy: string }>('SELECT autonomy FROM persona WHERE id = $1', [p.id])).autonomy).toBe('L0');
+    const ks = await ctx.db.query(`SELECT 1 FROM kill_switch WHERE scope = 'persona' AND persona_id = $1 AND active`, [p.id]);
+    expect(ks).toHaveLength(1);
+    const n = await ctx.db.one<{ severity: string; title: string }>(`SELECT severity, title FROM notification WHERE persona_id = $1 AND severity = 'critical' ORDER BY created_at DESC LIMIT 1`, [p.id]);
+    expect(n.title).toMatch(/posting paused \(takedown\)/);
+  });
+
+  it('warns once a day on a views collapse, a refund spike and a cost spike', async () => {
+    const p = await persona(ctx, { state: 'TESTING' });
+    const acc = await account(ctx, p.id, 'tiktok');
+    const views = [40, 30, 25, 900, 1000, 1100, 950, 1200, 1050];
+    for (let i = 0; i < views.length; i++) {
+      const post = await ctx.db.one<{ id: string }>(
+        `INSERT INTO post (persona_id, account_id, platform, format, caption, status, external_id, published_at) VALUES ($1, $2, 'tiktok', 'talking', 'x', 'live', $3, $4) RETURNING id`,
+        [p.id, acc.id, `ext_v${i}`, new Date(ctx.clock.now.getTime() - (i + 2) * 86_400_000)],
+      );
+      await ctx.db.query(`INSERT INTO metric_snapshot (persona_id, post_id, platform, captured_on, "window", views) VALUES ($1, $2, 'tiktok', $3, '24h', $4)`, [p.id, post.id, '2026-10-10', views[i]]);
+    }
+    for (let i = 0; i < 5; i++) {
+      const o = await ctx.db.one<{ id: string }>(`INSERT INTO orders (persona_id, store_order_id, amount_cents, status, ordered_at) VALUES ($1, $2, 1700, 'paid', $3) RETURNING id`, [p.id, `o${i}`, new Date(ctx.clock.now.getTime() - 86_400_000)]);
+      if (i < 2) await ctx.db.query(`INSERT INTO refund (order_id, persona_id, amount_cents, status) VALUES ($1, $2, 1700, 'refunded')`, [o.id, p.id]);
+    }
+    await ctx.db.query(
+      `INSERT INTO credit_ledger (studio_id, persona_id, unit, entry_type, amount, period, created_at) VALUES ($1, $2, 'llm_usd', 'debit', 30, '2026-10', $3), ($1, $2, 'llm_usd', 'debit', 7, '2026-10', $4)`,
+      [ctx.studioId, p.id, new Date(ctx.clock.now.getTime() - 3_600_000), new Date(ctx.clock.now.getTime() - 3 * 86_400_000)],
+    );
+    const warns = async () => (await ctx.db.one<{ n: number }>(`SELECT count(*)::int AS n FROM notification WHERE persona_id = $1 AND severity = 'warn' AND title ~ '(collapsed|spike)'`, [p.id])).n;
+    const found = await detectAnomalies(ctx.svc, ctx.clock.now);
+    expect(found.map((f) => f.kind).sort()).toEqual(['cost_spike', 'refund_spike', 'views_collapse']);
+    expect(await warns()).toBe(3);
+    await detectAnomalies(ctx.svc, ctx.clock.now);
+    expect(await warns()).toBe(3); // once a day
+    // Warnings never pause posting on their own.
+    expect(await ctx.db.query(`SELECT 1 FROM kill_switch WHERE persona_id = $1 AND active`, [p.id])).toHaveLength(0);
   });
 });

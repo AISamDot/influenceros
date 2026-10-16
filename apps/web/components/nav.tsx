@@ -55,7 +55,7 @@ export function Nav({ pending, kills, unread, signedIn = false }: { pending: num
           <span className="grid size-8 place-items-center rounded-[10px] bg-ink font-[family-name:var(--font-display)] text-[17px] leading-none text-on-ink">io</span>
           <span className="hidden text-[15px] font-semibold tracking-tight sm:block">Influencer OS</span>
         </Link>
-        <nav ref={navRef} className="no-scrollbar fade-x -mx-1 flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1 pr-6 sm:[mask-image:none]" aria-label="Main">
+        <nav ref={navRef} className="no-scrollbar fade-x -mx-1 flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1 pr-6 2xl:[mask-image:none]" aria-label="Main">
           {LINKS.map((l) => (
             <Link
               key={l.href}

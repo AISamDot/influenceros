@@ -273,16 +273,36 @@ export async function buildProduct(
       }
     } else if (!material) {
       await db.query(`UPDATE product SET current_version = $2 WHERE id = $1`, [p.id, version]);
-      await notify(db, { studioId: p.studio_id, personaId: p.persona_id, kind: 'system', title: `${p.name} v${version} is out`, body: 'Same sections as before, so no approval needed (FR-9.3). Buyers get the new files.', link: `/products#${p.id}` });
+      // Paid files live in Lemon Squeezy (uploaded by hand): say so instead of promising buyers the new files.
+      const delivery = p.price_cents > 0 ? 'Replace the file in Lemon Squeezy so buyers get it.' : 'The free download now serves it.';
+      await notify(db, { studioId: p.studio_id, personaId: p.persona_id, kind: 'system', title: `${p.name} v${version} is ready`, body: `Same sections as before, so no approval needed (FR-9.3). ${delivery}`, link: `/products#${p.id}` });
     } else {
+      // Material change (FR-9.3): an approval card for this version (the product_v1 kind with payload.version).
+      const open = await db.maybeOne<{ id: string }>(`SELECT id FROM approval WHERE kind = 'product_v1' AND subject_id = $1 AND status = 'pending' AND (payload->>'version')::int = $2`, [p.id, version]);
+      if (open) {
+        approvalId = open.id;
+      } else {
+        const a = await propose(db, {
+          studioId: p.studio_id,
+          personaId: p.persona_id,
+          kind: 'product_v1',
+          title: `${p.name}: approve v${version} (sections changed)`,
+          summary: `v${version} changed its sections, ${pages} pages, QP ${qp.score}/100, Gate ${gate.verdict}. Approving makes it the current version${p.price_cents > 0 ? '; then replace the file in Lemon Squeezy so buyers get it' : ''}.`,
+          payload: { version, files, qc_report_id: qcReportId, qp_score: qp.score, gate: gate.verdict, pages, source: payload.source, outline },
+          subjectType: 'product',
+          subjectId: p.id,
+          proposedBy: PRODUCT_BUILDER,
+        });
+        approvalId = a.id;
+      }
       await notify(db, {
         studioId: p.studio_id,
         personaId: p.persona_id,
         kind: 'approval',
         severity: 'warn',
         title: `${p.name} v${version} changed its sections`,
-        body: `A material change: it waits for you on the Products page before buyers get it.`,
-        link: `/products#${p.id}`,
+        body: `A material change: approve it in Approvals before it becomes the current version.`,
+        link: '/approvals',
       });
     }
     await setBuild(services, p.id, version, { status: 'passed' });

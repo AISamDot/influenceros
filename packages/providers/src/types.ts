@@ -59,11 +59,16 @@ export interface MediaResult {
   readonly height: number;
   readonly durationS?: number;
   readonly credits: number;
+  /**
+   * (IOS-4 fix, additive) The vendor didn't report a cost (or reported 0) for a paid job: `credits` is 0 but the spend
+   * is unknown, never free. The governor settles at the estimate.
+   */
+  readonly creditsUnknown?: boolean;
 }
 export interface ImageVideoProvider {
   readonly name: string;
   /** Soul ID character. IOS-3: `prompts` = the persona's look-prompts when there are no reference images yet. */
-  createSoulId(req: { name: string; referenceImageUrls: readonly string[]; prompts?: readonly string[] }): Promise<{ soulId: string; credits: number }>;
+  createSoulId(req: { name: string; referenceImageUrls: readonly string[]; prompts?: readonly string[] }): Promise<{ soulId: string; credits: number; creditsUnknown?: boolean }>;
   /** Stills (character sheet, look pack, carousel/static images). `model` e.g. 'soul' | 'nano-banana'. */
   generateStill(req: {
     soulId?: string;
@@ -95,6 +100,8 @@ export interface TalkingProvider {
     durationS: number;
     credits: number;
     costUsd: number;
+    /** (IOS-4 fix, additive) See MediaResult.creditsUnknown. */
+    creditsUnknown?: boolean;
   }>;
 }
 
@@ -108,6 +115,9 @@ export interface VoiceProvider {
     durationS: number;
     characters: number;
     costUsd: number;
+    /** (IOS-4 fix, additive) Credit-billed voices (Higgsfield TTS) report credits here instead of costUsd. */
+    credits?: number;
+    creditsUnknown?: boolean;
   }>;
 }
 
@@ -192,7 +202,16 @@ export interface PublishProvider {
   verify(externalId: string): Promise<{ status: 'live' | 'processing' | 'failed'; url: string | null; aiLabel: boolean }>;
   listComments(externalId: string): Promise<PublishComment[]>;
   replyToComment(req: { externalId: string; commentId: string; text: string }): Promise<{ id: string }>;
-  sendDm(req: { accountRef: string; userRef: string; text: string }): Promise<{ id: string }>;
+  /**
+   * A message in an existing DM conversation (`threadRef`, the vendor's conversation id). Vendors can't start a DM on
+   * Instagram or TikTok, so a DM is only ever a reply in a thread the user opened (or a comment private reply).
+   */
+  sendDm(req: { accountRef: string; userRef: string; text: string; threadRef?: string }): Promise<{ id: string }>;
+  /**
+   * (IOS-4 fix, additive) Comment-to-DM: one private reply to a comment's author (Instagram only, once per comment,
+   * within 7 days). `id: null` with a reason when the platform refuses it: never retry those.
+   */
+  sendPrivateReply(req: { externalId: string; commentId: string; text: string }): Promise<{ id: string | null; reason?: 'consumed' | 'expired' | 'unsupported' }>;
   // (IOS-4, additive)
   /** Uploads a local media file to the vendor; returns the URL to put in `mediaUrls`. */
   uploadMedia(req: { filePath: string; contentType: string }): Promise<{ mediaUrl: string }>;
@@ -259,7 +278,20 @@ export type StoreEvent =
       status?: 'on_trial' | 'active';
       customData?: Readonly<Record<string, string>>;
     }
-  | { type: 'subscription_updated'; subscriptionId: string; status: 'on_trial' | 'active' | 'paused' | 'past_due' | 'unpaid' | 'cancelled' | 'expired'; endsAt?: string | null; storeId?: string }
+  | {
+      type: 'subscription_updated';
+      subscriptionId: string;
+      status: 'on_trial' | 'active' | 'paused' | 'past_due' | 'unpaid' | 'cancelled' | 'expired';
+      endsAt?: string | null;
+      storeId?: string;
+      /**
+       * (IOS-4 fix, additive) 'invoice' = a payment event (subscription_payment_success / _recovered): it only clears a
+       * past-due state and never revives a cancelled or expired subscription. Default 'subscription'.
+       */
+      source?: 'subscription' | 'invoice';
+      /** (IOS-4 fix, additive) The vendor's updated_at: older events than the last one applied are skipped. */
+      updatedAt?: string | null;
+    }
   | { type: 'subscription_payment_failed'; subscriptionId: string; storeId?: string };
 export interface StoreProvider {
   readonly name: string;

@@ -1,9 +1,16 @@
+import type { Metadata } from 'next';
 import { MEMBER_COOKIE, memberDrops, memberFilePath, memberFromSession } from '@ios/commerce';
 import { cookies } from 'next/headers';
-import { SiteFooter, SiteHeader, SitePage, siteFor } from '@/components/site-shell';
+import { SiteFooter, siteFor, SiteHeader, SitePage, sitePageMetadata } from '@/components/site-shell';
 import { studioContext } from '@/lib/server';
+import { SubmitButton } from '@/components/submit-button';
 
 export const dynamic = 'force-dynamic';
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  return sitePageMetadata((await params).slug, 'Members', { noindex: true });
+}
+
 
 /**
  * Members area: the monthly drops for members with access (Lemon Squeezy subscription). Sign-in is a magic link
@@ -43,10 +50,18 @@ export default async function MembersPage({ params, searchParams }: { params: Pr
             )}
             <form method="post" action="/api/public/members/logout" style={{ marginTop: 24 }}>
               <input type="hidden" name="slug" value={slug} />
-              <button type="submit" className="site-btn">
+              <SubmitButton className="site-btn">
                 Sign out
-              </button>
+              </SubmitButton>
             </form>
+          </>
+        ) : !site.membership ? (
+          <>
+            <h2 className="site-h2">No members area yet</h2>
+            <p className="site-lead">There’s nothing to join here yet. The free guide is the best place to start.</p>
+            <a className="site-btn site-btn-primary" href={`${base}/free`}>
+              Get the free guide
+            </a>
           </>
         ) : sp.sent === '1' ? (
           <div className="site-alert" role="status">
@@ -67,9 +82,9 @@ export default async function MembersPage({ params, searchParams }: { params: Pr
                 Email
               </label>
               <input className="site-input" id="email" name="email" type="email" required autoComplete="email" maxLength={254} />
-              <button className="site-btn site-btn-primary" type="submit">
+              <SubmitButton className="site-btn site-btn-primary">
                 Send my sign-in link
-              </button>
+              </SubmitButton>
             </form>
             {site.membership ? (
               <p className="site-note">

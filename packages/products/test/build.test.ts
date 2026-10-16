@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { PRODUCT_BUILD_JOB, type ProductFile } from '@ios/agents';
 import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
 import { briefProduct } from '@ios/content';
-import { decide, type JobRow, OWNER } from '@ios/core';
+import { decide, type JobRow, OWNER, propose } from '@ios/core';
 import { json } from '@ios/db';
 import type { MemoryMediaStore } from '@ios/providers';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -235,5 +235,26 @@ describe('products without a brief', () => {
     const ctx = { services: t.services, studioId: t.studioId, personaId: null, caller: 'owner' as const, actor: OWNER };
     await expect(t.services.tools.invoke(ctx, 'product.build', { persona_id: t.persona.id, product_id: id })).rejects.toThrow(/no brief yet/);
     await t.db.close();
+  });
+});
+
+describe('material product versions (FR-9.3) are approvable', () => {
+  it('a v2 card makes the version current on approval; a rejected v2 is retired and v1 keeps selling', async () => {
+    const t = await studio();
+    const prod = await t.db.one<{ id: string }>(
+      `INSERT INTO product (persona_id, name, slug, ladder_rung, status, price_cents, current_version) VALUES ($1, 'Planner', 'planner', 'entry', 'live', 1700, 1) RETURNING id`,
+      [t.persona.id],
+    );
+    for (const v of [2, 3]) await t.db.query(`INSERT INTO product_version (product_id, persona_id, version, status) VALUES ($1, $2, $3, 'awaiting_approval')`, [prod.id, t.persona.id, v]);
+    const card = (v: number) =>
+      propose(t.db, { studioId: t.studioId, personaId: t.persona.id, kind: 'product_v1', title: `v${v}`, payload: { version: v }, subjectType: 'product', subjectId: prod.id, proposedBy: { type: 'agent', id: 'product-builder' } });
+    const a2 = await card(2);
+    await decide(t.db, { approvalId: a2.id, decision: 'approve', actor: OWNER });
+    expect(await t.db.one('SELECT status, current_version FROM product WHERE id = $1', [prod.id])).toEqual({ status: 'live', current_version: 2 });
+    expect((await t.db.one<{ status: string }>('SELECT status FROM product_version WHERE product_id = $1 AND version = 2', [prod.id])).status).toBe('approved');
+    const a3 = await card(3);
+    await decide(t.db, { approvalId: a3.id, decision: 'reject', actor: OWNER });
+    expect(await t.db.one('SELECT status, current_version FROM product WHERE id = $1', [prod.id])).toEqual({ status: 'live', current_version: 2 });
+    expect((await t.db.one<{ status: string }>('SELECT status FROM product_version WHERE product_id = $1 AND version = 3', [prod.id])).status).toBe('retired');
   });
 });

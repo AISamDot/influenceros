@@ -34,9 +34,13 @@ export function renderEmail(args: {
   const body = fill(args.body, vars).trim();
   const paras = body.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
   const { bg, ink, accent } = args.colors;
+  // Contrast-checked picks (AA): the button fill and its text, and the accent as text on the background.
+  const ctaFill = args.colors.cta ?? accent;
+  const ctaText = args.colors.onCta ?? '#fff';
+  const accentText = args.colors.accentText ?? ink;
   const pHtml = paras.map((p) => `<p style="margin:0 0 16px;line-height:1.55">${escapeHtml(p).replace(/\n/g, '<br>')}</p>`).join('');
   const cta = args.cta
-    ? `<p style="margin:24px 0"><a href="${escapeHtml(args.cta.url)}" style="background:${accent};color:#fff;text-decoration:none;padding:12px 20px;border-radius:999px;display:inline-block;font-weight:600">${escapeHtml(args.cta.label)}</a></p>`
+    ? `<p style="margin:24px 0"><a href="${escapeHtml(args.cta.url)}" style="background:${ctaFill};color:${ctaText};text-decoration:none;padding:12px 20px;border-radius:999px;display:inline-block;font-weight:600">${escapeHtml(args.cta.label)}</a></p>`
     : '';
   const f = args.footer;
   const footerLines = [
@@ -47,7 +51,7 @@ export function renderEmail(args: {
   const pre = args.preheader ? `<div style="display:none;max-height:0;overflow:hidden">${escapeHtml(fill(args.preheader, vars))}</div>` : '';
   const html = `<!doctype html><html lang="en"><body style="margin:0;background:${bg};color:${ink};font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:16px">${pre}
 <div style="max-width:560px;margin:0 auto;padding:32px 20px">
-<p style="margin:0 0 24px;font-weight:700;letter-spacing:.02em;color:${accent}">${escapeHtml(args.personaName)}</p>
+<p style="margin:0 0 24px;font-weight:700;letter-spacing:.02em;color:${accentText}">${escapeHtml(args.personaName)}</p>
 ${pHtml}${cta}
 <hr style="border:none;border-top:1px solid ${ink}22;margin:32px 0 16px">
 <p style="margin:0;font-size:12px;line-height:1.5;opacity:.75">${footerLines.join('<br>')}</p>

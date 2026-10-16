@@ -104,6 +104,12 @@ export const BUDGET_DEFER_MS = 6 * 3_600_000;
 /** ElevenLabs Creator plan: ~$22 for 100k characters (USD per character, list price Oct 2026). */
 export const ELEVENLABS_USD_PER_CHAR = 0.00022;
 export const ELEVENLABS_MODEL = 'eleven_multilingual_v2';
+/** ElevenLabs voice design (paid previews): a flat USD estimate per design call. */
+export const ELEVENLABS_DESIGN_USD = 0.1;
+
+/** Higgsfield TTS reservation (credits per character; a conservative estimate until a probe exists). Min 1 credit. */
+export const HIGGSFIELD_TTS_CREDITS_PER_CHAR = 0.004;
+export const higgsfieldTtsCredits = (chars: number): number => Math.max(1, Math.ceil(chars * HIGGSFIELD_TTS_CREDITS_PER_CHAR));
 
 /** fal Kling AI Avatar v2 (standard) list price, USD per second of output. */
 export const FAL_AVATAR_USD_PER_S = 0.0562;

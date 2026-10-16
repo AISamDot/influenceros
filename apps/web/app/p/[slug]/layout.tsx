@@ -22,7 +22,16 @@ export default async function SiteLayout({ children, params }: { children: React
   const { slug } = await params;
   const { site } = await siteFor(slug);
   const c = site.colors;
-  const style = { '--s-bg': c.bg, '--s-ink': c.ink, '--s-accent': c.accent, '--s-accent2': c.accent2 } as CSSProperties;
+  // --s-cta / --s-on-cta and --s-accent-text are contrast-checked (WCAG AA) picks from the palette.
+  const style = {
+    '--s-bg': c.bg,
+    '--s-ink': c.ink,
+    '--s-accent': c.accent,
+    '--s-accent2': c.accent2,
+    '--s-cta': c.cta ?? c.accent,
+    '--s-on-cta': c.onCta ?? '#fff',
+    '--s-accent-text': c.accentText ?? c.ink,
+  } as CSSProperties;
   return (
     <div className="site" style={style}>
       {children}

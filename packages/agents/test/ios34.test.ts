@@ -1,6 +1,8 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { json } from '@ios/db';
 import { describe, expect, it } from 'vitest';
-import { appOrigin, enqueueOnceFor, kitColors, PUBLISH_PREPARE_JOB, loadPersonaKit, parsePalette, personaSiteUrl, shortLinkUrl, SITE_PATHS } from '../src';
+import { appOrigin, contrastRatio, enqueueOnceFor, kitColors, PUBLISH_PREPARE_JOB, loadPersonaKit, parsePalette, personaSiteUrl, shortLinkUrl, SITE_PATHS } from '../src';
 import { createTestStudio, makeTestPersona } from '../src/testing';
 
 describe('IOS-3/4 shared contracts', () => {
@@ -34,7 +36,7 @@ describe('IOS-3/4 shared contracts', () => {
     expect(c.bg).toBe('#F2E8D5');
     expect(c.ink).toBe('#3B2620');
     expect([c.accent, c.accent2]).not.toContain('#4B2440');
-    expect(kitColors([], '#123456')).toEqual({ bg: '#FAF7F2', ink: '#1C1A17', accent: '#123456', accent2: '#123456' });
+    expect(kitColors([], '#123456')).toMatchObject({ bg: '#FAF7F2', ink: '#1C1A17', accent: '#123456', accent2: '#123456' });
 
     const t = await createTestStudio();
     const p = await makeTestPersona(t, { name: 'Rosa Test' });
@@ -44,5 +46,31 @@ describe('IOS-3/4 shared contracts', () => {
     expect(kit.palette).toHaveLength(5);
     expect(kit.colors.bg).toBe('#F2E8D5');
     await t.db.close();
+  });
+});
+
+describe('persona palettes: readable CTAs on every seed persona', () => {
+  const SEED = join(__dirname, '../../knowledge/seed/personas');
+  const slugs = readdirSync(SEED, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+
+  it('parses 3- and 4-column palette tables (Sal keeps his cobalt)', () => {
+    const sal = parsePalette(readFileSync(join(SEED, 'sal', 'bible.md'), 'utf8'));
+    expect(sal.map((c) => c.hex)).toEqual(expect.arrayContaining(['#2E5AA8', '#F26B1D', '#E8D4A2']));
+    expect(sal.find((c) => c.hex === '#2E5AA8')).toMatchObject({ name: 'League cobalt' });
+    const four = parsePalette('| Role | Name | Hex | Use |\n|---|---|---|---|\n| Lead | Cobalt | #2E5AA8 | shirts |');
+    expect(four).toEqual([{ name: 'Cobalt', hex: '#2E5AA8', use: 'shirts (Lead)' }]);
+  });
+
+  it('CTA text, accent-coloured text and the monogram reach WCAG AA (4.5:1) for every seed persona', () => {
+    expect(slugs.length).toBeGreaterThanOrEqual(4);
+    for (const slug of slugs) {
+      const c = kitColors(parsePalette(readFileSync(join(SEED, slug, 'bible.md'), 'utf8')), null);
+      expect([slug, contrastRatio(c.cta!, c.onCta!) >= 4.5]).toEqual([slug, true]);
+      expect([slug, contrastRatio(c.accentText!, c.bg) >= 4.5]).toEqual([slug, true]);
+    }
+    // Rosa's brass gold fails with white text; the CTA swaps to a passing colour.
+    const rosa = kitColors(parsePalette(readFileSync(join(SEED, 'rosa', 'bible.md'), 'utf8')), null);
+    expect(contrastRatio(rosa.accent, '#FFFFFF')).toBeLessThan(4.5);
+    expect(contrastRatio(rosa.cta!, rosa.onCta!)).toBeGreaterThanOrEqual(4.5);
   });
 });

@@ -24,7 +24,30 @@ const KIND_LABEL: Record<string, string> = {
   persona_launch: 'Persona launch',
   product_v1: 'Product v1',
   post: 'Post',
+  qc_override: 'Publish anyway?',
 };
+
+/** QC failed on majors only: publishing anyway needs a reason (logged with the override). Blockers never get a card. */
+function QcOverrideDecide({ a }: { a: Row }) {
+  return (
+    <div className="flex w-full flex-col gap-2 sm:w-80">
+      <form action={`/api/approvals/${a.id}`} method="post" className="space-y-2">
+        <input type="hidden" name="decision" value="approve" />
+        <input type="hidden" name="payload_hash" value={payloadHash(a.payload)} />
+        <textarea name="note" rows={2} required minLength={3} className="input h-auto py-2" placeholder="Why publish anyway? (required, logged)" aria-label="Reason for publishing anyway" />
+        <SubmitButton className="btn btn-ink w-full justify-center">
+          <IconCheck size={14} /> Publish anyway
+        </SubmitButton>
+      </form>
+      <form action={`/api/approvals/${a.id}`} method="post">
+        <input type="hidden" name="decision" value="reject" />
+        <SubmitButton className="btn w-full justify-center">
+          <IconX size={14} /> Keep it blocked
+        </SubmitButton>
+      </form>
+    </div>
+  );
+}
 
 function Decide({ a, approveLabel = 'Approve', rejectLabel = 'Reject' }: { a: Row; approveLabel?: string; rejectLabel?: string }) {
   return (
@@ -119,6 +142,21 @@ function Executes({ a, disclosure }: { a: Row; disclosure: string }) {
           <p className="mt-1 whitespace-pre-wrap font-medium">{String(p.text ?? '')}</p>
         </div>
       </div>
+    );
+  }
+  if (a.kind === 'qc_override') {
+    const failing = Array.isArray(p.failing) ? (p.failing as Array<{ check: string; severity: string; message: string; location?: string | null; platform?: string }>) : [];
+    return (
+      <ul className="mt-2 space-y-1 rounded-lg border border-warn/50 bg-warn-soft px-3 py-2 text-[13px]">
+        {failing.map((f, i) => (
+          <li key={`${f.check}-${i}`}>
+            <span className="font-medium">{f.severity}</span> · {f.platform ? `${f.platform}: ` : ''}
+            {f.message}
+            {f.location ? <span className="text-muted"> ({f.location})</span> : null}
+          </li>
+        ))}
+        {p.report_id ? <li className="text-muted">QC report {String(p.report_id).slice(0, 8)} · {String(p.stage ?? 'Q4')}</li> : null}
+      </ul>
     );
   }
   if (a.kind === 'legal_text_change' || a.kind === 'plan_upgrade') {
@@ -229,7 +267,7 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
               {a.summary ? <p className="mt-0.5 text-[13px] text-muted">{a.summary}</p> : null}
               <Executes a={a} disclosure={studio.resolved.disclosure_text} />
             </div>
-            <Decide a={a} />
+            {a.kind === 'qc_override' ? <QcOverrideDecide a={a} /> : <Decide a={a} />}
           </article>
         ))}
       </section>

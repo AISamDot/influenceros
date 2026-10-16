@@ -5,7 +5,7 @@ import type { StoreEvent } from '@ios/providers';
 import { unsubscribeSubscriber } from './audience';
 import { attributeOrder } from './attribution';
 import { UnsupportedStoreEvent } from './live/lemonsqueezy';
-import { applySubscriptionEvent, type CommunityGate } from './membership';
+import { applySubscriptionEvent, type CommunityGate, UnknownSubscription } from './membership';
 import { emailHash, sha256, UUID_RE } from './util';
 
 /**
@@ -16,8 +16,9 @@ import { emailHash, sha256, UUID_RE } from './util';
  */
 
 export interface WebhookResult {
-  readonly status: 200 | 400 | 401;
-  readonly outcome: 'processed' | 'duplicate' | 'ignored' | 'invalid_signature' | 'bad_payload';
+  readonly status: 200 | 400 | 401 | 404 | 503;
+  /** 'retry_later' (503): an update arrived before its subscription; nothing was stored, so the vendor's retry applies it. */
+  readonly outcome: 'processed' | 'duplicate' | 'ignored' | 'invalid_signature' | 'bad_payload' | 'retry_later' | 'not_configured';
   readonly detail?: string;
 }
 
@@ -140,7 +141,7 @@ export async function handleStoreWebhook(services: StudioServices, rawBody: stri
     }
     return { status: 400, outcome: 'bad_payload' };
   }
-  return services.db.transaction(async (tx) => {
+  return services.db.transaction(async (tx): Promise<WebhookResult> => {
     const s: StudioServices = { ...services, db: tx };
     if (!(await claimEvent(tx, 'lemonsqueezy', key, ev.type, 'processed'))) return { status: 200 as const, outcome: 'duplicate' as const };
     let outcome: 'processed' | 'ignored';
@@ -157,6 +158,10 @@ export async function handleStoreWebhook(services: StudioServices, rawBody: stri
     }
     if (outcome === 'ignored') await tx.query(`UPDATE commerce_webhook_event SET status = 'ignored', error = 'unknown store, product or subscription' WHERE provider = 'lemonsqueezy' AND event_key = $1`, [key]);
     return { status: 200 as const, outcome };
+  }).catch((err: unknown): WebhookResult => {
+    // Rolled back (the event row too), so the vendor's retry is processed in full.
+    if (err instanceof UnknownSubscription) return { status: 503, outcome: 'retry_later', detail: err.message };
+    throw err;
   });
 }
 

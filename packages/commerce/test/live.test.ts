@@ -118,4 +118,24 @@ describe('liveProviders', () => {
     expect(out.audience?.name).toBe('resend-audience');
     expect(Object.keys(out).sort()).toEqual(['audience', 'store']);
   });
+
+  it('API-less (signing secret, no API key) verifies webhooks with the real secret, never the fake one', async () => {
+    const prev = process.env.IOS_FAKE_PROVIDERS;
+    process.env.IOS_FAKE_PROVIDERS = '';
+    try {
+      const out = liveProviders(env([], { 'lemonsqueezy.webhook_secret': 'whsec_real' }));
+      expect(out.store?.name).toBe('lemonsqueezy-webhooks');
+      const body = JSON.stringify({ meta: { event_name: 'order_created' }, data: { id: '1', attributes: { total: 1700, tax: 0, first_order_item: { product_id: 5 } } } });
+      const real = createHmac('sha256', 'whsec_real').update(body).digest('hex');
+      const fake = createHmac('sha256', 'fake-webhook-secret').update(body).digest('hex');
+      expect(out.store!.verifyWebhook(body, real)).toBe(true);
+      expect(out.store!.verifyWebhook(body, fake)).toBe(false);
+      expect(await out.store!.listStores()).toEqual([]);
+      await expect(out.store!.createCheckout({ storeId: '1', variantId: '2' })).rejects.toThrow(/API key/);
+    } finally {
+      process.env.IOS_FAKE_PROVIDERS = prev;
+    }
+    // Forced fakes (tests) stay fake.
+    expect(liveProviders(env([], { 'lemonsqueezy.webhook_secret': 'whsec_real' }))).toEqual({});
+  });
 });

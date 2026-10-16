@@ -1,7 +1,7 @@
-import { createTestStudio } from '@ios/agents/testing';
+import { createTestStudio, makeTestPersona } from '@ios/agents/testing';
 import { MemoryMediaStore } from '@ios/providers';
 import { describe, expect, it } from 'vitest';
-import { ElevenLabsVoice, estimateCredits, type Exec, FalKlingAvatar, HiggsfieldCli, HiggsfieldSeedanceTalking, mediaLiveProviders, mp3Seconds, parseCliJson, probePrices, readJob } from '../src';
+import { ElevenLabsVoice, ensureProfile, estimateCredits, type Exec, FalKlingAvatar, HiggsfieldCli, HiggsfieldCliError, HiggsfieldSeedanceTalking, HiggsfieldTtsVoice, hfSpend, mediaDeps, mediaLiveProviders, mp3Seconds, parseCliJson, probePrices, readJob, SOUL_ID_MAX_FAILURES } from '../src';
 
 function fakeExec(responses: Array<(args: readonly string[]) => unknown>) {
   const calls: Array<{ bin: string; args: readonly string[]; env: Readonly<Record<string, string | undefined>> }> = [];
@@ -36,15 +36,70 @@ describe('Higgsfield CLI adapter', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('falls back Kling 3.0 Turbo → Kling → Wan for image-to-video', async () => {
+  it('falls back Kling 3.0 Turbo → Kling → Wan for image-to-video only when nothing was submitted', async () => {
     const { exec, calls } = fakeExec([
-      () => ({ id: 'a', status: 'failed' }),
+      () => {
+        throw new Error('higgsfield generate create failed: unknown model kling3_0_turbo');
+      },
       () => ({ id: 'b', status: 'completed', url: 'https://cdn/clip.mp4', credits: 6 }),
     ]);
     const r = await hf(exec).imageToVideo({ imageUrl: 'https://cdn/s.png', prompt: 'slow push-in', durationS: 5 });
     expect(r.url).toBe('https://cdn/clip.mp4');
     expect(calls.map((c) => c.args[2])).toEqual(['kling3_0_turbo', 'kling3_0']);
     expect(calls[1]!.args).toEqual(expect.arrayContaining(['--duration', '5', '--aspect_ratio', '9:16']));
+
+    // A job that ran and failed, or a timeout after submission, may have been billed: never bought again elsewhere.
+    const failed = fakeExec([() => ({ id: 'a', status: 'failed' }), () => ({ id: 'b', url: 'https://cdn/x.mp4', credits: 6 })]);
+    await expect(hf(failed.exec).imageToVideo({ imageUrl: 'https://cdn/s.png', prompt: 'p', durationS: 5 })).rejects.toThrow(/job a failed/);
+    expect(failed.calls).toHaveLength(1);
+    const timeout: Exec = async () => {
+      throw new HiggsfieldCliError('higgsfield generate create timed out: killed', true);
+    };
+    const err = await hf(timeout).imageToVideo({ imageUrl: 'https://cdn/s.png', prompt: 'p', durationS: 5 }).catch((e: unknown) => e);
+    expect(err).toMatchObject({ timedOut: true, settleAtEstimate: true });
+  });
+
+  it('reads the job cost only from the job record: missing is unknown (never 0), an account balance is never billed', () => {
+    expect(readJob({ job: { id: 'j', url: 'https://cdn/a.mp4' }, account: { credits: 1250 } }).credits).toBeNull();
+    expect(readJob({ id: 'j', url: 'https://cdn/a.mp4', user: { balance: { credits: 900 } } }).credits).toBeNull();
+    expect(readJob({ job: { id: 'j', url: 'https://cdn/a.mp4', credits_used: 7 }, account: { credits: 1250 } }).credits).toBe(7);
+    expect(readJob({ id: 'j', url: 'https://cdn/a.mp4', usage: { credits: 3 } }).credits).toBe(3);
+  });
+
+  it('a generation without a reported cost settles at the estimate, flagged; Soul ID stills are debited when the last step fails', async () => {
+    const t = await createTestStudio();
+    const p = await makeTestPersona(t, {});
+    const scope = { studioId: t.studioId, personaId: p.id, slotId: null, ref: { type: 'persona' as const, id: p.id } };
+    const { exec } = fakeExec([() => ({ id: 'j1', status: 'completed', url: 'https://cdn/s.png' })]);
+    const c = hf(exec);
+    const r = await hfSpend(t.services, scope, { operation: 'still', model: 'soul' }, () => c.generateStill({ prompt: 'portrait' }));
+    expect(r).toMatchObject({ credits: 2 }); // the built-in still estimate, not 0
+    const gen = await t.db.one<{ credits: string; meta: Record<string, unknown> }>(`SELECT credits, meta FROM media_generation ORDER BY created_at DESC LIMIT 1`);
+    expect(Number(gen.credits)).toBe(2);
+    expect(gen.meta.credits_unreported).toBe(true);
+    const ledger = async () => Number((await t.db.one<{ s: string }>(`SELECT COALESCE(SUM(amount), 0) AS s FROM credit_ledger WHERE unit = 'hf_credits' AND entry_type = 'debit'`)).s);
+    expect(await ledger()).toBe(2);
+
+    const soul = fakeExec([
+      () => ({ id: 's1', url: 'https://cdn/s1.png', credits: 2 }),
+      () => ({ id: 's2', url: 'https://cdn/s2.png', credits: 2 }),
+      () => {
+        throw new Error('higgsfield soul-id create failed: training error');
+      },
+    ]);
+    await expect(
+      hfSpend(t.services, scope, { operation: 'soul_id', model: 'soul' }, () => hf(soul.exec).createSoulId({ name: 'N', referenceImageUrls: [], prompts: ['one prompt long enough', 'two prompt long enough'] })),
+    ).rejects.toThrow(/training error/);
+    expect(await ledger()).toBe(6); // the two stills (4 credits) were debited, not released
+  });
+
+  it('never stores a 0 or missing probed price', async () => {
+    const t = await createTestStudio();
+    const zero = { ...t.services, providers: { ...t.services.providers, imageVideo: { ...t.services.providers.imageVideo, name: 'higgsfield-cli', costProbe: async () => ({ credits: 0 }) } } };
+    expect(await probePrices(zero)).toEqual([]);
+    expect((await t.db.query('SELECT 1 FROM media_price')).length).toBe(0);
+    const n = await t.db.one<{ title: string }>(`SELECT title FROM notification ORDER BY created_at DESC LIMIT 1`);
+    expect(n.title).toMatch(/no price/);
   });
 
   it('trains a Soul ID from look prompts (character sheet stills first), with the credits summed', async () => {
@@ -79,6 +134,12 @@ describe('Higgsfield CLI adapter', () => {
     const { exec } = fakeExec([() => ({ id: 't', url: 'https://cdn/t.mp4', credits: 30 })]);
     const r = await new HiggsfieldSeedanceTalking(hf(exec)).render({ imageUrl: 'https://a', audioUrl: 'https://b', durationS: 9 });
     expect(r).toMatchObject({ jobId: 't', url: 'https://cdn/t.mp4', credits: 30, costUsd: 0 });
+  });
+
+  it('Higgsfield TTS reports the credits the job cost', async () => {
+    const { exec } = fakeExec([() => ({ id: 'v', url: 'https://cdn/v.mp3', credits: 3 })]);
+    const r = await new HiggsfieldTtsVoice(hf(exec)).tts({ voiceId: 'warm_female', text: 'hello there' });
+    expect(r).toMatchObject({ costUsd: 0, credits: 3 });
   });
 });
 
@@ -156,5 +217,34 @@ describe('live providers', () => {
   it('without keys only storage is live', () => {
     const p = mediaLiveProviders(penv([]), { IOS_MEDIA_DIR: '/tmp/x' });
     expect(Object.keys(p)).toEqual(['storage']);
+  });
+});
+
+describe('Soul ID retries are capped', () => {
+  it('after 3 failed trainings the persona stops retrying daily and the Owner is told', async () => {
+    const t = await createTestStudio();
+    const p = await makeTestPersona(t, {});
+    let tries = 0;
+    const services = {
+      ...t.services,
+      providers: {
+        ...t.services.providers,
+        imageVideo: {
+          ...t.services.providers.imageVideo,
+          createSoulId: async () => {
+            tries += 1;
+            throw Object.assign(new Error('soul-id create failed'), { credits: 4 });
+          },
+        },
+      },
+    };
+    const scope = { studioId: t.studioId, personaId: p.id, slotId: null, ref: { type: 'persona' as const, id: p.id } };
+    const deps = mediaDeps(services);
+    for (let i = 0; i < SOUL_ID_MAX_FAILURES; i++) await expect(ensureProfile(services, deps, scope, { soul: true, voice: false })).rejects.toThrow(/soul-id create failed/);
+    expect((await t.db.one<{ soul_status: string }>('SELECT soul_status FROM media_profile WHERE persona_id = $1', [p.id])).soul_status).toBe('failed');
+    expect((await t.db.one<{ title: string }>(`SELECT title FROM notification ORDER BY created_at DESC LIMIT 1`)).title).toMatch(/Soul ID training failed 3 times/);
+    // No 4th paid try without the Owner.
+    await expect(ensureProfile(services, deps, scope, { soul: true, voice: false })).rejects.toThrow(/waits for the Owner/);
+    expect(tries).toBe(SOUL_ID_MAX_FAILURES);
   });
 });

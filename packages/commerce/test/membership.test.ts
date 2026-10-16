@@ -8,6 +8,7 @@ import {
   memberFile,
   memberFromSession,
   membershipStats,
+  parseLemonSqueezyWebhook,
   requestMemberLink,
   syncCommunityAccess,
   verifyMemberLink,
@@ -115,5 +116,47 @@ describe('membership: subscriptions gate the members area', () => {
     await applySubscriptionEvent(t.services, { type: 'subscription_updated', subscriptionId: 's', status: 'expired' }, { personaId: null, productId: null, gate });
     expect(log).toEqual([`grant:${id}`, 'revoke:u1']);
     expect((await t.db.one<{ access_state: string }>('SELECT access_state FROM community_member')).access_state).toBe('revoked');
+  });
+
+  it('a late or retried invoice never revives an expired membership; out-of-order updates are skipped or retried', async () => {
+    let now = new Date('2026-10-02T10:00:00Z');
+    const t = await studio({ now: () => now });
+    const p = await persona(t);
+    await linkStore(t, p.id, p.slug);
+    await product(t, p.id, { name: 'Club', rung: 'membership', status: 'live', price: 700, storeProductId: 'lsp_c' });
+    const send = async (ev: Parameters<typeof signed>[1]) => {
+      const e = signed(t, ev);
+      return handleStoreWebhook(t.services, e.body, e.sig);
+    };
+    // An update before its subscription exists is not dropped: 503, nothing stored, the vendor retries.
+    const early = await send({ type: 'subscription_updated', subscriptionId: 'sub_late', status: 'active', updatedAt: '2026-10-02T09:00:00Z' });
+    expect(early).toMatchObject({ status: 503, outcome: 'retry_later' });
+    expect((await t.db.query('SELECT 1 FROM commerce_webhook_event')).length).toBe(0);
+    await send({ type: 'subscription_created', subscriptionId: 'sub_late', productId: 'lsp_c', storeId: 'st_1', email: 'late@example.com' });
+    expect((await send({ type: 'subscription_updated', subscriptionId: 'sub_late', status: 'active', updatedAt: '2026-10-02T09:00:00Z' })).outcome).toBe('processed');
+
+    await send({ type: 'subscription_updated', subscriptionId: 'sub_late', status: 'expired', endsAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z' });
+    // A retried payment-success invoice arrives after expiry.
+    await send({ type: 'subscription_updated', subscriptionId: 'sub_late', status: 'active', source: 'invoice', updatedAt: '2026-10-02T10:00:00Z' });
+    // An older "active" subscription event delivered out of order.
+    await send({ type: 'subscription_updated', subscriptionId: 'sub_late', status: 'active', updatedAt: '2026-10-15T00:00:00Z' });
+    const m = await t.db.one<{ status: 'cancelled'; ends_at: Date | null; past_due_since: Date | null }>('SELECT status, ends_at, past_due_since FROM membership');
+    expect(m.status).toBe('cancelled');
+    expect(new Date(m.ends_at!).toISOString()).toBe('2026-11-01T00:00:00.000Z');
+    now = new Date('2027-06-01T00:00:00Z');
+    expect(hasAccess(m, now)).toBe(false);
+
+    // An invoice does clear past-due.
+    await send({ type: 'subscription_created', subscriptionId: 'sub_pd', productId: 'lsp_c', storeId: 'st_1', email: 'pd@example.com' });
+    await send({ type: 'subscription_payment_failed', subscriptionId: 'sub_pd' });
+    await send({ type: 'subscription_updated', subscriptionId: 'sub_pd', status: 'active', source: 'invoice' });
+    expect(await t.db.one(`SELECT status, past_due_since FROM membership WHERE store_subscription_id = 'sub_pd'`)).toEqual({ status: 'active', past_due_since: null });
+  });
+
+  it('maps Lemon Squeezy invoice events to invoice-only updates', () => {
+    const body = JSON.stringify({ meta: { event_name: 'subscription_payment_success' }, data: { type: 'subscription-invoices', id: 'inv_1', attributes: { subscription_id: 42, store_id: 7, updated_at: '2026-10-02T10:00:00Z' } } });
+    expect(parseLemonSqueezyWebhook(body)).toMatchObject({ type: 'subscription_updated', subscriptionId: '42', status: 'active', source: 'invoice' });
+    const sub = JSON.stringify({ meta: { event_name: 'subscription_expired' }, data: { type: 'subscriptions', id: '42', attributes: { status: 'expired', ends_at: '2026-11-01T00:00:00Z', updated_at: '2026-11-01T00:00:00Z' } } });
+    expect(parseLemonSqueezyWebhook(sub)).toMatchObject({ status: 'expired', source: 'subscription', updatedAt: '2026-11-01T00:00:00Z' });
   });
 });

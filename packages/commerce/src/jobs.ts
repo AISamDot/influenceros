@@ -1,6 +1,6 @@
 import { enqueueOnceFor, type JobContext, type JobHandlerMap, type ScheduledTask, type StudioServices } from '@ios/agents';
 import { BudgetExceededError, DeferJob, enqueue } from '@ios/core';
-import { SEND_DUE_JOB, WRITE_WELCOME_JOB } from './audience';
+import { SEND_DUE_JOB, syncPendingOptOuts, WRITE_WELCOME_JOB } from './audience';
 import { sweepPostLinks } from './attribution';
 import { ensureMonthlyDrop, MEMBERSHIP_DROP_JOB } from './membership';
 import { sendDueEmails, writeWelcomeSequence } from './sequences';
@@ -54,7 +54,9 @@ export const jobs: JobHandlerMap = {
   },
   [JOB.attribution]: async (ctx) => sweepPostLinks(ctx.services, { studioId: ctx.job.studio_id ?? undefined }),
   [JOB.sendDue]: async (ctx) => {
-    const res = await sendDueEmails(ctx.services, { limit: 100, studioId: ctx.job.studio_id ?? undefined });
+    // Opt-outs that didn't reach the provider yet (a transient error at unsubscribe time) are retried every tick.
+    const optOuts = await syncPendingOptOuts(ctx.services);
+    const res = { ...(await sendDueEmails(ctx.services, { limit: 100, studioId: ctx.job.studio_id ?? undefined })), optOutsPending: optOuts.pending };
     // A full batch means more may be due: queue another pass (the dedupe key frees up once this job finishes).
     if (res.sent >= 100) await enqueue(ctx.services.db, { kind: SEND_DUE_JOB, payload: { dedupe: `email.send_due:more:${Date.now()}` }, studioId: ctx.job.studio_id, priority: 50 });
     return res;

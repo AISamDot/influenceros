@@ -60,7 +60,18 @@ const STATUS_MAP: Record<string, MembershipStatus> = {
   expired: 'cancelled',
 };
 
-/** Applies a subscription webhook event. Returns the membership id (null when the subscription is unknown). */
+/**
+ * A subscription update for a subscription we haven't seen created yet (out-of-order delivery). The webhook answers
+ * 5xx so the vendor retries after subscription_created has landed, instead of dropping the update.
+ */
+export class UnknownSubscription extends Error {
+  override readonly name = 'UnknownSubscription';
+  constructor(readonly subscriptionId: string) {
+    super(`unknown subscription ${subscriptionId}`);
+  }
+}
+
+/** Applies a subscription webhook event. Returns the membership id (null when created for an unknown persona). Throws UnknownSubscription for an update to an unknown subscription. */
 export async function applySubscriptionEvent(
   services: StudioServices,
   ev: Extract<StoreEvent, { type: 'subscription_created' | 'subscription_updated' | 'subscription_payment_failed' }>,
@@ -95,14 +106,27 @@ export async function applySubscriptionEvent(
     );
     id = row.id;
   } else {
-    const m = await db.maybeOne<{ id: string; status: MembershipStatus; past_due_since: Date | null }>(
-      'SELECT id, status, past_due_since FROM membership WHERE store_subscription_id = $1',
+    const m = await db.maybeOne<{ id: string; status: MembershipStatus; past_due_since: Date | null; store_updated_at: Date | null }>(
+      'SELECT id, status, past_due_since, store_updated_at FROM membership WHERE store_subscription_id = $1',
       [ev.subscriptionId],
     );
-    if (!m) return null;
+    if (!m) throw new UnknownSubscription(ev.subscriptionId);
     id = m.id;
+    if (ev.type === 'subscription_updated' && ev.source === 'invoice') {
+      // A payment went through: it clears past-due only. A retried or late invoice never revives a cancelled or
+      // expired subscription, and never touches ends_at.
+      if (m.status === 'past_due') {
+        await db.query(`UPDATE membership SET status = 'active', past_due_since = NULL, updated_at = now() WHERE id = $1 AND status = 'past_due'`, [m.id]);
+      }
+      await syncCommunityAccess(services, id, ctx.gate ?? null);
+      return id;
+    }
+    // Out-of-order delivery: an event older than the last one applied changes nothing.
+    const updatedAt = ev.type === 'subscription_updated' && ev.updatedAt ? new Date(ev.updatedAt) : null;
+    if (updatedAt && !Number.isNaN(updatedAt.getTime()) && m.store_updated_at && updatedAt.getTime() < new Date(m.store_updated_at).getTime()) return id;
     const status: MembershipStatus = ev.type === 'subscription_payment_failed' ? 'past_due' : (STATUS_MAP[ev.status] ?? m.status);
     const endsAt = ev.type === 'subscription_updated' && ev.endsAt ? new Date(ev.endsAt) : null;
+    if (updatedAt && !Number.isNaN(updatedAt.getTime())) await db.query(`UPDATE membership SET store_updated_at = $2 WHERE id = $1`, [m.id, updatedAt]);
     await db.query(
       `UPDATE membership SET status = $2,
               ends_at = CASE WHEN $3::timestamptz IS NOT NULL THEN $3 WHEN $2 IN ('active','trial') THEN NULL ELSE ends_at END,

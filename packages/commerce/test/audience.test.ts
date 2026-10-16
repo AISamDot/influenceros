@@ -7,6 +7,7 @@ import {
   sendBroadcast,
   sendDueEmails,
   subscribe,
+  syncPendingOptOuts,
   unsubscribe,
   writeWelcomeSequence,
 } from '../src';
@@ -167,6 +168,59 @@ describe('welcome sequence: 5 Gate-checked emails, unsubscribe and the physical-
     expect(call.html).toContain('{{{RESEND_UNSUBSCRIBE_URL}}}');
     expect(call.html).toContain(ADDRESS);
     expect(call.from).toBe(`${p.name} <${p.slug}@mail.studio.test>`);
+  });
+});
+
+describe('opt-outs stand', () => {
+  it('an unsubscribe that fails to reach Resend is retried, and broadcasts wait until it lands', async () => {
+    const t = await studio();
+    const p = await persona(t);
+    await subscribe(t.services, { slug: p.slug, email: 'gone@example.com', region: 'US' });
+    const token = (await t.db.one<{ unsub_token: string }>('SELECT unsub_token FROM subscriber')).unsub_token;
+    const aud = t.providers.audience;
+    const real = aud.upsertContact.bind(aud);
+    aud.upsertContact = async () => {
+      throw new Error('resend 503');
+    };
+    expect((await unsubscribe(t.services, token)).ok).toBe(true);
+    const row = await t.db.one<{ status: string; provider_synced: boolean }>('SELECT status, provider_synced FROM subscriber');
+    expect(row).toEqual({ status: 'unsubscribed', provider_synced: false });
+    const blocked = await sendBroadcast(t.services, { personaId: p.id, subject: 'Three fridge zones', body: 'Here are the three zones I use: top shelf for leftovers, middle for dairy.', createdBy: 'owner' });
+    expect(blocked).toMatchObject({ status: 'blocked', reason: 'unsynced_unsubscribes' });
+    expect(aud.callsTo('sendBroadcast')).toHaveLength(0);
+    // Resend is back: the sweep syncs it and the next broadcast goes out.
+    aud.upsertContact = real;
+    expect(await syncPendingOptOuts(t.services)).toEqual({ synced: 1, pending: 0 });
+    expect([...aud.contacts.values()].find((c) => c.email === 'gone@example.com')!.unsubscribed).toBe(true);
+    const sent = await sendBroadcast(t.services, { personaId: p.id, subject: 'Three fridge zones', body: 'Here are the three zones I use: top shelf for leftovers, middle for dairy.', createdBy: 'owner' });
+    expect(sent.status).toBe('sent');
+  });
+
+  it('a third party typing an opted-out address never re-enrols it; an unsubscribed person can come back via the confirm link', async () => {
+    const t = await studio();
+    const p = await persona(t);
+    await subscribe(t.services, { slug: p.slug, email: 'left@example.com', region: 'US' });
+    await subscribe(t.services, { slug: p.slug, email: 'complainer@example.com', region: 'US' });
+    const token = (await t.db.one<{ unsub_token: string }>(`SELECT unsub_token FROM subscriber WHERE email = 'left@example.com'`)).unsub_token;
+    await unsubscribe(t.services, token);
+    await t.db.query(`UPDATE subscriber SET status = 'complained' WHERE email = 'complainer@example.com'`);
+    const before = sends(t).length;
+    const upserts = t.providers.audience.callsTo('upsertContact').length;
+
+    expect((await subscribe(t.services, { slug: p.slug, email: 'complainer@example.com', region: 'US' })).outcome).toBe('already');
+    expect((await subscribe(t.services, { slug: p.slug, email: 'left@example.com', region: 'US' })).outcome).toBe('confirm_sent');
+    const statuses = await t.db.query<{ email: string; status: string }>('SELECT email, status FROM subscriber ORDER BY email');
+    expect(statuses).toEqual([
+      { email: 'complainer@example.com', status: 'complained' },
+      { email: 'left@example.com', status: 'unsubscribed' },
+    ]);
+    // Only the confirm email went out (to the unsubscribed address), and Resend's suppression is untouched.
+    const mails = sends(t).slice(before);
+    expect(mails.map((m) => m.to)).toEqual(['left@example.com']);
+    expect(t.providers.audience.callsTo('upsertContact')).toHaveLength(upserts);
+    const link = /\/confirm\?t=([A-Za-z0-9_-]+)/.exec(mails[0]!.html)![1]!;
+    expect(await confirmSubscription(t.services, link)).toEqual({ ok: true, slug: p.slug });
+    expect((await t.db.one<{ status: string }>(`SELECT status FROM subscriber WHERE email = 'left@example.com'`)).status).toBe('active');
   });
 });
 

@@ -119,7 +119,9 @@ export type ApprovalKind =
   | 'legal_text_change'
   | 'persona_launch'
   | 'product_v1'
-  | 'post';
+  | 'post'
+  /** (IOS-4 fix) Publish a post whose QC failed on majors only, with the Owner's reason. Owner-only. */
+  | 'qc_override';
 export type ApprovalMode = 'explicit' | 'auto_after' | 'veto_window';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'auto_approved' | 'withdrawn';
 

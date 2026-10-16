@@ -1,6 +1,6 @@
-import { isDeployed } from '@ios/auth/guard';
 import { ingestEvents } from '@ios/distribution';
 import { getServices } from '@/lib/services';
+import { fakeWebhooksRefused } from '@/lib/webhook-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,8 +17,8 @@ export async function POST(req: Request) {
   if (raw.length > MAX_BYTES) return Response.json({ error: 'too large' }, { status: 413 });
   const services = await getServices();
   const publisher = services.providers.publish;
-  // The fake publisher's secret is public: never accept fake-signed webhooks on a deployed server.
-  if (publisher.name.startsWith('fake') && isDeployed()) return Response.json({ error: 'webhooks are not configured' }, { status: 404 });
+  // The fake publisher's secret is public: never accept fake-signed webhooks on a deployed or reachable server.
+  if (fakeWebhooksRefused(publisher.name, req)) return Response.json({ error: 'webhooks are not configured' }, { status: 404 });
   const signature = req.headers.get('x-zernio-signature') ?? req.headers.get('x-webhook-signature') ?? req.headers.get('x-signature') ?? '';
   if (!publisher.verifyWebhook(raw, signature)) return Response.json({ error: 'bad signature' }, { status: 401 });
   let events;

@@ -1,8 +1,12 @@
+import { createHmac } from 'node:crypto';
 import type { Db } from '@ios/db';
 import { createTestDb } from '@ios/db/testing';
-import { FakeZernio } from '@ios/providers';
+import { FAKE_WEBHOOK_SECRET, FakeZernio } from '@ios/providers';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { POST as LS_POST } from '../app/api/webhooks/lemonsqueezy/route';
+import { POST as RESEND_POST } from '../app/api/webhooks/resend/route';
 import { POST } from '../app/api/webhooks/zernio/route';
+import { fakeWebhooksRefused } from '../lib/webhook-guard';
 
 // Stream F: the public Zernio webhook verifies the signature before reading the body, then stores events.
 let db: Db;
@@ -37,5 +41,28 @@ describe('Zernio webhook', () => {
     expect((await POST(req(sig))).status).toBe(200);
     expect((await db.query(`SELECT 1 FROM comment WHERE external_id = 'wh1'`)).length).toBe(1);
     expect((await db.query(`SELECT 1 FROM job WHERE kind = 'community.handle' AND persona_id = $1`, [personaId])).length).toBe(1);
+  });
+});
+
+describe('fake-provider webhooks (public secret) are never accepted on a reachable server', () => {
+  it('only a loopback, non-deployed host may use fake-signed webhooks', () => {
+    const r = (host: string, extra: Record<string, string> = {}) => new Request(`http://${host}/api/webhooks/x`, { method: 'POST', headers: { host, ...extra } });
+    expect(fakeWebhooksRefused('fake-lemonsqueezy', r('127.0.0.1:3100'), {})).toBe(false);
+    expect(fakeWebhooksRefused('fake-lemonsqueezy', r('localhost:3100'), {})).toBe(false);
+    expect(fakeWebhooksRefused('fake-lemonsqueezy', r('localhost:3100'), { VERCEL: '1' })).toBe(true);
+    expect(fakeWebhooksRefused('fake-lemonsqueezy', r('abc.ngrok.app'), {})).toBe(true);
+    expect(fakeWebhooksRefused('fake-lemonsqueezy', r('192.168.1.5:3100'), {})).toBe(true);
+    expect(fakeWebhooksRefused('fake-lemonsqueezy', r('localhost:3100', { 'x-forwarded-host': 'abc.ngrok.app' }), {})).toBe(true);
+    expect(fakeWebhooksRefused('lemonsqueezy', r('abc.ngrok.app'), { VERCEL: '1' })).toBe(false);
+  });
+
+  it('a forged Lemon Squeezy / Resend / Zernio event signed with the fake secret through a tunnel gets 404', async () => {
+    const forged = JSON.stringify({ type: 'subscription_created', subscriptionId: 'evil', productId: 'x', email: 'attacker@example.com', customData: { persona_id: personaId } });
+    const sig = createHmac('sha256', FAKE_WEBHOOK_SECRET).update(forged).digest('hex');
+    const tunnel = (path: string, headers: Record<string, string>) => new Request(`https://abc.ngrok.app${path}`, { method: 'POST', body: forged, headers: { host: 'abc.ngrok.app', ...headers } });
+    expect((await LS_POST(tunnel('/api/webhooks/lemonsqueezy', { 'x-signature': sig }))).status).toBe(404);
+    expect((await RESEND_POST(tunnel('/api/webhooks/resend', { 'svix-signature': sig, 'svix-id': 'x' }))).status).toBe(404);
+    expect((await POST(tunnel('/api/webhooks/zernio', { 'x-zernio-signature': sig }))).status).toBe(404);
+    expect((await db.query(`SELECT 1 FROM membership`)).length).toBe(0);
   });
 });

@@ -55,6 +55,7 @@ export default async function Community({ searchParams }: { searchParams: Promis
     db.maybeOne(`SELECT 1 FROM approval WHERE studio_id = $1 AND kind = 'legal_text_change' AND status = 'pending' AND payload->>'purpose' = 'crisis_helpline'`, [studio.id]),
   ]);
   const count = (a: string) => counts.filter((c) => c.action === a).reduce((x, c) => x + c.n, 0);
+  const now = new Date();
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -96,9 +97,16 @@ export default async function Community({ searchParams }: { searchParams: Promis
             <div key={e.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2 text-[13px]">
-                  <span className={`pill border ${e.severity === 'S1' ? 'border-danger/40 text-danger' : 'border-warn/40 text-warn'}`}>{e.severity}</span>
-                  <span className="font-semibold">{e.persona_name ?? 'Studio'}</span>
+                  <span className={`pill border ${e.severity === 'S1' ? 'border-danger/40 text-danger' : e.severity === 'S2' ? 'border-warn/40 text-warn' : 'border-line text-muted'}`}>{e.severity}</span>
+                  {e.slug ? (
+                    <Link href={`/personas/${e.slug}`} className="font-semibold underline-offset-2 hover:underline">
+                      {e.persona_name}
+                    </Link>
+                  ) : (
+                    <span className="font-semibold">{e.persona_name ?? 'Studio'}</span>
+                  )}
                   <span className="text-muted">{e.category.replace(/_/g, ' ')} · {e.source_type === 'dm_thread' ? 'DM' : 'comment'} · {relative(new Date(e.created_at))}</span>
+                  {e.sla_due_at ? <SlaBadge due={new Date(e.sla_due_at)} now={now} /> : null}
                 </div>
                 {e.summary ? <p className="mt-1 break-words text-[12.5px] text-muted">{e.summary}</p> : null}
               </div>
@@ -150,5 +158,17 @@ export default async function Community({ searchParams }: { searchParams: Promis
         </div>
       </section>
     </div>
+  );
+}
+
+/** "due in 3 min" / "overdue by 2 h" from the escalation's SLA (danger once overdue). */
+function SlaBadge({ due, now }: { due: Date; now: Date }) {
+  const ms = due.getTime() - now.getTime();
+  const abs = Math.abs(ms);
+  const span = abs < 3_600_000 ? `${Math.max(1, Math.round(abs / 60_000))} min` : abs < 86_400_000 ? `${Math.round(abs / 3_600_000)} h` : `${Math.round(abs / 86_400_000)} d`;
+  return ms < 0 ? (
+    <span className="pill border border-danger/40 bg-danger/10 font-semibold text-danger">overdue by {span}</span>
+  ) : (
+    <span className="text-[12px] text-muted">due in {span}</span>
   );
 }

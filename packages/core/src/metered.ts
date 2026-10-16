@@ -50,8 +50,12 @@ export async function metered<T>(
     result = await call();
   } catch (err) {
     // A provider that spent money before failing reports it as `err.costUsd` (e.g. web research that ran several
-    // streams and then returned unusable output): debit that, since it was incurred. Otherwise nothing was spent.
-    const spent = (err as { costUsd?: unknown } | null)?.costUsd;
+    // streams and then returned unusable output), or `err.credits` for credit units (e.g. Soul ID stills bought before
+    // the final step failed): debit that, since it was incurred. `err.settleAtEstimate` (a job submitted and then lost
+    // to a timeout: it keeps running and bills) debits the estimate. Otherwise nothing was spent.
+    const e = err as { costUsd?: unknown; credits?: unknown; settleAtEstimate?: unknown } | null;
+    const reported = spec.unit === 'hf_credits' ? (e?.credits ?? e?.costUsd) : e?.costUsd;
+    const spent = e?.settleAtEstimate === true ? Math.max(spec.estimate, typeof reported === 'number' && Number.isFinite(reported) ? reported : 0) : reported;
     if (typeof spent === 'number' && Number.isFinite(spent) && spent > 0) {
       await settleHold(db, holdId, { ...base, amount: spent, meta: { ...base.meta, failed: true } }).catch(() => releaseHold(db, holdId));
     } else {
@@ -62,6 +66,16 @@ export async function metered<T>(
   await settleHold(db, holdId, { ...base, amount: actual(result) });
   return result;
 }
+
+/**
+ * What a credit-billed result settles at: the reported credits, or the estimate when the vendor reported none (or 0)
+ * for a paid job. A missing cost is unknown, never free (else caps would never trip).
+ */
+export function creditsToSettle(r: { credits?: number; creditsUnknown?: boolean }, estimate: number): number {
+  const c = r.credits;
+  return r.creditsUnknown || typeof c !== 'number' || !Number.isFinite(c) || c <= 0 ? estimate : c;
+}
+const settled = (estimate: number) => (r: { credits?: number; creditsUnknown?: boolean }) => creditsToSettle(r, estimate);
 
 /** Wraps the paid providers so every call is checked and debited. Free providers pass through. */
 export function meteredProviders(db: Db, raw: Providers, ctx: MeterContext): Providers {
@@ -86,13 +100,13 @@ export function meteredProviders(db: Db, raw: Providers, ctx: MeterContext): Pro
   const spec = (operation: string, estimate: number) => ({ unit: 'hf_credits' as const, estimate, provider: hf.name, operation });
   const imageVideo: ImageVideoProvider = {
     name: hf.name,
-    createSoulId: (req) => metered(db, ctx, spec('soul_id', credits('soul_id')), () => hf.createSoulId(req), (r) => r.credits),
-    generateStill: (req) => metered(db, ctx, spec('still', credits('still')), () => hf.generateStill(req), (r) => r.credits),
+    createSoulId: (req) => metered(db, ctx, spec('soul_id', credits('soul_id')), () => hf.createSoulId(req), settled(credits('soul_id'))),
+    generateStill: (req) => metered(db, ctx, spec('still', credits('still')), () => hf.generateStill(req), settled(credits('still'))),
     imageToVideo: (req) =>
-      metered(db, ctx, spec('image_to_video', credits('image_to_video', req.durationS)), () => hf.imageToVideo(req), (r) => r.credits),
+      metered(db, ctx, spec('image_to_video', credits('image_to_video', req.durationS)), () => hf.imageToVideo(req), settled(credits('image_to_video', req.durationS))),
     talkingWithAudio: (req) =>
       // Unknown audio length: reserve for 60 s (2x the usual 30 s clip) rather than under-reserve.
-      metered(db, ctx, spec('talking_with_audio', credits('talking_with_audio', req.durationS ?? 60)), () => hf.talkingWithAudio(req), (r) => r.credits),
+      metered(db, ctx, spec('talking_with_audio', credits('talking_with_audio', req.durationS ?? 60)), () => hf.talkingWithAudio(req), settled(credits('talking_with_audio', req.durationS ?? 60))),
     costProbe: (req) => hf.costProbe(req), // free
     upload: (req) => hf.upload(req), // free
   };
@@ -101,7 +115,7 @@ export function meteredProviders(db: Db, raw: Providers, ctx: MeterContext): Pro
     name: raw.talking.name,
     async render(req) {
       if (raw.talking.name === 'higgsfield-seedance') {
-        return metered(db, ctx, spec('talking_seedance', credits('talking_with_audio', req.durationS)), () => raw.talking.render(req), (r) => r.credits);
+        return metered(db, ctx, spec('talking_seedance', credits('talking_with_audio', req.durationS)), () => raw.talking.render(req), settled(credits('talking_with_audio', req.durationS)));
       }
       return metered(
         db,

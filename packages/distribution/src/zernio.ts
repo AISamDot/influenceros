@@ -37,10 +37,15 @@ export const ROUTES = {
   analytics: '/analytics',
   postComments: (platformPostId: string) => `/inbox/comments/${encodeURIComponent(platformPostId)}`,
   hideComment: (platformPostId: string, commentId: string) => `/inbox/comments/${encodeURIComponent(platformPostId)}/${encodeURIComponent(commentId)}/hide`,
+  /** Comment-to-DM (Instagram/Facebook only, one per comment, within 7 days): body { accountId, message }. */
+  privateReply: (platformPostId: string, commentId: string) => `/inbox/comments/${encodeURIComponent(platformPostId)}/${encodeURIComponent(commentId)}/private-reply`,
   conversations: '/inbox/conversations',
+  /** GET lists a conversation's messages; POST { accountId, message } replies in it. There is no "new DM" route. */
   conversationMessages: (id: string) => `/inbox/conversations/${encodeURIComponent(id)}/messages`,
-  messages: '/inbox/messages',
 } as const;
+
+/** Platforms where Zernio's private-reply route works (of ours). */
+const PRIVATE_REPLY_OK: readonly Platform[] = ['instagram'];
 
 /** Zernio's names for the AI flag inside platformSpecificData (TikTok's sits in tiktokSettings). */
 export const ZERNIO_AI_FIELD: Readonly<Record<Platform, string>> = {
@@ -141,13 +146,17 @@ export function buildPostBody(req: PublishRequest): Json {
   return body;
 }
 
-/** Reads the AI flag back from a stored Zernio post: true only when the vendor echoes it as true (or doesn't echo it). */
+/**
+ * Reads the AI flag back from a stored Zernio post: true only when the vendor echoes it as true. Not echoed = unknown =
+ * false, so core's "live without the AI label" guard fires and the Owner checks the post by hand (a flag silently
+ * dropped by the vendor is never recorded as labelled).
+ */
 function echoedAiFlag(post: Json, platform: Platform): boolean {
   const entry = rec(arr(post.platforms).map(rec).find((p) => p.platform === platform));
   const psd = rec(entry.platformSpecificData);
   const tt = { ...rec(post.tiktokSettings), ...rec(psd.tiktokSettings) };
   const v = platform === 'tiktok' ? (tt.video_made_with_ai ?? tt.videoMadeWithAi ?? psd.video_made_with_ai) : psd[ZERNIO_AI_FIELD[platform]];
-  return v === undefined ? true : v === true;
+  return v === true;
 }
 
 export interface ZernioOptions {
@@ -283,10 +292,29 @@ export class ZernioPublisher implements PublishProvider {
     return { ok: rec(data).success !== false };
   }
 
-  async sendDm(req: { accountRef: string; userRef: string; text: string }) {
-    const { data } = await this.#call('POST', ROUTES.messages, { accountId: req.accountRef, recipientId: req.userRef, message: req.text });
+  async sendDm(req: { accountRef: string; userRef: string; text: string; threadRef?: string }) {
+    if (!req.threadRef) throw new ZernioError(400, 'zernio: a DM can only be sent into an existing conversation');
+    const { data } = await this.#call('POST', ROUTES.conversationMessages(req.threadRef), { accountId: req.accountRef, message: req.text });
     const d = rec(data);
-    return { id: str(d.id) ?? str(d.messageId) ?? str(rec(d.data).id) ?? `dm:${req.userRef}` };
+    return { id: str(d.id) ?? str(d.messageId) ?? str(rec(d.data).id) ?? str(rec(d.message).id) ?? `dm:${req.threadRef}:${Date.now()}` };
+  }
+
+  async sendPrivateReply(req: { externalId: string; commentId: string; text: string }): Promise<{ id: string | null; reason?: 'consumed' | 'expired' | 'unsupported' }> {
+    const t = await this.#target(req.externalId);
+    if (!PRIVATE_REPLY_OK.includes(t.platform)) return { id: null, reason: 'unsupported' };
+    try {
+      const { data } = await this.#call('POST', ROUTES.privateReply(t.platformPostId, req.commentId), { accountId: t.accountId, message: req.text });
+      const d = rec(data);
+      return { id: str(d.id) ?? str(d.messageId) ?? str(rec(d.data).id) ?? `pr:${req.commentId}` };
+    } catch (err) {
+      // 400 privateReplyConsumed / outside the 7-day window: permanent, never retried.
+      if (err instanceof ZernioError && err.status === 400) {
+        const body = JSON.stringify(err.body ?? {});
+        if (/privateReplyConsumed/i.test(body) || /privateReplyConsumed/i.test(err.message)) return { id: null, reason: 'consumed' };
+        if (/7.?day|expired|window/i.test(body)) return { id: null, reason: 'expired' };
+      }
+      throw err;
+    }
   }
 
   async listDms(req: { accountRef: string; since?: Date }): Promise<DmMessage[]> {

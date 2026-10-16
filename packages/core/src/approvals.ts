@@ -14,6 +14,7 @@ import {
   payloadHash,
   postWindowAllowed,
 } from './policy';
+import { enqueue } from './queue';
 import { getSettings } from './settings';
 import {
   type Actor,
@@ -233,11 +234,39 @@ async function execute(tx: Db, a: ApprovalRow, actor: Actor): Promise<unknown> {
       return { state: 'SETUP' };
     }
     case 'product_v1': {
-      if (a.subject_id) {
+      // v1 approves the product; a later version (payload.version > 1, a material change, FR-9.3) becomes current.
+      const version = Math.max(1, Math.floor(Number(a.payload.version ?? 1)) || 1);
+      if (a.subject_id && version === 1) {
         await tx.query(`UPDATE product SET status = 'approved' WHERE id = $1`, [a.subject_id]);
         await tx.query(`UPDATE product_version SET status = 'approved' WHERE product_id = $1 AND version = 1`, [a.subject_id]);
+      } else if (a.subject_id) {
+        await tx.query(`UPDATE product_version SET status = 'approved' WHERE product_id = $1 AND version = $2`, [a.subject_id, version]);
+        await tx.query(`UPDATE product SET current_version = GREATEST(COALESCE(current_version, 0), $2) WHERE id = $1`, [a.subject_id, version]);
       }
-      return { product: a.subject_id, status: 'approved' };
+      return { product: a.subject_id, status: 'approved', version };
+    }
+    case 'qc_override': {
+      // Majors only: a card that lists a blocker is refused (blockers are never overridable).
+      const failing = Array.isArray(a.payload.failing) ? (a.payload.failing as Array<{ severity?: string }>) : [];
+      if (failing.some((f) => f.severity === 'blocker')) throw new ApprovalError('a QC blocker can never be overridden');
+      const prepare = (a.payload.prepare ?? null) as Record<string, unknown> | null;
+      const slotId = typeof prepare?.slotId === 'string' ? prepare.slotId : null;
+      if (!prepare || !slotId) throw new ApprovalError('qc_override without the post to publish');
+      const reason = String(a.decision_note ?? '').slice(0, 500);
+      // Posts blocked by post-QC (never by the Gate) go back to draft so publish.prepare re-runs them with the override.
+      await tx.query(
+        `UPDATE post SET status = 'draft', meta = meta - 'blocked_reason', updated_at = now()
+          WHERE calendar_slot_id = $1 AND status = 'blocked' AND meta->>'blocked_reason' LIKE 'post Q4:%'`,
+        [slotId],
+      );
+      await tx.query(`UPDATE calendar_slot SET status = 'final_gate', block_reason = NULL, stage_changed_at = now() WHERE id = $1 AND status = 'blocked'`, [slotId]);
+      const job = await enqueue(tx, {
+        kind: 'publish.prepare',
+        payload: { ...prepare, qcOverride: { approvalId: a.id, reason, stage: String(a.payload.stage ?? 'Q4') }, dedupe: `slot:${slotId}:override:${a.id}` },
+        studioId: a.studio_id,
+        personaId: a.persona_id,
+      });
+      return { slot: slotId, publishJob: job.id, reason };
     }
     case 'post': {
       if (a.subject_type !== 'post' || !a.subject_id || !a.persona_id) throw new ApprovalError('post approval without a post');
@@ -357,7 +386,10 @@ async function onReject(tx: Db, a: ApprovalRow): Promise<void> {
     await tx.query(`UPDATE post SET status = 'vetoed', updated_at = now() WHERE id = $1 AND status = 'awaiting_approval'`, [a.subject_id]);
   }
   if (a.kind === 'product_v1' && a.subject_id) {
-    await tx.query(`UPDATE product SET status = 'building' WHERE id = $1`, [a.subject_id]);
+    const version = Math.max(1, Math.floor(Number(a.payload.version ?? 1)) || 1);
+    // A rejected later version is retired; the product keeps selling the current one.
+    if (version > 1) await tx.query(`UPDATE product_version SET status = 'retired' WHERE product_id = $1 AND version = $2 AND status = 'awaiting_approval'`, [a.subject_id, version]);
+    else await tx.query(`UPDATE product SET status = 'building' WHERE id = $1`, [a.subject_id]);
   }
   await tx.query(`UPDATE kill_scale_proposal SET status = 'rejected' WHERE approval_id = $1`, [a.id]);
 }
@@ -402,6 +434,9 @@ export async function decide(db: Db, input: DecideInput): Promise<ApprovalRow> {
       if (typeof input.confirmName !== 'string' || !name || input.confirmName.trim() !== name) {
         throw new ApprovalError(`type ${name || 'the persona name'} exactly to confirm`);
       }
+    }
+    if (input.decision === 'approve' && a.kind === 'qc_override' && !input.note?.trim()) {
+      throw new ApprovalError('publishing past failed QC needs your reason (it is logged with the override)');
     }
     if (input.payloadHash !== undefined && input.payloadHash !== payloadHash(a.payload)) {
       throw new ApprovalError('this card changed after you opened it: reload and check it again');

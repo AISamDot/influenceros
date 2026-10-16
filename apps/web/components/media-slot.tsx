@@ -40,7 +40,7 @@ export function MediaSlot({ media, slotId, blocked }: { media: SlotMedia; slotId
       </div>
       {media.waiting ? <p className="rounded-xl border border-warn/40 bg-warn-soft px-3 py-2 text-[13px] text-warn">Waiting: {media.waiting}</p> : null}
       {media.final.length ? (
-        <div className={carousel ? 'scroll-x flex gap-2 pb-1' : 'grid grid-cols-[minmax(0,240px)_1fr] gap-4'}>
+        <div className={carousel ? 'scroll-x flex gap-2 pb-1' : 'grid gap-4 sm:grid-cols-[minmax(0,240px)_minmax(0,1fr)] [&>*:first-child]:max-w-[240px]'}>
           {carousel ? (
             media.final.map((a) => (
               <div key={a.id} className="w-[180px] shrink-0">
@@ -50,7 +50,7 @@ export function MediaSlot({ media, slotId, blocked }: { media: SlotMedia; slotId
           ) : (
             <>
               <Final a={media.final[0]!} carousel={false} />
-              <div className="space-y-3 text-[12.5px]">
+              <div className="min-w-0 space-y-3 text-[12.5px]">
                 <p className="text-muted">
                   {media.final[0]!.width}×{media.final[0]!.height}
                   {media.final[0]!.durationS ? ` · ${media.final[0]!.durationS.toFixed(1)} s` : ''} · AI flag on · persona grade and sharpening applied
@@ -64,7 +64,7 @@ export function MediaSlot({ media, slotId, blocked }: { media: SlotMedia; slotId
                 {media.voice && !media.voice.fake ? (
                   <div>
                     <div className="eyebrow mb-1">Voice track</div>
-                    <audio src={media.voice.url} controls preload="none" className="w-full max-w-sm" />
+                    <audio src={media.voice.url} controls preload="none" className="w-full min-w-0 max-w-sm" />
                   </div>
                 ) : null}
               </div>

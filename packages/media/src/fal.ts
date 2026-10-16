@@ -42,7 +42,8 @@ export class FalKlingAvatar implements TalkingProvider {
       const s = await this.call<{ status: string }>(statusUrl);
       if (s.status === 'COMPLETED') break;
       if (/FAIL|ERROR|CANCEL/i.test(s.status)) throw new Error(`fal avatar ${sub.request_id}: ${s.status}`);
-      if (Date.now() > deadline) throw new Error(`fal avatar ${sub.request_id}: timed out`);
+      // The request keeps running (and billing) after we stop waiting: the governor debits the estimate, not 0.
+      if (Date.now() > deadline) throw Object.assign(new Error(`fal avatar ${sub.request_id}: timed out`), { settleAtEstimate: true, jobId: sub.request_id });
       await sleep(this.opts.pollMs ?? 4000);
     }
     const out = await this.call<{ video?: { url?: string }; duration?: number }>(responseUrl);

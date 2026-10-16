@@ -1,7 +1,7 @@
 import type { JobHandlerMap, ProviderEnv, ScheduledTask, ToolDef } from '@ios/agents';
 import type { Providers } from '@ios/providers';
 import { jobs as commerceJobs, schedules as commerceSchedules } from './jobs';
-import { LemonSqueezyStore } from './live/lemonsqueezy';
+import { LemonSqueezyStore, LemonSqueezyWebhooks } from './live/lemonsqueezy';
 import { ResendAudience } from './live/resend-audience';
 import { tools as commerceTools } from './tools';
 
@@ -24,7 +24,7 @@ export * from './tokens';
 export * from './webhooks';
 export { JOB } from './jobs';
 export { clientHash, emailHash, isEmail, needsDoubleOptIn, PublicInputError } from './util';
-export { LemonSqueezyStore, parseLemonSqueezyWebhook, UnsupportedStoreEvent } from './live/lemonsqueezy';
+export { LemonSqueezyStore, LemonSqueezyWebhooks, parseLemonSqueezyWebhook, UnsupportedStoreEvent } from './live/lemonsqueezy';
 export { parseResendWebhook, ResendAudience, signSvix, verifySvix } from './live/resend-audience';
 
 // StudioModule exports, composed by @ios/wiring.
@@ -42,10 +42,21 @@ export function liveProviders(env: ProviderEnv): Partial<Providers> {
     const apiKey = env.secret('lemonsqueezy.api_key');
     const webhookSecret = env.secret('lemonsqueezy.webhook_secret');
     if (apiKey && webhookSecret) out.store = new LemonSqueezyStore({ apiKey, webhookSecret });
+  } else if (!forcedFake('lemonsqueezy')) {
+    // API-less (pasted checkout links): the signing secret alone still verifies webhooks with the real secret, instead
+    // of the fake store's public one.
+    const webhookSecret = env.secret('lemonsqueezy.webhook_secret');
+    if (webhookSecret) out.store = new LemonSqueezyWebhooks({ webhookSecret });
   }
   if (env.isLive('resend')) {
     const apiKey = env.secret('resend.api_key');
     if (apiKey) out.audience = new ResendAudience({ apiKey, webhookSecret: env.secret('resend.webhook_secret') });
   }
   return out;
+}
+
+/** IOS_FAKE_PROVIDERS=1|all|<id> forces fakes (mirrors @ios/secrets integrationStates). */
+function forcedFake(id: string): boolean {
+  const forced = (process.env.IOS_FAKE_PROVIDERS ?? '').split(',').map((s) => s.trim());
+  return forced.includes('1') || forced.includes('all') || forced.includes(id);
 }

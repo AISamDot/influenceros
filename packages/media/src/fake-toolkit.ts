@@ -86,6 +86,8 @@ export class FakeToolkit implements MediaToolkit {
   async fetch(url: string, dest: string, hint: { kind: 'image' | 'video' | 'audio'; durationS?: number }) {
     this.calls.push({ method: 'fetch', args: { url, hint } });
     const talking = /\/talking\//.test(url);
+    // Talking clips and Soul ID stills/clips show the persona's face.
+    const persona = talking || /\/soul\//.test(url);
     const base: FakeManifest = {
       ios_fake: 1,
       kind: hint.kind,
@@ -100,7 +102,7 @@ export class FakeToolkit implements MediaToolkit {
       silences: [],
       blacks: [],
       freezes: [],
-      face: talking ? { identity: 'persona', similarity: 0.86 } : null,
+      face: persona ? { identity: 'persona', similarity: 0.86 } : null,
     };
     await write(dest, { ...base, ...(this.opts.onFetch?.(url, hint) ?? {}) });
   }

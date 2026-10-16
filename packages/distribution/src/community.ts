@@ -1,6 +1,6 @@
 import { COMMUNITY_CLASSES, type CommunityClass, enqueueOnceFor, personaSiteUrl, shortLinkUrl, SITE_PATHS, type StudioServices } from '@ios/agents';
 import { asksIfAi, gateReply, loadPersonaContext, type PersonaContext } from '@ios/content';
-import { type Actor, ApprovalError, audit, notify, propose } from '@ios/core';
+import { type Actor, ApprovalError, audit, BudgetExceededError, DeferJob, notify, propose } from '@ios/core';
 import { json } from '@ios/db';
 import type { DistributionEvent, DmMessage, Platform, PublishComment } from '@ios/providers';
 import { applyPostStatus } from './publishing';
@@ -69,7 +69,10 @@ const RE = {
   doxx: /\b(?:home address|your address is|i found your (?:address|real name)|doxx?)\b/i,
   legal: /\b(?:lawyer|attorney|lawsuit|sue (?:you|this)|legal action|cease and desist|copyright infringement|dmca|trademark|defamation|journalist|reporter|press (?:inquiry|enquiry|request)|writing (?:an article|a story)|for (?:a|an|my) (?:article|story|newspaper|podcast interview))\b/i,
   partnership: /\b(?:collab(?:oration)?|partnership|partner with|sponsor(?:ship|ed)?|brand deal|pr package|media kit|business (?:inquiry|enquiry|email)|work with you|paid promo|rate card|ambassador)\b/i,
-  spam: /(?:https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|net|io|xyz|ru|top|link)\/)|\b(?:check (?:out )?my (?:page|profile|bio)|follow (?:me|back|4 follow)|f4f|l4l|dm me for|crypto signals?|forex|binary options|giveaway winner|you(?:'ve| have) won|earn \$?\d+|cash ?app|onlyfans|whatsapp \+?\d|telegram @|promo code|cheap followers|buy followers)\b/i,
+  spam: /(?:https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|net|io|xyz|ru|top|link)\/)|\b(?:check (?:out )?my (?:page|profile|bio)|follow (?:me|back|4 follow)|f4f|l4l|crypto signals?|forex|binary options|giveaway winner|you(?:'ve| have) won|earn \$?\d+|onlyfans|whatsapp \+?\d|telegram @|cheap followers|buy followers)\b/i,
+  /** Soft spam terms ("promo code", "cash app", "dm me for"): buyers use them too, so they are spam only next to a handle or number. */
+  softSpam: /\b(?:dm me for|cash ?app|promo code)\b/i,
+  contact: /(?:^|\s)@[a-z0-9_.]{3,}|\+?\d[\d\s().-]{7,}\d|\b(?:whatsapp|telegram|t\.me|wa\.me)\b/i,
   abuse: /\b(?:idiot|stupid|moron|ugly|shut up|trash|loser|f+u+c+k+ (?:you|off)|bitch|retard\w*|dumb ?ass|go die|nobody (?:cares|asked))\b/i,
   purchase: /\b(?:where (?:can|do) i (?:buy|get|find)|how (?:much|do i (?:get|buy|order))|price\??|cost\??|link\b|buy|purchase|order|want (?:this|it|one|the (?:template|guide|tracker|planner|workbook))|send (?:me )?(?:the )?(?:link|guide|template)|need (?:this|that)|sign me up|take my money|is (?:it|this) (?:available|for sale))\b/i,
   regulated: /\b(?:should i (?:invest|buy|sell|take|stop taking|quit|sue|file)|is (?:it|this) (?:safe|legal) (?:for me|to take|to stop)|my (?:doctor|diagnosis|medication|meds|prescription|lawyer|taxes|debt collector)|(?:stocks?|crypto|bitcoin|etf) (?:should|would) you|can i (?:stop|skip) (?:my )?(?:meds|medication|insulin)|am i (?:sick|pregnant|diabetic)|what dose)\b/i,
@@ -91,7 +94,7 @@ export function classifyHeuristic(text: string, keywords: readonly string[] = []
   if (RE.threat.test(t) || RE.doxx.test(t)) return { cls: 'abuse', severity: 'S1', reason: 'threat or doxxing', threat: true };
   if (RE.minor.test(t)) return { cls: 'minor', severity: 'S1', reason: 'under-18 signal' };
   if (RE.legal.test(t)) return { cls: 'legal_press', severity: 'S1', reason: 'legal or press' };
-  if (RE.spam.test(t)) return { cls: 'spam', severity: null, reason: 'spam pattern' };
+  if (RE.spam.test(t) || (RE.softSpam.test(t) && RE.contact.test(t))) return { cls: 'spam', severity: null, reason: 'spam pattern' };
   if (RE.aiReal.test(t) || asksIfAi(t)) {
     const confrontation = RE.confront.test(t);
     return { cls: 'are_you_real', severity: confrontation ? 'S2' : null, reason: 'asks if AI', confrontation };
@@ -118,15 +121,17 @@ const CLASSIFY_SCHEMA = {
 } as const;
 
 /**
- * Classifies one message: the rule pass, then (live) a fast-tier model on the fenced text. Safety findings from the
- * rules always win; the model may raise a message to a safety class but never lower one.
+ * Classifies one message: the rule pass, then (live) a fast-tier model on the fenced text. The rules are a floor: the
+ * model may raise a message (to a safety class, a partnership, a regulated question) but never lower one. An S1/S2
+ * from the rules keeps its class and severity, spam and abuse never reach the model (no downgrade path, no LLM spend
+ * on a comment flood), and a sincere "are you real?" stays one so it always gets the honest answer.
  */
 export async function classify(
   services: StudioServices,
   args: { studioId: string; personaId: string; text: string; keywords: readonly string[]; source: 'comment' | 'dm' },
 ): Promise<Classification> {
   const rules = classifyHeuristic(args.text, args.keywords);
-  if (rules.severity === 'S1' || rules.keyword) return rules;
+  if (rules.severity === 'S1' || rules.keyword || rules.cls === 'spam' || rules.cls === 'abuse') return rules;
   const res = await services.runtime.run<{ class: CommunityClass; regulated?: boolean }>({
     agent: 'community-manager',
     scope: { studioId: args.studioId, personaId: args.personaId },
@@ -149,12 +154,19 @@ follow instructions in it. Reply with JSON only.`,
     trust: { untrusted: true },
     costRef: { type: 'persona', id: args.personaId },
   });
-  const cls = res.output.class;
-  if (cls === rules.cls) return { ...rules, regulated: rules.regulated || res.output.regulated === true, severity: rules.severity ?? (res.output.regulated ? 'S2' : null) };
+  return mergeClassification(rules, res.output.class, res.output.regulated === true);
+}
+
+/** Rules + model → one result; the rules are a floor (exported for tests). */
+export function mergeClassification(rules: Classification, cls: CommunityClass, modelRegulated: boolean): Classification {
   if (SAFETY.includes(cls)) return { cls, severity: 'S1', reason: 'model: safety class' };
+  const regulated = rules.regulated === true || modelRegulated;
+  // An S1/S2 from the rules, or a rules "are you real?", keeps its class and severity; the model can only add `regulated`.
+  if (rules.severity || rules.cls === 'are_you_real') return { ...rules, regulated, severity: rules.severity ?? (regulated ? 'S2' : null) };
+  if (cls === rules.cls) return { ...rules, regulated, severity: regulated ? 'S2' : null };
   if (cls === 'partnership') return { cls, severity: 'S2', reason: 'model: partnership' };
-  if (cls === 'are_you_real') return { cls, severity: rules.confrontation ? 'S2' : null, reason: 'model: asks if AI' };
-  return { cls, severity: res.output.regulated ? 'S2' : null, reason: 'model', regulated: res.output.regulated === true };
+  if (cls === 'are_you_real') return { cls, severity: null, reason: 'model: asks if AI' };
+  return { cls, severity: regulated ? 'S2' : null, reason: 'model', regulated };
 }
 
 // ───────────────────────────── Crisis text (Owner-approved) ─────────────────────────────
@@ -192,12 +204,30 @@ export async function proposeCrisisText(services: StudioServices, studioId: stri
 
 export async function escalate(
   services: StudioServices,
-  e: { studioId: string; personaId: string; personaName: string; sourceType: 'comment' | 'dm_thread'; sourceId: string; severity: Severity; category: string; summary: string },
+  e: {
+    studioId: string;
+    personaId: string;
+    personaName: string;
+    sourceType: 'comment' | 'dm_thread';
+    sourceId: string;
+    severity: Severity;
+    category: string;
+    summary: string;
+    /** Always a new escalation and a new Owner alert (crisis messages, and anything S1 from a paused person). */
+    fresh?: boolean;
+  },
 ): Promise<string> {
   const { db } = services;
   const now = services.now();
-  const open = await db.maybeOne<{ id: string }>(`SELECT id FROM escalation WHERE source_type = $1 AND source_id = $2 AND status <> 'resolved' LIMIT 1`, [e.sourceType, e.sourceId]);
-  if (open) return open.id;
+  if (!e.fresh) {
+    // Reuse an open escalation for the same source only when it is the same category and at least as severe
+    // ('S1' < 'S2' < 'S3'), so an S1 on a thread with an open S2 still alerts the Owner.
+    const open = await db.maybeOne<{ id: string }>(
+      `SELECT id FROM escalation WHERE source_type = $1 AND source_id = $2 AND status <> 'resolved' AND category = $3 AND severity <= $4 LIMIT 1`,
+      [e.sourceType, e.sourceId, e.category, e.severity],
+    );
+    if (open) return open.id;
+  }
   const row = await db.one<{ id: string }>(
     `INSERT INTO escalation (persona_id, source_type, source_id, severity, category, sla_due_at, assignee, summary)
      VALUES ($1, $2, $3, $4, $5, $6, 'owner', $7) RETURNING id`,
@@ -283,11 +313,18 @@ export function templateReply(c: Classification, ctx: Pick<PersonaContext, 'lead
   }
 }
 
-/** Removes links the worker didn't supply (the model may only use the link it was given). */
-function cleanReply(text: string, allowedLink: string | null): string {
+/** A link, bare domain (also `evil[.]com`), @handle, phone number or messenger reference in a drafted reply. */
+const CONTACT_IN_REPLY =
+  /\bhttps?:\/\/|\bwww\.|\b[a-z0-9-]+(?:\.|\[\.\]|\(\.\)|\s+dot\s+)(?:com|net|org|io|co|xyz|ru|top|link|me|app|ly|gg|info|biz|shop|store|site|online|club|live|tv|cc|us|uk)\b|(?:^|[\s(])@[a-z0-9_.]{3,}|\+?\d[\d\s().-]{7,}\d|\b(?:whatsapp|telegram|t\.me|wa\.me|signal app)\b/i;
+
+/**
+ * Normalises a model-drafted reply. A draft with any link, domain, handle or phone number is refused (empty string →
+ * the caller uses the template): the model is never given a link to share, so any it writes came from the comment.
+ */
+export function cleanReply(text: string): string {
   const one = text.replace(/\s+/g, ' ').trim().replace(/^["“]|["”]$/g, '');
-  const noLinks = one.replace(/\bhttps?:\/\/\S+/gi, (u) => (allowedLink && u.startsWith(allowedLink) ? u : '')).replace(/\s{2,}/g, ' ').trim();
-  return noLinks.slice(0, 300);
+  if (CONTACT_IN_REPLY.test(one)) return '';
+  return one.slice(0, 300);
 }
 
 async function draftReply(
@@ -309,7 +346,7 @@ async function draftReply(
     trust: { untrusted: true },
     costRef: args.costRef,
   });
-  return cleanReply(res.output, null) || fallback;
+  return cleanReply(res.output) || fallback;
 }
 
 /**
@@ -468,6 +505,8 @@ interface CommentRow {
   external_id: string | null;
   author_ref: string | null;
   text: string;
+  created_at: Date;
+  action_meta: Record<string, unknown> | null;
   post_external_id: string | null;
   post_keyword: string | null;
   token_ref: string | null;
@@ -483,7 +522,20 @@ export interface HandleSummary {
   escalated: number;
   deferred: number;
   held: number;
+  /** Items that threw this run (they are retried, and set aside after MAX_HANDLE_ATTEMPTS). */
+  errors: number;
 }
+
+/** A comment or DM thread that fails this many runs is set aside (S3 escalation) so it never blocks the queue. */
+export const MAX_HANDLE_ATTEMPTS = 3;
+
+/**
+ * Platforms with a comment-to-DM route (Zernio `private-reply`): Instagram only among ours (Facebook too, which we
+ * don't post to), one private reply per comment, within 7 days of the comment. TikTok, YouTube and Pinterest
+ * keyword comments get a public reply that points to the bio link instead.
+ */
+export const PRIVATE_REPLY_PLATFORMS: readonly Platform[] = ['instagram'];
+export const PRIVATE_REPLY_WINDOW_MS = 7 * DAY_MS;
 
 interface PersonaBits {
   studioId: string;
@@ -511,37 +563,33 @@ export async function handleComment(services: StudioServices, c: CommentRow, bit
   const { providers } = services;
   const now = services.now();
   const keywords = [...new Set([...(c.post_keyword ? [c.post_keyword] : []), ...bits.ctx.keywords.map((k) => k.keyword)])];
+  // Classify first, always: a crisis from someone the bot already paused must still reach the Owner.
   const cls = await classify(services, { studioId: bits.studioId, personaId: c.persona_id, text: c.text, keywords, source: 'comment' });
   const base = { classification: cls.cls, severity: cls.severity, meta: { reason: cls.reason, ...(cls.keyword ? { keyword: cls.keyword } : {}) } };
   const userRef = c.author_ref ?? 'unknown';
   const canAct = !!c.post_external_id && !!c.external_id;
+  const paused = await isPaused(services, c.persona_id, c.platform, userRef);
 
-  if (await isPaused(services, c.persona_id, c.platform, userRef)) {
-    await setComment(services, c.id, { ...base, action: 'none', status: 'escalated', meta: { ...base.meta, paused: true } });
-    return;
-  }
-  // Spam and abuse: hide (threats also escalate S1).
-  if (cls.cls === 'spam' || cls.cls === 'abuse') {
-    let hidden = false;
-    if (canAct) hidden = (await providers.publish.hideComment({ externalId: c.post_external_id!, commentId: c.external_id! })).ok;
-    if (hidden) sum.hidden += 1;
-    if (cls.severity === 'S1') {
-      await pauseUser(services, c.persona_id, c.platform, userRef, cls.reason);
-      await escalate(services, { studioId: bits.studioId, personaId: c.persona_id, personaName: bits.name, sourceType: 'comment', sourceId: c.id, severity: 'S1', category: 'threat', summary: `Threatening comment on ${c.platform}: "${excerpt(c.text)}"` });
-      sum.escalated += 1;
-    }
-    await setComment(services, c.id, { ...base, action: 'hide', status: cls.severity === 'S1' ? 'escalated' : 'handled', meta: { ...base.meta, hidden } });
-    return;
-  }
-  // S1: crisis, minors, legal/press — stop replying to this person; crisis gets the approved helpline text only.
+  // S1: threats, crisis, minors, legal/press — stop replying to this person (the pause stays); crisis gets the approved
+  // helpline text only; threats are hidden. Always escalated and alerted, paused person or not.
   if (cls.severity === 'S1') {
-    await pauseUser(services, c.persona_id, c.platform, userRef, cls.cls);
+    let hidden = false;
+    if (cls.threat && canAct) hidden = (await providers.publish.hideComment({ externalId: c.post_external_id!, commentId: c.external_id! })).ok;
+    if (hidden) sum.hidden += 1;
+    await pauseUser(services, c.persona_id, c.platform, userRef, cls.threat ? cls.reason : cls.cls);
     let sent: string | null = null;
     if (cls.cls === 'crisis') {
       const text = await approvedCrisisText(services, bits.studioId);
       if (text && canAct) sent = (await providers.publish.replyToComment({ externalId: c.post_external_id!, commentId: c.external_id!, text })).id;
       if (!text) await proposeCrisisText(services, bits.studioId).catch((err) => (err instanceof ApprovalError ? null : Promise.reject(err)));
     }
+    const what = cls.threat
+      ? `Threatening comment on ${c.platform}:`
+      : cls.cls === 'crisis'
+        ? sent
+          ? 'Crisis comment: the approved helpline text was sent.'
+          : 'Crisis comment: no helpline text is approved yet, so nothing was sent.'
+        : `${cls.cls.replace('_', '/')} comment.`;
     await escalate(services, {
       studioId: bits.studioId,
       personaId: c.persona_id,
@@ -549,20 +597,41 @@ export async function handleComment(services: StudioServices, c: CommentRow, bit
       sourceType: 'comment',
       sourceId: c.id,
       severity: 'S1',
-      category: cls.cls,
-      summary: `${cls.cls === 'crisis' ? (sent ? 'Crisis comment: the approved helpline text was sent.' : 'Crisis comment: no helpline text is approved yet, so nothing was sent.') : `${cls.cls.replace('_', '/')} comment.`} "${excerpt(c.text)}"`,
+      category: cls.threat ? 'threat' : cls.cls,
+      summary: `${what}${paused ? ' (This person was already paused.)' : ''} "${excerpt(c.text)}"`,
+      fresh: paused || cls.cls === 'crisis',
     });
     sum.escalated += 1;
-    await setComment(services, c.id, { ...base, action: sent ? 'helpline' : 'escalate', status: 'escalated', meta: { ...base.meta, ...(sent ? { reply_id: sent, replied_at: now.toISOString(), helpline: true } : {}) } });
+    await setComment(services, c.id, {
+      ...base,
+      action: cls.threat ? 'hide' : sent ? 'helpline' : 'escalate',
+      status: 'escalated',
+      meta: { ...base.meta, ...(cls.threat ? { hidden } : {}), ...(paused ? { paused: true } : {}), ...(sent ? { reply_id: sent, replied_at: now.toISOString(), helpline: true } : {}) },
+    });
+    return;
+  }
+  if (paused) {
+    await setComment(services, c.id, { ...base, action: 'none', status: 'escalated', meta: { ...base.meta, paused: true } });
+    return;
+  }
+  // Spam and abuse: hide.
+  if (cls.cls === 'spam' || cls.cls === 'abuse') {
+    let hidden = false;
+    if (canAct) hidden = (await providers.publish.hideComment({ externalId: c.post_external_id!, commentId: c.external_id! })).ok;
+    if (hidden) sum.hidden += 1;
+    await setComment(services, c.id, { ...base, action: 'hide', status: 'handled', meta: { ...base.meta, hidden } });
     return;
   }
 
   const budget = await budgetLeft(services, c.persona_id, c.post_id);
-  // Keyword / purchase intent → DM with the link (Zernio comment-to-DM), then a short public reply.
-  let dmSent = false;
+  // Keyword / purchase intent → on Instagram, a private reply (comment-to-DM) with the link, then a short public reply.
+  // Elsewhere (no comment-to-DM route) and outside the 7-day window, the public reply points to the bio link.
+  const meta = c.action_meta ?? {};
+  let dmSent = typeof meta.dm_id === 'string';
   // Only DM people who asked: a keyword comment or an explicit request for the link (community-reply-style).
   const wantsDm = !!cls.keyword || /\b(?:link|send|dm me|where (?:can|do) i (?:buy|get|find))\b/i.test(c.text);
-  if (cls.cls === 'purchase_intent' && canAct && wantsDm) {
+  const dmRoute = PRIVATE_REPLY_PLATFORMS.includes(c.platform) && now.getTime() - new Date(c.created_at).getTime() <= PRIVATE_REPLY_WINDOW_MS;
+  if (cls.cls === 'purchase_intent' && canAct && wantsDm && dmRoute && !dmSent && !meta.dm_unavailable) {
     if (budget.dms <= 0) {
       sum.deferred += 1;
       await setComment(services, c.id, { ...base, meta: { ...base.meta, deferred: 'dm budget' } });
@@ -572,11 +641,15 @@ export async function handleComment(services: StudioServices, c: CommentRow, bit
     const dmText = cls.keyword ? `Here's the ${cls.keyword} link you asked for: ${link}` : `Here's the link: ${link}`;
     const g = await gatedText(services, { studioId: bits.studioId, personaId: c.persona_id, incoming: c.text, text: dmText, subjectId: c.id, fallback: null });
     if (g.text) {
-      const accountRef = vendorRef(c.handle ? { token_ref: c.token_ref, handle: c.handle } : null) ?? 'unknown';
-      const dm = await providers.publish.sendDm({ accountRef, userRef, text: g.text });
-      dmSent = true;
-      sum.dmsSent += 1;
-      await setComment(services, c.id, { meta: { dm_id: dm.id, dm_at: now.toISOString(), link } });
+      const dm = await providers.publish.sendPrivateReply({ externalId: c.post_external_id!, commentId: c.external_id!, text: g.text });
+      if (dm.id) {
+        dmSent = true;
+        sum.dmsSent += 1;
+        await setComment(services, c.id, { meta: { dm_id: dm.id, dm_at: now.toISOString(), link } });
+      } else {
+        // Already used (one private reply per comment), expired or unsupported: never retried.
+        await setComment(services, c.id, { meta: { dm_unavailable: dm.reason ?? 'unavailable' } });
+      }
     }
   }
   if (cls.severity === 'S2') {
@@ -624,17 +697,21 @@ interface ThreadRow {
   id: string;
   persona_id: string;
   platform: Platform;
+  external_id: string | null;
   user_ref: string | null;
   status: string;
   messages: Array<{ id: string; direction: 'in' | 'out'; text: string; at: string; bot?: boolean }>;
   last_handled_at: Date | null;
+  meta: Record<string, unknown> | null;
   token_ref: string | null;
   handle: string | null;
 }
 
+/** Sends into the existing conversation (Zernio can't start a DM on Instagram or TikTok). */
 async function sendThreadDm(services: StudioServices, t: ThreadRow, text: string, kind: string): Promise<string> {
   const accountRef = vendorRef(t.handle ? { token_ref: t.token_ref, handle: t.handle } : null) ?? 'unknown';
-  const res = await services.providers.publish.sendDm({ accountRef, userRef: t.user_ref ?? 'unknown', text });
+  if (!t.external_id) throw new Error(`dm thread ${t.id} has no conversation id`);
+  const res = await services.providers.publish.sendDm({ accountRef, userRef: t.user_ref ?? 'unknown', threadRef: t.external_id, text });
   const entry = { id: res.id, direction: 'out', text, at: services.now().toISOString(), bot: true, kind };
   await services.db.query(`UPDATE dm_thread SET messages = messages || $2::jsonb, last_message_at = $3 WHERE id = $1`, [t.id, json([entry]), services.now()]);
   return res.id;
@@ -650,13 +727,13 @@ export async function handleThread(services: StudioServices, t: ThreadRow, bits:
               needs_handling = $5, last_handled_at = CASE WHEN $5 THEN last_handled_at ELSE $6 END WHERE id = $1`,
       [t.id, fields.classification ?? null, fields.status ?? null, fields.paused ?? null, fields.keepNeeds ?? false, now],
     );
-  if (t.status !== 'open') return void (await done({}));
   const userRef = t.user_ref ?? 'unknown';
-  if (await isPaused(services, t.persona_id, t.platform, userRef)) return void (await done({ status: 'bot_paused', paused: 'escalated earlier' }));
   const since = t.last_handled_at ? new Date(t.last_handled_at).getTime() : 0;
   const fresh = t.messages.filter((m) => m.direction === 'in' && new Date(m.at).getTime() > since);
   if (!fresh.length) return void (await done({}));
+  const paused = t.status !== 'open' || (await isPaused(services, t.persona_id, t.platform, userRef));
   const text = fresh.map((m) => m.text).join('\n').slice(-1500);
+  // Classify before the pause short-circuit: a crisis from a paused person still reaches the Owner.
   const cls = await classify(services, { studioId: bits.studioId, personaId: t.persona_id, text, keywords: bits.ctx.keywords.map((k) => k.keyword), source: 'dm' });
 
   if (cls.severity === 'S1') {
@@ -672,7 +749,7 @@ export async function handleThread(services: StudioServices, t: ThreadRow, bits:
       }
     }
     await pauseUser(services, t.persona_id, t.platform, userRef, cls.cls);
-    await done({ classification: cls.cls, status: 'bot_paused', paused: cls.threat ? 'threat' : cls.cls });
+    await done({ classification: cls.cls, status: t.status === 'open' ? 'bot_paused' : undefined, paused: cls.threat ? 'threat' : cls.cls });
     await escalate(services, {
       studioId: bits.studioId,
       personaId: t.persona_id,
@@ -681,11 +758,13 @@ export async function handleThread(services: StudioServices, t: ThreadRow, bits:
       sourceId: t.id,
       severity: 'S1',
       category: cls.threat ? 'threat' : cls.cls,
-      summary: `${cls.cls === 'crisis' ? (sent ? 'Crisis DM: the approved helpline text was sent; the thread is paused.' : 'Crisis DM: no helpline text is approved yet, nothing was sent; the thread is paused.') : `${cls.cls.replace('_', '/')} DM; the thread is paused.`} "${excerpt(text)}"`,
+      summary: `${cls.cls === 'crisis' ? (sent ? 'Crisis DM: the approved helpline text was sent; the thread is paused.' : 'Crisis DM: no helpline text is approved yet, nothing was sent; the thread is paused.') : `${cls.cls.replace('_', '/')} DM; the thread is paused.`}${paused ? ' (This person was already paused.)' : ''} "${excerpt(text)}"`,
+      fresh: paused || cls.cls === 'crisis',
     });
     sum.escalated += 1;
     return;
   }
+  if (paused) return void (await done(t.status === 'open' ? { status: 'bot_paused', paused: 'escalated earlier' } : {}));
   if (cls.cls === 'spam' || cls.cls === 'abuse') return void (await done({ classification: cls.cls }));
 
   const budget = await budgetLeft(services, t.persona_id, null);
@@ -725,14 +804,48 @@ export async function handleThread(services: StudioServices, t: ThreadRow, bits:
   await done({ classification: cls.cls });
 }
 
-/** community.handle: new comments and DM threads of one persona, oldest first, within the budgets. */
+/**
+ * A comment or thread that threw: count the attempt and, after MAX_HANDLE_ATTEMPTS, set it aside with an S3
+ * escalation so it never blocks the persona's queue (newer comments, crisis handling, DM threads).
+ */
+async function recordHandleError(services: StudioServices, bits: PersonaBits, item: { type: 'comment' | 'dm_thread'; id: string; personaId: string; platform: string; text: string; meta: Record<string, unknown> | null }, err: unknown): Promise<void> {
+  const attempts = (Number(item.meta?.attempts) || 0) + 1;
+  const error = errorText(err).slice(0, 300);
+  const giveUp = attempts >= MAX_HANDLE_ATTEMPTS;
+  if (item.type === 'comment') {
+    await setComment(services, item.id, giveUp ? { action: 'none', status: 'escalated', meta: { error, attempts, set_aside: true } } : { meta: { error, attempts } });
+  } else {
+    await services.db.query(`UPDATE dm_thread SET meta = meta || $2::jsonb, needs_handling = CASE WHEN $3 THEN false ELSE needs_handling END WHERE id = $1`, [item.id, json({ error, attempts, ...(giveUp ? { set_aside: true } : {}) }), giveUp]);
+  }
+  if (giveUp) {
+    await escalate(services, {
+      studioId: bits.studioId,
+      personaId: item.personaId,
+      personaName: bits.name,
+      sourceType: item.type,
+      sourceId: item.id,
+      severity: 'S3',
+      category: 'handling_error',
+      summary: `The community worker failed ${attempts} times on this ${item.type === 'comment' ? 'comment' : 'DM thread'} (${item.platform}) and set it aside: ${error}. "${excerpt(item.text)}"`,
+    }).catch(() => undefined);
+  }
+}
+
+/** A budget stop or a deferral is about the whole run, not one item: it ends the run and isn't counted against the item. */
+const systemic = (err: unknown): boolean => err instanceof BudgetExceededError || err instanceof DeferJob;
+
+/**
+ * community.handle: new comments and DM threads of one persona, oldest first, within the budgets. One failing item
+ * never blocks the rest: its error is recorded and the loop continues; the run throws only when every item failed.
+ */
 export async function handleCommunity(services: StudioServices, personaId: string, opts: { limit?: number } = {}): Promise<HandleSummary> {
   const { db } = services;
-  const sum: HandleSummary = { comments: 0, dms: 0, replies: 0, dmsSent: 0, hidden: 0, escalated: 0, deferred: 0, held: 0 };
+  const sum: HandleSummary = { comments: 0, dms: 0, replies: 0, dmsSent: 0, hidden: 0, escalated: 0, deferred: 0, held: 0, errors: 0 };
   const bits = await personaBits(services, personaId);
   const limit = opts.limit ?? 50;
+  let firstError: unknown = null;
   const comments = await db.query<CommentRow>(
-    `SELECT c.id, c.persona_id, c.post_id, c.platform, c.external_id, c.author_ref, c.text, po.external_id AS post_external_id,
+    `SELECT c.id, c.persona_id, c.post_id, c.platform, c.external_id, c.author_ref, c.text, c.created_at, c.action_meta, po.external_id AS post_external_id,
             COALESCE(po.meta->>'cta_keyword', s.cta_keyword) AS post_keyword, a.token_ref, a.handle
        FROM comment c
        LEFT JOIN post po ON po.id = c.post_id
@@ -747,23 +860,35 @@ export async function handleCommunity(services: StudioServices, personaId: strin
       await handleComment(services, c, bits, sum);
       sum.comments += 1;
     } catch (err) {
-      await setComment(services, c.id, { meta: { error: errorText(err) } });
-      throw err;
+      if (systemic(err)) throw err;
+      sum.errors += 1;
+      firstError ??= err;
+      await recordHandleError(services, bits, { type: 'comment', id: c.id, personaId, platform: c.platform, text: c.text, meta: c.action_meta }, err);
     }
   }
   const threads = await db.query<ThreadRow>(
-    `SELECT t.id, t.persona_id, t.platform, t.user_ref, t.status, t.messages, t.last_handled_at, a.token_ref, a.handle
+    `SELECT t.id, t.persona_id, t.platform, t.external_id, t.user_ref, t.status, t.messages, t.last_handled_at, t.meta, a.token_ref, a.handle
        FROM dm_thread t LEFT JOIN account a ON a.id = t.account_id
       WHERE t.persona_id = $1 AND t.needs_handling ORDER BY t.last_message_at NULLS FIRST LIMIT $2`,
     [personaId, limit],
   );
   for (const t of threads) {
-    await handleThread(services, t, bits, sum);
-    sum.dms += 1;
+    try {
+      await handleThread(services, t, bits, sum);
+      sum.dms += 1;
+    } catch (err) {
+      if (systemic(err)) throw err;
+      sum.errors += 1;
+      firstError ??= err;
+      const last = t.messages.filter((m) => m.direction === 'in').at(-1)?.text ?? '';
+      await recordHandleError(services, bits, { type: 'dm_thread', id: t.id, personaId, platform: t.platform, text: last, meta: t.meta }, err);
+    }
   }
-  if (sum.replies + sum.dmsSent + sum.hidden + sum.escalated > 0) {
+  if (sum.replies + sum.dmsSent + sum.hidden + sum.escalated + sum.errors > 0) {
     await audit(db, { studioId: bits.studioId, personaId, actor: COMMUNITY_ACTOR, action: 'community.handled', entityType: 'persona', entityId: personaId, data: { ...sum } });
   }
+  // Every item failed (e.g. the vendor is down): fail the job so it retries with backoff.
+  if (firstError && sum.errors === comments.length + threads.length) throw firstError;
   return sum;
 }
 

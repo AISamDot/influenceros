@@ -1,12 +1,13 @@
 import { join } from 'node:path';
 import { loadPersonaKit, type StudioServices } from '@ios/agents';
 import { loadPersonaContext, type PersonaContext } from '@ios/content';
+import { BudgetExceededError, notify } from '@ios/core';
 import { json } from '@ios/db';
 import { readLaunchDoc } from '@ios/core/seed';
-import { GEN_RESOLUTION, mediaModels } from './config';
+import { ELEVENLABS_DESIGN_USD, GEN_RESOLUTION, mediaModels } from './config';
 import type { MediaDeps } from './deps';
 import { extFor, materialize, storeAsset } from './files';
-import { estimateCredits, hfSpend, type SpendScope } from './spend';
+import { estimateCredits, hfSpend, type SpendScope, usdSpend } from './spend';
 import { type ColorGrade, gradeFromKit } from './toolkit';
 
 /**
@@ -83,6 +84,9 @@ export function voiceDescription(ctx: PersonaContext): string {
   return `${ctx.persona.name}, an English-speaking ${ctx.persona.niche} creator. ${timbre ? `${timbre}. ` : ''}Delivery: ${ctx.voice.energy || 'warm and clear'}, about ${ctx.voice.wpm} words per minute. Natural, close-mic, no music.`.slice(0, 900);
 }
 
+/** Soul ID training failures before the daily prepare stops retrying (the Owner retries by hand). */
+export const SOUL_ID_MAX_FAILURES = 3;
+
 /**
  * Ensures the profile has a grade, a voice and (with `soul`) a Soul ID plus a face reference. Idempotent: each step
  * runs once and is stored before the next; paid steps go through the governor (a cap defers the caller's job).
@@ -91,7 +95,7 @@ export async function ensureProfile(
   services: StudioServices,
   deps: MediaDeps,
   scope: SpendScope,
-  opts: { soul: boolean; voice: boolean },
+  opts: { soul: boolean; voice: boolean; retrySoul?: boolean },
 ): Promise<MediaProfile> {
   const { db } = services;
   const personaId = scope.personaId;
@@ -110,22 +114,59 @@ export async function ensureProfile(
   const context = async () => (ctx ??= await loadPersonaContext(db, personaId));
 
   if (opts.voice && !row.voice_id) {
-    const { voiceId } = await services.providers.voice.designVoice({ description: voiceDescription(await context()) });
+    const voice = services.providers.voice;
+    const description = voiceDescription(await context());
+    // ElevenLabs voice design generates paid previews: metered with an estimate. Higgsfield presets are free.
+    const { voiceId } =
+      voice.name === 'elevenlabs'
+        ? await usdSpend(services, scope, { operation: 'voice_design', provider: voice.name, estimate: ELEVENLABS_DESIGN_USD }, async () => ({ ...(await voice.designVoice({ description })), costUsd: ELEVENLABS_DESIGN_USD }))
+        : await voice.designVoice({ description });
     row = await db.one<Row>(`UPDATE media_profile SET voice_id = $2, voice_provider = $3, updated_at = now() WHERE persona_id = $1 RETURNING *`, [personaId, voiceId, services.providers.voice.name]);
   }
 
+  if (opts.soul && row.soul_status === 'failed' && !opts.retrySoul) {
+    throw new Error(`Soul ID training failed ${SOUL_ID_MAX_FAILURES} times for this persona; it waits for the Owner to retry (each try buys new stills)`);
+  }
   if (opts.soul && row.soul_status !== 'ready') {
     const c = await context();
     const prompts = lookPromptsFor(c, readLaunchDoc(c.persona.slug, 'lookPrompts'));
     const models = mediaModels();
     const hf = services.providers.imageVideo;
-    const soul = await hfSpend(
-      services,
-      scope,
-      { operation: 'soul_id', model: models.soul, extraEstimate: prompts.length * (await estimateCredits(db, { operation: 'still', model: models.soul })) },
-      () => hf.createSoulId({ name: c.persona.name, referenceImageUrls: [], prompts }),
+    let soul: { soulId: string };
+    try {
+      soul = await hfSpend(
+        services,
+        scope,
+        { operation: 'soul_id', model: models.soul, extraEstimate: prompts.length * (await estimateCredits(db, { operation: 'still', model: models.soul })) },
+        () => hf.createSoulId({ name: c.persona.name, referenceImageUrls: [], prompts }),
+      );
+    } catch (err) {
+      if (err instanceof BudgetExceededError) throw err;
+      // Every failed try buys new character-sheet stills: after SOUL_ID_MAX_FAILURES the daily prepare stops retrying
+      // and the Owner is told.
+      const failures = (Number((row.meta as Record<string, unknown> | null)?.soul_failures) || 0) + 1;
+      const failed = failures >= SOUL_ID_MAX_FAILURES;
+      await db.query(
+        `UPDATE media_profile SET meta = meta || $2::jsonb, soul_status = CASE WHEN $3 THEN 'failed' ELSE soul_status END, updated_at = now() WHERE persona_id = $1`,
+        [personaId, json({ soul_failures: failures, soul_error: (err instanceof Error ? err.message : String(err)).slice(0, 300) }), failed],
+      );
+      if (failed) {
+        await notify(db, {
+          studioId: scope.studioId,
+          personaId,
+          kind: 'system',
+          severity: 'warn',
+          title: `Soul ID training failed ${failures} times: ${c.persona.name}`.slice(0, 160),
+          body: `The daily media prepare stopped retrying (each try buys new stills). Last error: ${(err instanceof Error ? err.message : String(err)).slice(0, 300)}`,
+          link: `/personas/${c.persona.slug}`,
+        });
+      }
+      throw err;
+    }
+    row = await db.one<Row>(
+      `UPDATE media_profile SET soul_id = $2, soul_status = 'ready', look_prompts = $3::jsonb, meta = meta - 'soul_failures' - 'soul_error', updated_at = now() WHERE persona_id = $1 RETURNING *`,
+      [personaId, soul.soulId, json(prompts)],
     );
-    row = await db.one<Row>(`UPDATE media_profile SET soul_id = $2, soul_status = 'ready', look_prompts = $3::jsonb, updated_at = now() WHERE persona_id = $1 RETURNING *`, [personaId, soul.soulId, json(prompts)]);
   }
 
   if (opts.soul && row.soul_id && !row.reference_key) {

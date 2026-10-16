@@ -18,6 +18,7 @@ import {
   targetPlatforms,
   TITLE_MAX,
 } from './platforms';
+import { recordTakedown } from './anomalies';
 import { asRecord, asString, HOUR_MS, SYSTEM_PUBLISHER, UUID_RE } from './util';
 
 /**
@@ -81,7 +82,46 @@ export function parsePreparePayload(raw: Record<string, unknown>): PublishPrepar
     aiGenerated: true,
     q4ReportId: asString(p.q4ReportId),
     ...(p.trendingSound === true ? { trendingSound: true } : {}),
+    ...(asRecord(p.qcOverride).approvalId && UUID_RE.test(asString(asRecord(p.qcOverride).approvalId))
+      ? { qcOverride: { approvalId: asString(asRecord(p.qcOverride).approvalId), reason: asString(asRecord(p.qcOverride).reason), stage: asString(asRecord(p.qcOverride).stage) } }
+      : {}),
   };
+}
+
+/**
+ * The Owner-only "publish anyway" card for a post whose QC failed on majors only (FR-21.5/21.6): the QC report, the
+ * failing checks with their timestamps or frames, and the publish.prepare payload to run with the override. One open
+ * card per slot.
+ */
+export async function proposeQcOverride(
+  services: StudioServices,
+  c: {
+    studioId: string;
+    personaId: string;
+    title: string;
+    stage: 'Q4' | 'post_Q4';
+    reportId: string | null;
+    failing: Array<{ check: string; severity: string; message: string; location?: string | null; platform?: string }>;
+    prepare: PublishPreparePayload;
+    thumbnailUrl: string | null;
+  },
+): Promise<string | null> {
+  if (c.failing.some((f) => f.severity === 'blocker')) return null;
+  const open = await services.db.maybeOne<{ id: string }>(`SELECT id FROM approval WHERE kind = 'qc_override' AND status = 'pending' AND payload->'prepare'->>'slotId' = $1`, [c.prepare.slotId]);
+  if (open) return open.id;
+  const { qcOverride: _old, ...prepare } = c.prepare;
+  const a = await propose(services.db, {
+    studioId: c.studioId,
+    personaId: c.personaId,
+    kind: 'qc_override',
+    title: c.title.slice(0, 200),
+    summary: `QC failed on majors only after the fix loops: ${c.failing.map((f) => `${f.platform ? `${f.platform}: ` : ''}${f.message}`).join('; ')}`.slice(0, 900),
+    payload: { stage: c.stage, report_id: c.reportId, failing: c.failing.slice(0, 20), prepare, ...(c.thumbnailUrl ? { thumbnail_url: c.thumbnailUrl } : {}) },
+    subjectType: 'calendar_slot',
+    subjectId: c.prepare.slotId,
+    proposedBy: SYSTEM_PUBLISHER,
+  });
+  return a.id;
 }
 
 async function loadSlot(services: StudioServices, slotId: string): Promise<SlotRow> {
@@ -95,7 +135,7 @@ async function loadSlot(services: StudioServices, slotId: string): Promise<SlotR
 
 export interface PrepareResult {
   slotId: string;
-  posts: Array<{ postId: string; platform: Platform; status: string; gate?: string; q4?: boolean; approvalId?: string | null; reason?: string }>;
+  posts: Array<{ postId: string; platform: Platform; status: string; gate?: string; q4?: boolean; approvalId?: string | null; reason?: string; majorsOnly?: boolean; reportId?: string; checks?: QcCheck[] }>;
   skipped: Platform[];
   slotStatus: string;
 }
@@ -183,11 +223,11 @@ export async function preparePublish(services: StudioServices, payload: PublishP
       out.push({ postId: post.id, platform, status: post.status });
       continue;
     }
-    const q4 = await postQ4(services, post.id);
+    const q4 = await postQ4(services, post.id, { override: payload.qcOverride ?? null });
     if (!q4.pass) {
       const reason = `post Q4: ${q4.checks.filter((c) => !c.pass && c.severity !== 'minor').map((c) => c.message).join('; ')}`;
       await db.query(`UPDATE post SET status = 'blocked', meta = meta || $2::jsonb, updated_at = now() WHERE id = $1`, [post.id, json({ blocked_reason: reason.slice(0, 500) })]);
-      out.push({ postId: post.id, platform, status: 'blocked', q4: false, reason });
+      out.push({ postId: post.id, platform, status: 'blocked', q4: false, reason, majorsOnly: q4.majorsOnly, reportId: q4.reportId, checks: q4.checks });
       continue;
     }
     const gate = await gatePost(services, post.id);
@@ -224,6 +264,20 @@ export async function preparePublish(services: StudioServices, payload: PublishP
   if (!passing.length) {
     const reason = out.map((p) => `${p.platform}: ${p.reason ?? p.status}`).join(' | ').slice(0, 500);
     await db.query(`UPDATE calendar_slot SET status = 'blocked', block_reason = $2, stage_changed_at = $3 WHERE id = $1`, [slot.id, reason, now]);
+    // Post QC failed on majors only (no blocker, no Gate red): the Owner can publish anyway, with a reason (FR-21.6).
+    const q4Majors = out.filter((p) => p.q4 === false);
+    if (q4Majors.length && q4Majors.length === out.length && q4Majors.every((p) => p.majorsOnly) && !payload.qcOverride) {
+      await proposeQcOverride(services, {
+        studioId: slot.studio_id,
+        personaId: slot.persona_id,
+        title: `${slot.persona_name}: publish "${slot.title}" anyway?`,
+        stage: 'post_Q4',
+        reportId: q4Majors[0]!.reportId ?? null,
+        failing: q4Majors.flatMap((p) => (p.checks ?? []).filter((c) => !c.pass && c.severity !== 'minor').map((c) => ({ platform: p.platform, check: c.check, severity: c.severity, message: c.message, location: c.location ?? null }))),
+        prepare: payload,
+        thumbnailUrl: payload.cover?.url ?? null,
+      });
+    }
     await notify(db, {
       studioId: slot.studio_id,
       personaId: slot.persona_id,
@@ -273,7 +327,7 @@ interface PostForQc {
  * sizes and being stored. Blockers and majors fail it; minors are reported only. Writes qc_report (subject 'post',
  * stage Q4) and a qc_defect per failure.
  */
-export async function postQ4(services: StudioServices, postId: string): Promise<{ pass: boolean; checks: QcCheck[]; reportId: string }> {
+export async function postQ4(services: StudioServices, postId: string, q4opts: { override?: { approvalId: string; reason: string } | null } = {}): Promise<{ pass: boolean; checks: QcCheck[]; reportId: string; majorsOnly: boolean }> {
   const { db } = services;
   const post = await db.one<PostForQc>(`SELECT id, persona_id, platform, format, caption, media, thumbnail_url, ai_flag, meta FROM post WHERE id = $1`, [postId]);
   const caption = post.caption ?? '';
@@ -322,10 +376,14 @@ export async function postQ4(services: StudioServices, postId: string): Promise<
     add('cta', has, 'major', has ? `CTA keyword "${keyword}" in the caption.` : `CTA keyword "${keyword}" is missing from the caption.`);
   }
 
-  const pass = !checks.some((c) => !c.pass && c.severity !== 'minor');
+  const blockers = checks.some((c) => !c.pass && c.severity === 'blocker');
+  const majors = checks.some((c) => !c.pass && c.severity === 'major');
+  // An Owner override (qc_override, with a reason) lets majors through; a blocker is never overridable.
+  const overridden = !!q4opts.override && majors && !blockers;
+  const pass = !blockers && (!majors || overridden);
   const report = await db.one<{ id: string }>(
     `INSERT INTO qc_report (persona_id, subject_type, subject_id, stage, score, pass, details) VALUES ($1, 'post', $2, 'Q4', $3, $4, $5::jsonb) RETURNING id`,
-    [post.persona_id, post.id, Math.round((checks.filter((c) => c.pass).length / checks.length) * 100), pass, json({ checks, kind: 'post_q4' })],
+    [post.persona_id, post.id, Math.round((checks.filter((c) => c.pass).length / checks.length) * 100), pass, json({ checks, kind: 'post_q4', ...(overridden ? { override: q4opts.override } : {}) })],
   );
   for (const c of checks.filter((x) => !x.pass)) {
     await db.query(`INSERT INTO qc_defect (qc_report_id, persona_id, type, severity, location, fix_action) VALUES ($1, $2, $3, $4, $5, $6)`, [
@@ -337,8 +395,8 @@ export async function postQ4(services: StudioServices, postId: string): Promise<
       c.message,
     ]);
   }
-  await db.query(`UPDATE post SET meta = meta || $2::jsonb WHERE id = $1`, [post.id, json({ q4_report_id: report.id })]);
-  return { pass, checks, reportId: report.id };
+  await db.query(`UPDATE post SET meta = meta || $2::jsonb WHERE id = $1`, [post.id, json({ q4_report_id: report.id, ...(overridden ? { qc_override: q4opts.override } : {}) })]);
+  return { pass, checks, reportId: report.id, majorsOnly: majors && !blockers };
 }
 
 /**
@@ -461,6 +519,11 @@ export async function enqueueDuePosts(services: StudioServices, now: Date = serv
 
 /** Applies a vendor post_status webhook: a live post is confirmed through the same recovery path (status + AI flag). */
 export async function applyPostStatus(services: StudioServices, externalId: string, status: 'live' | 'processing' | 'failed'): Promise<string | null> {
+  // A live post reported failed afterwards was taken down by the platform: circuit breaker (FR-17.2).
+  if (status === 'failed') {
+    const live = await services.db.maybeOne<{ id: string }>(`SELECT id FROM post WHERE external_id = $1 AND status = 'live'`, [externalId]);
+    if (live && (await recordTakedown(services, externalId))) return live.id;
+  }
   const post = await services.db.maybeOne<{ id: string }>(`SELECT id FROM post WHERE external_id = $1 AND status = 'publishing'`, [externalId]);
   if (!post || status === 'processing') return null;
   // Re-verify with the vendor rather than trusting the webhook body (URL and AI flag come from verify()).

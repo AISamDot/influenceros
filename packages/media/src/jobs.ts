@@ -155,6 +155,7 @@ export const schedules: readonly ScheduledTask[] = [
         `SELECT p.id FROM persona p LEFT JOIN media_profile m ON m.persona_id = p.id
           WHERE p.state IN ('SETUP','TESTING','MONETISING','RE_ANGLE','SCALING','BRAND')
             AND (m.persona_id IS NULL OR m.soul_status <> 'ready' OR m.voice_id IS NULL OR COALESCE((m.meta->>'look_pack_done')::boolean, false) = false)
+            AND COALESCE(m.soul_status, 'none') <> 'failed'
           ORDER BY p.created_at LIMIT 20`,
       );
       let queued = 0;

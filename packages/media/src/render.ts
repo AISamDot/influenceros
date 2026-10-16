@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { enqueueOnceFor, loadPersonaKit, type MediaRenderPayload, PUBLISH_PREPARE_JOB, type PublishPreparePayload, type QcCheck, type RenderedMedia, type StudioServices } from '@ios/agents';
 import { loadPersonaContext, type PersonaContext, saveQcReport, voiceCheck } from '@ios/content';
-import { BudgetExceededError, DeferJob, notify, type PostFormat } from '@ios/core';
+import { BudgetExceededError, DeferJob, notify, type PostFormat, propose } from '@ios/core';
 import { json } from '@ios/db';
 import {
   ACTIVITY_LOOP_S,
@@ -12,6 +12,7 @@ import {
   EXPORT,
   FAL_AVATAR_USD_PER_S,
   GEN_RESOLUTION,
+  higgsfieldTtsCredits,
   MAX_MEDIA_FIX_LOOPS,
   mediaModels,
   TALK_CLIP_MAX_S,
@@ -166,6 +167,30 @@ export async function renderSlot(services: StudioServices, payload: MediaRenderP
   }
 }
 
+/**
+ * The Owner-only "publish anyway" card for a render whose Q4 failed on majors only after the fix loops (FR-21.5/21.6):
+ * the Q4 report, the failing checks with timestamps, and the publish.prepare payload. One open card per slot.
+ */
+async function proposeMediaOverride(
+  services: StudioServices,
+  c: { studioId: string; personaId: string; title: string; reportId: string; failing: Array<{ check: string; severity: string; message: string; location: string | null }>; prepare: PublishPreparePayload; thumbnailUrl: string },
+): Promise<string> {
+  const open = await services.db.maybeOne<{ id: string }>(`SELECT id FROM approval WHERE kind = 'qc_override' AND status = 'pending' AND payload->'prepare'->>'slotId' = $1`, [c.prepare.slotId]);
+  if (open) return open.id;
+  const a = await propose(services.db, {
+    studioId: c.studioId,
+    personaId: c.personaId,
+    kind: 'qc_override',
+    title: c.title.slice(0, 200),
+    summary: `Q4 failed on majors only after ${MAX_MEDIA_FIX_LOOPS} fix loops: ${c.failing.map((f) => `${f.message}${f.location ? ` (${f.location})` : ''}`).join('; ')}`.slice(0, 900),
+    payload: { stage: 'Q4', report_id: c.reportId, failing: c.failing.slice(0, 20), prepare: c.prepare, thumbnail_url: c.thumbnailUrl },
+    subjectType: 'calendar_slot',
+    subjectId: c.prepare.slotId,
+    proposedBy: { type: 'agent', id: 'video-producer' },
+  });
+  return a.id;
+}
+
 async function setSlot(services: StudioServices, slotId: string, status: string, extra: { blockReason?: string | null; thumbnailUrl?: string } = {}) {
   await services.db.query(
     `UPDATE calendar_slot SET status = $2, block_reason = $3, thumbnail_url = COALESCE($4, thumbnail_url), stage_changed_at = $5 WHERE id = $1`,
@@ -242,7 +267,7 @@ class Render {
         await this.generate();
         continue;
       }
-      if (this.p.format === 'talking' && !this.state.q3ReportId) {
+      if (this.q3Targets().length && !this.state.q3ReportId) {
         await this.q3();
         continue;
       }
@@ -263,9 +288,11 @@ class Render {
     const profile = this.profile!;
     const text = this.p.voiceover!;
     const voice = this.services.providers.voice;
-    const tts = await usdSpend(this.services, this.scope, { operation: 'tts', provider: voice.name, estimate: Math.max(0.001, text.length * ELEVENLABS_USD_PER_CHAR * 1.2) }, () =>
-      voice.tts({ voiceId: profile.voiceId!, text }),
-    );
+    // Higgsfield TTS bills credits (hf_credits); ElevenLabs bills USD (media_usd).
+    const tts =
+      voice.name === 'higgsfield-tts'
+        ? await hfSpend(this.services, this.scope, { operation: 'tts', model: mediaModels().tts, provider: voice.name, estimate: higgsfieldTtsCredits(text.length) }, () => voice.tts({ voiceId: profile.voiceId!, text }))
+        : await usdSpend(this.services, this.scope, { operation: 'tts', provider: voice.name, estimate: Math.max(0.001, text.length * ELEVENLABS_USD_PER_CHAR * 1.2) }, () => voice.tts({ voiceId: profile.voiceId!, text }));
     const v = (this.state.version = (this.state.version ?? 0) + 1);
     const file = await materialize(this.services, this.deps.toolkit, tts.url, join(this.dir, `voice-${v}.mp3`), { kind: 'audio', durationS: tts.durationS });
     const a = await storeAsset(this.services, {
@@ -446,6 +473,20 @@ class Render {
 
   // ───────────────────────────── Q3 ─────────────────────────────
 
+  /**
+   * What Q3 checks (FR-5.1, FR-21.3): talking clips, and on every other format each generation that shows the
+   * persona (Soul ID stills and the clips made from them). No-people cutaways and carousel covers are skipped.
+   */
+  private q3Targets(): Array<{ ref: string; kind: 'image' | 'video'; freezes: boolean }> {
+    if (this.p.format === 'talking') return this.talkParts().map((t) => ({ ref: t.ref, kind: 'video' as const, freezes: true }));
+    if (!this.profile?.soulId) return [];
+    const plan = this.plan();
+    const soul = new Set(plan.filter((i) => i.op === 'still' && i.useSoul).map((i) => i.key));
+    return plan
+      .filter((i) => soul.has(i.key) || (i.op === 'clip' && soul.has(i.from!)))
+      .map((i) => ({ ref: i.key, kind: i.op === 'still' ? ('image' as const) : ('video' as const), freezes: false }));
+  }
+
   private async q3() {
     await setSlot(this.services, this.p.slotId, 'q3');
     await this.save('q3');
@@ -454,23 +495,30 @@ class Render {
     const refKey = this.profile!.referenceKey;
     const refPath = refKey ? await localOf(this.services, refKey) : null;
     const clips: Q3Clip[] = [];
-    for (const t of this.talkParts()) {
+    const targets = this.q3Targets();
+    for (const t of targets) {
       const g = this.state.gen![t.ref]!;
       const file = await localOf(this.services, g.key);
-      const info = await toolkit.probe(file);
-      const analysis = await toolkit.analyze(file, { audio: false });
       const samples: Array<{ atS: number; faces: number; similarity: number | null }> = [];
+      if (t.kind === 'image') {
+        samples.push({ atS: 0, ...(refPath ? await face.compare(refPath, file) : { faces: 1, similarity: null }) });
+        clips.push({ ref: t.ref, samples, freezes: [] });
+        continue;
+      }
+      const info = await toolkit.probe(file);
+      const analysis = t.freezes ? await toolkit.analyze(file, { audio: false }) : null;
       for (const at of [0.5, Math.max(0.6, info.durationS / 2), Math.max(0.7, info.durationS - 0.6)]) {
         const { path: framePath } = await toolkit.frame(file, at, join(this.dir, `q3-${t.ref.replace(':', '-')}-${Math.round(at * 10)}`));
         samples.push({ atS: at, ...(refPath ? await face.compare(refPath, framePath) : { faces: 1, similarity: null }) });
       }
-      clips.push({ ref: t.ref, samples, freezes: analysis.freezes });
+      // Activity clips move slowly by design: only talking clips are checked for frozen frames.
+      clips.push({ ref: t.ref, samples, freezes: analysis?.freezes ?? [] });
     }
     const res = gradeQ3(clips, { hasReference: !!refPath });
     const reportId = await saveQcReport(this.services, {
       personaId: this.p.personaId,
       subjectType: 'asset',
-      subjectId: this.state.gen![this.talkParts()[0]!.ref]!.assetId,
+      subjectId: this.state.gen![targets[0]!.ref]!.assetId,
       stage: 'Q3',
       pass: res.pass,
       score: res.score,
@@ -484,7 +532,12 @@ class Render {
     }
     if (this.loop('q3') >= MAX_MEDIA_FIX_LOOPS) throw new Blocked(`Q3 avatar failed after ${MAX_MEDIA_FIX_LOOPS} regenerations: ${failing(res.checks)}`, reportId);
     this.row.loops.q3 = this.loop('q3') + 1;
-    for (const ref of res.redo) delete this.state.gen![ref];
+    // A redone still also redoes the clips made from it.
+    const plan = this.plan();
+    for (const ref of res.redo) {
+      delete this.state.gen![ref];
+      for (const i of plan) if (i.from === ref) delete this.state.gen![i.key];
+    }
     await this.save();
   }
 
@@ -706,7 +759,25 @@ class Render {
       },
     });
     if (!res.pass) {
-      if (this.loop('q4') >= MAX_MEDIA_FIX_LOOPS) throw new Blocked(`Q4 failed after ${MAX_MEDIA_FIX_LOOPS} fix loops: ${failing(res.checks)}`, reportId);
+      if (this.loop('q4') >= MAX_MEDIA_FIX_LOOPS) {
+        const reason = `Q4 failed after ${MAX_MEDIA_FIX_LOOPS} fix loops: ${failing(res.checks)}`;
+        // Majors only (no blocker): the Owner may publish anyway with a reason (FR-21.5/21.6). Blockers never.
+        const bad = res.checks.filter((c) => !c.pass && c.severity !== 'minor');
+        if (bad.length && !bad.some((c) => c.severity === 'blocker')) {
+          const h = await this.handover(fin, main, coverAt, cover, reportId);
+          await proposeMediaOverride(this.services, {
+            studioId: this.scope.studioId,
+            personaId: this.p.personaId,
+            title: `Publish "${this.title}" anyway?`,
+            reportId,
+            failing: bad.map((c) => ({ check: c.check, severity: c.severity, message: c.message, location: c.location ?? null })),
+            prepare: h.payload,
+            thumbnailUrl: h.coverUrl,
+          });
+          throw new Blocked(`${reason} (majors only: "publish anyway" is waiting in Approvals)`, reportId);
+        }
+        throw new Blocked(reason, reportId);
+      }
       this.row.loops.q4 = this.loop('q4') + 1;
       await this.applyFixes(res.fixes);
       await this.save();
@@ -714,6 +785,28 @@ class Render {
     }
 
     // Passed: cover on the board, hand over to distribution once.
+    const h = await this.handover(fin, main, coverAt, cover, reportId);
+    // The slot moves to final_gate before publish.prepare exists: a fast prepare (another worker) sets 'scheduled', and
+    // must never be overwritten back to final_gate.
+    await this.save('done', { coverAssetId: h.coverAssetId, q4ReportId: reportId, finalAssetId: fin.assetIds[0] });
+    await setSlot(this.services, this.p.slotId, 'final_gate', { thumbnailUrl: h.coverUrl });
+    const job = await enqueueOnceFor(
+      this.services.db,
+      { kind: PUBLISH_PREPARE_JOB, key: `slot:${this.p.slotId}`, payload: h.payload as unknown as Record<string, unknown>, studioId: this.scope.studioId, personaId: this.p.personaId, runAt: this.services.now() },
+      { ever: true },
+    );
+    return { slotId: this.p.slotId, status: 'final_gate', q4ReportId: reportId, publishJobId: job?.id ?? null, media: h.payload.media, loops: this.row.loops };
+  }
+
+  /** Stores the cover and builds the publish.prepare payload for the final media. */
+  private async handover(
+    fin: NonNullable<RenderState['final']>,
+    _main: string,
+    coverAt: number,
+    cover: { path: string; contentType: string },
+    reportId: string,
+  ): Promise<{ payload: PublishPreparePayload; coverAssetId: string; coverUrl: string }> {
+    const { toolkit } = this.deps;
     const coverAsset = await storeAsset(this.services, {
       personaId: this.p.personaId,
       scriptId: this.p.scriptId,
@@ -742,14 +835,7 @@ class Render {
       aiGenerated: true,
       q4ReportId: reportId,
     };
-    const job = await enqueueOnceFor(
-      this.services.db,
-      { kind: PUBLISH_PREPARE_JOB, key: `slot:${this.p.slotId}`, payload: payload as unknown as Record<string, unknown>, studioId: this.scope.studioId, personaId: this.p.personaId, runAt: this.services.now() },
-      { ever: true },
-    );
-    await this.save('done', { coverAssetId: coverAsset.id, q4ReportId: reportId, finalAssetId: fin.assetIds[0] });
-    await setSlot(this.services, this.p.slotId, 'final_gate', { thumbnailUrl: coverAsset.url });
-    return { slotId: this.p.slotId, status: 'final_gate', q4ReportId: reportId, publishJobId: job?.id ?? null, media: rendered, loops: this.row.loops };
+    return { payload, coverAssetId: coverAsset.id, coverUrl: coverAsset.url };
   }
 
   private async renderedMedia(ids: readonly string[], kind: 'video' | 'image'): Promise<RenderedMedia[]> {

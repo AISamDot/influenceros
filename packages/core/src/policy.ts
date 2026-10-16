@@ -28,6 +28,7 @@ export const OWNER_ONLY_KINDS: readonly ApprovalKind[] = [
   'plan_upgrade',
   'disclosure_change',
   'legal_text_change',
+  'qc_override',
 ];
 export const CARD_KINDS: readonly ApprovalKind[] = ['persona_launch', 'product_v1'];
 

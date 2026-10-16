@@ -1,4 +1,4 @@
-import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from 'node:fs';
+import { closeSync, linkSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { basename, dirname, relative, resolve } from 'node:path';
 
@@ -146,43 +146,152 @@ export function acquirePgliteLock(dataDir: string, opts: { role?: string; origin
     origin: opts.origin !== undefined ? opts.origin : defaults.origin,
     command: process.argv.slice(1).map((a) => basename(a)).join(' ').slice(0, 120),
   };
-  for (let attempt = 0; attempt < 3; attempt++) {
-    let fd: number;
-    try {
-      fd = openSync(path, 'wx', 0o600);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
-      const current = readLock(dataDir);
-      if (current && current.pid === process.pid) {
-        // Our own lock from an earlier open whose release we lost track of (e.g. a module reload): reuse it.
-        held.set(path, 1);
-        return once(() => release(path));
-      }
-      if (current && liveHolder(current)) throw new DbLockedError(path, current, lockedMessage(dataDir, current));
-      // Stale (crashed holder) or unreadable: take it over.
-      try {
-        unlinkSync(path);
-      } catch {
-        // someone else removed it first
-      }
-      continue;
+  const raw = JSON.stringify(info);
+  for (let attempt = 0; attempt < 50; attempt++) {
+    if (tryCreate(path, raw)) return acquired(path);
+    const current = readLock(dataDir);
+    if (current && current.pid === process.pid) {
+      // Our own lock from an earlier open whose release we lost track of (e.g. a module reload): reuse it.
+      held.set(path, 1);
+      return once(() => release(path));
     }
-    try {
-      writeSync(fd, JSON.stringify(info));
-    } finally {
-      closeSync(fd);
-    }
-    held.set(path, 1);
-    if (!exitHook) {
-      exitHook = true;
-      process.once('exit', () => {
-        for (const p of held.keys()) removeOwnLock(p);
-      });
-    }
-    return once(() => release(path));
+    if (current && liveHolder(current)) throw new DbLockedError(path, current, lockedMessage(dataDir, current));
+    // Stale (crashed holder) or unreadable. The takeover is serialized through `<lock>.takeover` (O_EXCL), and the
+    // holder re-checks the lock inside it, so two contenders can never both unlink-and-create: without the guard a slow
+    // process could unlink the fresh lock a faster one had just created, and both would open the data dir.
+    const outcome = takeOver(path, dataDir, raw);
+    if (outcome === 'acquired') return acquired(path);
+    if (outcome === 'busy') sleepMs(5 + Math.floor(Math.random() * 20));
   }
   const current = readLock(dataDir);
   throw new DbLockedError(path, current ?? info, current ? lockedMessage(dataDir, current) : `Couldn't take the database lock ${path}.`);
+}
+
+/** O_EXCL create with our record; false when the file exists. */
+function tryCreate(path: string, raw: string): boolean {
+  let fd: number;
+  try {
+    fd = openSync(path, 'wx', 0o600);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+    return false;
+  }
+  try {
+    writeSync(fd, raw);
+  } finally {
+    closeSync(fd);
+  }
+  return true;
+}
+
+function acquired(path: string): () => void {
+  held.set(path, 1);
+  if (!exitHook) {
+    exitHook = true;
+    process.once('exit', () => {
+      for (const p of held.keys()) removeOwnLock(p);
+    });
+  }
+  return once(() => release(path));
+}
+
+const guardPathFor = (path: string) => `${path}.takeover`;
+
+/**
+ * Replaces a stale lock while holding the takeover guard. 'acquired' = the lock is ours; 'retry' = the lock changed
+ * (someone else took it, or it went away), go round again; 'busy' = another process is taking over right now.
+ */
+function takeOver(path: string, dataDir: string, raw: string): 'acquired' | 'retry' | 'busy' {
+  const guard = guardPathFor(path);
+  if (!tryCreate(guard, JSON.stringify({ pid: process.pid, host: hostname(), startedAt: new Date().toISOString() }))) {
+    clearStaleGuard(guard);
+    return 'busy';
+  }
+  try {
+    // Re-check inside the guard: only a lock that is still stale is removed.
+    const current = readLock(dataDir);
+    if (current && (current.pid === process.pid || liveHolder(current))) return 'retry';
+    // Unreadable and fresh: its creator is between the O_EXCL create and the write. Never remove that one.
+    if (!current && ageMs(path) < HALF_WRITTEN_MS) return 'busy';
+    try {
+      unlinkSync(path);
+    } catch {
+      // already gone
+    }
+    return tryCreate(path, raw) ? 'acquired' : 'retry';
+  } finally {
+    try {
+      unlinkSync(guard);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+/**
+ * A guard left by a process that crashed mid-takeover. It is moved aside atomically (rename) and checked again; if the
+ * file moved was in fact a live guard (it changed between the read and the rename), it is put back with link(), which
+ * never overwrites.
+ */
+function clearStaleGuard(guard: string): void {
+  let pid: number | null = null;
+  let host = '';
+  try {
+    const g = JSON.parse(readFileSync(guard, 'utf8')) as { pid?: unknown; host?: unknown };
+    pid = typeof g.pid === 'number' ? g.pid : null;
+    host = typeof g.host === 'string' ? g.host : '';
+  } catch {
+    // unreadable or half-written: give its writer a moment; an old unreadable guard is a crash leftover
+    if (ageMs(guard) < HALF_WRITTEN_MS) return;
+  }
+  if ((pid !== null && host && host !== hostname()) || (pid !== null && processAlive(pid))) return;
+  const aside = `${guard}.${process.pid}.${Date.now()}`;
+  try {
+    renameSync(guard, aside);
+  } catch {
+    return;
+  }
+  try {
+    const moved = (() => {
+      try {
+        return JSON.parse(readFileSync(aside, 'utf8')) as { pid?: unknown };
+      } catch {
+        return {};
+      }
+    })();
+    const live = typeof moved.pid === 'number' ? moved.pid !== pid && processAlive(moved.pid) : ageMs(aside) < HALF_WRITTEN_MS;
+    if (live) {
+      try {
+        linkSync(aside, guard);
+      } catch {
+        // a new guard exists already
+      }
+    }
+  } catch {
+    // ignore
+  } finally {
+    try {
+      unlinkSync(aside);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+/** How long an unreadable lock or guard may be "being written" before it counts as a crash leftover. */
+const HALF_WRITTEN_MS = 2_000;
+
+function ageMs(path: string): number {
+  try {
+    return Date.now() - statSync(path).mtimeMs;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+/** Synchronous short sleep (lock acquisition is synchronous). */
+function sleepMs(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
 function release(path: string): void {

@@ -149,13 +149,14 @@ export class FakeHiggsfield extends Recorder implements ImageVideoProvider {
   async generateStill(req: { soulId?: string; prompt: string; aspect?: MediaAspect; model?: string; referenceImageUrls?: readonly string[]; resolution?: MediaResolution }): Promise<MediaResult> {
     const id = this.record('generateStill', req);
     const [w, h] = req.aspect === '1:1' ? [1080, 1080] : req.aspect === '4:5' ? [1080, 1350] : [1080, 1920];
-    return { jobId: `hf_${id}`, url: `https://fake.higgsfield.local/stills/${id}.png`, width: w, height: h, credits: higgsfieldCredits('still') };
+    // A Soul ID still shows the persona: its URL says so (/soul/), so fake QC can see a face on it.
+    return { jobId: `hf_${id}`, url: `https://fake.higgsfield.local/stills/${req.soulId ? 'soul/' : ''}${id}.png`, width: w, height: h, credits: higgsfieldCredits('still') };
   }
   async imageToVideo(req: { imageUrl: string; prompt: string; durationS: number; model?: string; resolution?: MediaResolution; aspect?: MediaAspect }): Promise<MediaResult> {
     const id = this.record('imageToVideo', req);
     return {
       jobId: `hf_${id}`,
-      url: `https://fake.higgsfield.local/clips/${id}.mp4`,
+      url: `https://fake.higgsfield.local/clips/${/\/soul\//.test(req.imageUrl) ? 'soul/' : ''}${id}.mp4`,
       width: 1080,
       height: 1920,
       durationS: req.durationS,
@@ -313,8 +314,23 @@ export class FakeZernio extends Recorder implements PublishProvider {
   async replyToComment(req: { externalId: string; commentId: string; text: string }) {
     return { id: `r_${this.record('replyToComment', req)}` };
   }
-  async sendDm(req: { accountRef: string; userRef: string; text: string }) {
+  /** Set to make every sendDm / sendPrivateReply throw (poison-item tests). */
+  failDms = false;
+  async sendDm(req: { accountRef: string; userRef: string; text: string; threadRef?: string }) {
+    if (this.failDms) throw new Error('fake zernio: dm 500');
+    // Mirrors Zernio: a DM can only go into an existing conversation.
+    if (!req.threadRef) throw new Error('fake zernio: sendDm needs a threadRef (no new conversations on Instagram/TikTok)');
     return { id: `dm_${this.record('sendDm', req)}` };
+  }
+  /** Comment ids that already got their one private reply. */
+  readonly privateReplied = new Set<string>();
+  async sendPrivateReply(req: { externalId: string; commentId: string; text: string }) {
+    if (this.failDms) throw new Error('fake zernio: private reply 500');
+    const platform = this.posts.get(req.externalId)?.req.platform;
+    if (platform && platform !== 'instagram') return { id: null, reason: 'unsupported' as const };
+    if (this.privateReplied.has(req.commentId)) return { id: null, reason: 'consumed' as const };
+    this.privateReplied.add(req.commentId);
+    return { id: `pr_${this.record('sendPrivateReply', req)}` };
   }
   // IOS-4 (stream F owns this fake's behaviour)
   async uploadMedia(req: { filePath: string; contentType: string }) {

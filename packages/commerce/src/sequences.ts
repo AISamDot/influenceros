@@ -4,7 +4,7 @@ import { loadPersonaContext, runGate, verdictOf } from '@ios/content';
 import { addMessage, findThread, type GateVerdict, notify } from '@ios/core';
 import type { Db } from '@ios/db';
 import { json } from '@ios/db';
-import { oneClickUnsubscribeUrl, ensureList, unsubscribeUrl } from './audience';
+import { oneClickUnsubscribeUrl, ensureList, syncPendingOptOuts, unsubscribeUrl } from './audience';
 import { renderEmail } from './render';
 import { getCommerceSettings } from './settings';
 import { sitePageUrl, publicEndpointUrl } from './sites';
@@ -432,7 +432,9 @@ export async function sendBroadcast(
     label: 'gate: broadcast',
   });
   const settings = await getCommerceSettings(db, p.studio_id);
-  const reason = g.verdict === 'red' ? 'gate_red' : !settings.physicalAddress ? 'physical_address' : undefined;
+  // Every opt-out must be in the provider's audience before a broadcast to it goes out.
+  const optOuts = await syncPendingOptOuts(services, { personaId: p.id });
+  const reason = g.verdict === 'red' ? 'gate_red' : !settings.physicalAddress ? 'physical_address' : optOuts.pending > 0 ? 'unsynced_unsubscribes' : undefined;
   const row = await db.one<{ id: string }>(
     `INSERT INTO email_broadcast (persona_id, subject, body, gate_verdict, gate_checks, status, created_by) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7) RETURNING id`,
     [p.id, subject, body, g.verdict, json(g.checks), reason ? 'blocked' : 'draft', args.createdBy],

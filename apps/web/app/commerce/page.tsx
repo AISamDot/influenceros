@@ -71,7 +71,7 @@ function ProductRow({ p, pack }: { p: ProductStoreRow; pack: Record<string, unkn
               defaultValue={p.checkout_url ?? ''}
               placeholder="https://…lemonsqueezy.com/buy/…"
               aria-label={`Checkout URL for ${p.name}`}
-              className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[12.5px]"
+              className="input min-w-0 flex-1"
             />
             <SubmitButton className="btn btn-sm">Save</SubmitButton>
           </form>
@@ -91,7 +91,10 @@ function ProductRow({ p, pack }: { p: ProductStoreRow; pack: Record<string, unkn
               <dt className="text-muted">files</dt>
               <dd>{Array.isArray(pack.files) ? (pack.files as Array<{ name: string }>).map((f) => f.name).join(', ') : ''}</dd>
               <dt className="text-muted">redirect</dt>
-              <dd>Thank-you page: /thanks/{String(pack.slug ?? p.slug)}</dd>
+              <dd className="break-all">
+                Thank-you page (paste as the redirect URL):{' '}
+                <code className="select-all">{personaSiteUrl(p.persona_slug, `/thanks/${String(pack.slug ?? p.slug)}`)}</code>
+              </dd>
             </dl>
           </details>
         ) : null}
@@ -179,11 +182,11 @@ export default async function CommercePage({ searchParams }: { searchParams: Pro
           <input type="hidden" name="action" value="settings" />
           <label className="grid gap-1 text-[12.5px]">
             <span className="font-medium">Physical postal address (email footer)</span>
-            <input name="physical_address" defaultValue={settings.physicalAddress ?? ''} placeholder="Studio name, street, city, country" className="rounded-lg border border-line bg-surface px-3 py-2 text-[13px]" />
+            <input name="physical_address" defaultValue={settings.physicalAddress ?? ''} placeholder="Studio name, street, city, country" className="input" />
           </label>
           <label className="grid gap-1 text-[12.5px]">
             <span className="font-medium">Sender domain</span>
-            <input name="sender_domain" defaultValue={settings.senderDomain ?? ''} placeholder="mail.yourstudio.com" className="rounded-lg border border-line bg-surface px-3 py-2 text-[13px]" />
+            <input name="sender_domain" defaultValue={settings.senderDomain ?? ''} placeholder="mail.yourstudio.com" className="input" />
           </label>
           <SubmitButton className="btn">Save</SubmitButton>
         </form>
@@ -227,7 +230,7 @@ export default async function CommercePage({ searchParams }: { searchParams: Pro
                       <form method="post" action="/api/commerce" className="flex gap-2">
                         <input type="hidden" name="action" value="link_store" />
                         <input type="hidden" name="persona_id" value={p.id} />
-                        <select name="store_id" defaultValue={p.store_id ?? ''} aria-label={`Store for ${p.name}`} className="rounded-lg border border-line bg-surface px-2 py-1.5 text-[12.5px]">
+                        <select name="store_id" defaultValue={p.store_id ?? ''} aria-label={`Store for ${p.name}`} className="input w-auto">
                           <option value="">Not linked</option>
                           {stores.map((s) => (
                             <option key={s.id} value={s.id}>

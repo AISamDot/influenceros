@@ -1,8 +1,14 @@
+import type { Metadata } from 'next';
 import { getCommerceSettings } from '@ios/commerce';
-import { SiteFooter, SiteHeader, SitePage, siteFor } from '@/components/site-shell';
+import { SiteFooter, siteFor, SiteHeader, SitePage, sitePageMetadata } from '@/components/site-shell';
 import { studioContext } from '@/lib/server';
 
 export const dynamic = 'force-dynamic';
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  return sitePageMetadata((await params).slug, 'Privacy');
+}
+
 
 /** Privacy notice for the persona's site, list and membership (FR-11.4). Plain and short. */
 export default async function PrivacyPage({ params }: { params: Promise<{ slug: string }> }) {

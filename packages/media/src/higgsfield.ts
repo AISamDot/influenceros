@@ -19,16 +19,40 @@ export interface ExecResult {
 export type ChildEnv = Readonly<Record<string, string | undefined>>;
 export type Exec = (bin: string, args: readonly string[], opts: { env: ChildEnv; timeoutMs: number }) => Promise<ExecResult>;
 
+/** A CLI error. `timedOut`: the CLI was killed after the timeout (a submitted job may still be running and billing). */
+export class HiggsfieldCliError extends Error {
+  override readonly name = 'HiggsfieldCliError';
+  constructor(
+    message: string,
+    readonly timedOut = false,
+  ) {
+    super(message);
+  }
+}
+
 export const execCli: Exec = (bin, args, opts) =>
   new Promise((resolve, reject) =>
     execFile(bin, [...args], { env: opts.env as unknown as NodeJS.ProcessEnv, timeout: opts.timeoutMs, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8' }, (err, stdout, stderr) => {
       if (err) {
         const code = (err as NodeJS.ErrnoException).code;
+        const killed = (err as { killed?: boolean }).killed === true || !!(err as { signal?: string | null }).signal;
         if (code === 'ENOENT') reject(new Error(`Higgsfield CLI not found (${bin}): install it with \`npm i -g @higgsfield/cli\` or set HIGGSFIELD_CLI`));
-        else reject(new Error(`higgsfield ${args[0] ?? ''} ${args[1] ?? ''} failed: ${String(stderr || err.message).split('\n').slice(-4).join(' | ').slice(0, 400)}`));
+        else reject(new HiggsfieldCliError(`higgsfield ${args[0] ?? ''} ${args[1] ?? ''} ${killed ? 'timed out' : 'failed'}: ${String(stderr || err.message).split('\n').slice(-4).join(' | ').slice(0, 400)}`, killed));
       } else resolve({ stdout, stderr });
     }),
   );
+
+/**
+ * An error raised before any job was submitted (unknown model, bad parameters): safe to try the next model. Anything
+ * else (a job that ran and failed, a timeout after submission) may have been billed, so it is never retried on another
+ * model under the same reservation.
+ */
+export function isPreSubmissionError(err: unknown): boolean {
+  if (err instanceof HiggsfieldCliError && err.timedOut) return false;
+  const m = err instanceof Error ? err.message : String(err);
+  if (/\bjob\b/i.test(m)) return false;
+  return /unknown model|model not found|no such model|not a valid model|invalid (?:argument|parameter|option|value)|validation|unsupported (?:model|parameter|option|resolution|duration)|usage:/i.test(m);
+}
 
 /** First JSON value in CLI output (some versions print a progress line before it). */
 export function parseCliJson(stdout: string): unknown {
@@ -75,17 +99,45 @@ const isNum = (x: unknown) => (typeof x === 'number' && Number.isFinite(x)) || (
 export interface CliJob {
   readonly jobId: string;
   readonly url: string | null;
-  readonly credits: number;
+  /** Credits the job reported; null when the output carries no cost field for the job (unknown, never free). */
+  readonly credits: number | null;
   readonly status: string | null;
   readonly width: number | null;
   readonly height: number | null;
   readonly durationS: number | null;
 }
 
+const CREDIT_KEYS = ['credits_used', 'credits_charged', 'credit_cost', 'credits', 'cost', 'price', 'total_cost'] as const;
+const asObj = (x: unknown): Record<string, unknown> | null => (x && typeof x === 'object' && !Array.isArray(x) ? (x as Record<string, unknown>) : null);
+
+/** The job record in the CLI output: `job` / `data` / `generation` / `result` when present, else the top level. */
+function jobRecord(v: unknown): Record<string, unknown> {
+  const top = asObj(v) ?? {};
+  for (const k of ['job', 'data', 'generation', 'result']) {
+    const o = asObj(top[k]);
+    if (o) return o;
+  }
+  return top;
+}
+
+/**
+ * The job's cost, read only from the job record and the top level (and their `usage` / `billing` objects), never
+ * from anywhere else in the document: an account balance nested in the output must never be billed as the job cost.
+ */
+export function jobCredits(v: unknown): number | null {
+  const top = asObj(v) ?? {};
+  const job = jobRecord(v);
+  for (const o of [job, asObj(job.usage), asObj(job.billing), top, asObj(top.usage), asObj(top.billing)]) {
+    if (!o) continue;
+    for (const k of CREDIT_KEYS) if (k in o && isNum(o[k])) return Number(o[k]);
+  }
+  return null;
+}
+
 export function readJob(v: unknown): CliJob {
   const id = find(v, ['job_id', 'jobId', 'id', 'request_id', 'reference_id'], (x) => typeof x === 'string' || typeof x === 'number');
   const url = find(v, ['url', 'result_url', 'output_url', 'video_url', 'image_url', 'raw', 'min'], isUrl);
-  const credits = find(v, ['credits', 'credits_used', 'cost', 'price', 'credit_cost', 'total_cost'], isNum);
+  const credits = jobCredits(v);
   const status = find(v, ['status', 'state'], (x) => typeof x === 'string');
   const num = (keys: string[]) => {
     const n = find(v, keys, isNum);
@@ -94,12 +146,17 @@ export function readJob(v: unknown): CliJob {
   return {
     jobId: id === undefined ? '' : String(id),
     url: (url as string | undefined) ?? null,
-    credits: credits === undefined ? 0 : Number(credits),
+    credits,
     status: (status as string | undefined) ?? null,
     width: num(['width']),
     height: num(['height']),
     durationS: num(['duration', 'duration_s', 'durationS']),
   };
+}
+
+/** What a paid job reports: its credits, or 0 + creditsUnknown when the CLI reported none (or 0). */
+export function paidCredits(job: Pick<CliJob, 'credits'>): { credits: number; creditsUnknown?: true } {
+  return job.credits !== null && job.credits > 0 ? { credits: job.credits } : { credits: 0, creditsUnknown: true };
 }
 
 const ASPECT_SIZE: Record<MediaAspect, [number, number]> = { '9:16': [720, 1280], '1:1': [720, 720], '4:5': [720, 900] };
@@ -149,7 +206,16 @@ export class HiggsfieldCli implements ImageVideoProvider {
 
   /** `generate create <model> … --wait`: one finished job. */
   async create(model: string, p: Record<string, string | number | readonly string[] | undefined>): Promise<CliJob> {
-    const job = readJob(await this.run(['generate', 'create', model, ...this.params(p), '--wait']));
+    let out: unknown;
+    try {
+      out = await this.run(['generate', 'create', model, ...this.params(p), '--wait']);
+    } catch (err) {
+      // Killed while waiting: the job was submitted and keeps running (and billing). The caller's hold is debited at
+      // the estimate instead of released, so a retry that buys it again still counts against the caps.
+      if (err instanceof HiggsfieldCliError && err.timedOut) Object.assign(err, { settleAtEstimate: true });
+      throw err;
+    }
+    const job = readJob(out);
     if (job.status && /fail|error|nsfw|cancel/i.test(job.status)) throw new Error(`higgsfield ${model}: job ${job.jobId} ${job.status}`);
     if (!job.url) throw new Error(`higgsfield ${model}: job ${job.jobId || '?'} returned no result URL`);
     return job;
@@ -158,16 +224,27 @@ export class HiggsfieldCli implements ImageVideoProvider {
   async createSoulId(req: { name: string; referenceImageUrls: readonly string[]; prompts?: readonly string[] }) {
     // Soul ID trains on face photos; without references, the character sheet is generated from the look prompts first.
     let credits = 0;
+    let unknown = false;
     const images = [...req.referenceImageUrls];
-    for (const prompt of images.length ? [] : (req.prompts ?? []).slice(0, 5)) {
-      const still = await this.create(this.models.soul, { prompt: prompt.slice(0, 3500), aspect_ratio: '9:16', resolution: GEN_RESOLUTION });
-      credits += still.credits;
-      images.push(still.url!);
+    try {
+      for (const prompt of images.length ? [] : (req.prompts ?? []).slice(0, 5)) {
+        const still = await this.create(this.models.soul, { prompt: prompt.slice(0, 3500), aspect_ratio: '9:16', resolution: GEN_RESOLUTION });
+        if (still.credits !== null && still.credits > 0) credits += still.credits;
+        else unknown = true;
+        images.push(still.url!);
+      }
+      if (!images.length) throw new Error('Soul ID needs reference images or look prompts');
+      const job = readJob(await this.run(['soul-id', 'create', '--name', req.name.slice(0, 60), ...this.params({ image: images }), '--wait']));
+      if (!job.jobId) throw new Error('higgsfield soul-id create returned no id');
+      if (job.credits !== null && job.credits > 0) credits += job.credits;
+      else unknown = true;
+      return unknown ? { soulId: job.jobId, credits, creditsUnknown: true } : { soulId: job.jobId, credits };
+    } catch (err) {
+      // The stills bought before the failure were spent: the governor debits them (err.credits), or the estimate when
+      // a cost went unreported.
+      if (err && typeof err === 'object') Object.assign(err, { credits, ...(unknown ? { settleAtEstimate: true } : {}) });
+      throw err;
     }
-    if (!images.length) throw new Error('Soul ID needs reference images or look prompts');
-    const job = readJob(await this.run(['soul-id', 'create', '--name', req.name.slice(0, 60), ...this.params({ image: images }), '--wait']));
-    if (!job.jobId) throw new Error('higgsfield soul-id create returned no id');
-    return { soulId: job.jobId, credits: credits + job.credits };
   }
 
   async generateStill(req: { soulId?: string; prompt: string; aspect?: MediaAspect; model?: string; referenceImageUrls?: readonly string[]; resolution?: MediaResolution }): Promise<MediaResult> {
@@ -180,7 +257,7 @@ export class HiggsfieldCli implements ImageVideoProvider {
       image: req.referenceImageUrls,
     });
     const [w, h] = ASPECT_SIZE[aspect];
-    return { jobId: job.jobId, url: job.url!, width: job.width ?? w, height: job.height ?? h, credits: job.credits };
+    return { jobId: job.jobId, url: job.url!, width: job.width ?? w, height: job.height ?? h, ...paidCredits(job) };
   }
 
   async imageToVideo(req: { imageUrl: string; prompt: string; durationS: number; model?: string; resolution?: MediaResolution; aspect?: MediaAspect }): Promise<MediaResult> {
@@ -189,9 +266,12 @@ export class HiggsfieldCli implements ImageVideoProvider {
     for (const model of models) {
       try {
         const job = await this.create(model, { image: req.imageUrl, prompt: req.prompt.slice(0, 2000), duration: req.durationS, resolution: req.resolution ?? GEN_RESOLUTION, aspect_ratio: req.aspect ?? '9:16' });
-        return { jobId: job.jobId, url: job.url!, width: job.width ?? 720, height: job.height ?? 1280, durationS: job.durationS ?? req.durationS, credits: job.credits };
+        return { jobId: job.jobId, url: job.url!, width: job.width ?? 720, height: job.height ?? 1280, durationS: job.durationS ?? req.durationS, ...paidCredits(job) };
       } catch (err) {
-        last = err; // Kling 3.0 Turbo → Kling → Wan
+        // Kling 3.0 Turbo → Kling → Wan, but only when nothing was submitted (one reservation covers one job): a job
+        // that ran and failed, or a timeout, is not bought again on another model.
+        if (!isPreSubmissionError(err)) throw err;
+        last = err;
       }
     }
     throw last instanceof Error ? last : new Error('image-to-video failed');
@@ -206,7 +286,7 @@ export class HiggsfieldCli implements ImageVideoProvider {
       resolution: req.resolution ?? GEN_RESOLUTION,
       duration: req.durationS === undefined ? undefined : Math.ceil(req.durationS),
     });
-    return { jobId: job.jobId, url: job.url!, width: job.width ?? 720, height: job.height ?? 1280, durationS: job.durationS ?? req.durationS, credits: job.credits };
+    return { jobId: job.jobId, url: job.url!, width: job.width ?? 720, height: job.height ?? 1280, durationS: job.durationS ?? req.durationS, ...paidCredits(job) };
   }
 
   async costProbe(req: { operation: HiggsfieldOperation; durationS?: number; model?: string; resolution?: MediaResolution }) {
@@ -215,7 +295,8 @@ export class HiggsfieldCli implements ImageVideoProvider {
       req.operation === 'soul_id'
         ? ['soul-id', 'cost']
         : ['generate', 'cost', model, ...this.params({ prompt: 'cost probe', resolution: req.resolution ?? GEN_RESOLUTION, duration: req.operation === 'still' ? undefined : req.durationS })];
-    return { credits: readJob(await this.run(args)).credits };
+    // 0 = the probe reported no price; probePrices never stores that.
+    return { credits: readJob(await this.run(args)).credits ?? 0 };
   }
 
   async upload(req: { filePath: string; contentType?: string }) {
@@ -231,13 +312,14 @@ export class HiggsfieldSeedanceTalking implements TalkingProvider {
   constructor(private readonly hf: ImageVideoProvider) {}
   async render(req: { imageUrl: string; audioUrl: string; durationS: number; resolution?: import('@ios/providers').MediaResolution; prompt?: string }) {
     const r = await this.hf.talkingWithAudio({ imageUrl: req.imageUrl, audioUrl: req.audioUrl, durationS: req.durationS, resolution: req.resolution ?? GEN_RESOLUTION, prompt: req.prompt });
-    return { jobId: r.jobId, url: r.url, durationS: r.durationS ?? req.durationS, credits: r.credits, costUsd: 0 };
+    return { jobId: r.jobId, url: r.url, durationS: r.durationS ?? req.durationS, credits: r.credits, costUsd: 0, ...(r.creditsUnknown ? { creditsUnknown: true } : {}) };
   }
 }
 
 /**
  * Higgsfield TTS (the voice option beside ElevenLabs): voices are Higgsfield presets, so `designVoice` maps the
- * description to a preset id. Billed in Higgsfield credits (reported as costUsd 0; credits are on the generation).
+ * description to a preset id. Billed in Higgsfield credits: costUsd is 0 and `credits` carries the cost, which the
+ * renderer settles through the governor in hf_credits.
  */
 export class HiggsfieldTtsVoice implements VoiceProvider {
   readonly name = 'higgsfield-tts';
@@ -250,6 +332,6 @@ export class HiggsfieldTtsVoice implements VoiceProvider {
   async tts(req: { voiceId: string; text: string; modelId?: string }) {
     const job = await this.hf.create(req.modelId ?? this.hf.models.tts, { text: req.text.slice(0, 5000), voice: req.voiceId });
     const words = req.text.trim().split(/\s+/).filter(Boolean).length;
-    return { url: job.url!, durationS: job.durationS ?? Math.max(1, Math.round((words / 155) * 60)), characters: req.text.length, costUsd: 0 };
+    return { url: job.url!, durationS: job.durationS ?? Math.max(1, Math.round((words / 155) * 60)), characters: req.text.length, costUsd: 0, ...paidCredits(job) };
   }
 }

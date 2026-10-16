@@ -151,6 +151,50 @@ export class LemonSqueezyStore implements StoreProvider {
   }
 }
 
+/**
+ * API-less mode (the Owner pastes checkout links, no API key) with the webhook signing secret set: webhooks are verified
+ * with the real secret, so orders and subscriptions still reach the P&L and the members area. Everything that needs
+ * the API is unavailable (lists are empty; checkouts and discount codes throw and callers keep their fallbacks).
+ */
+export class LemonSqueezyWebhooks implements StoreProvider {
+  readonly name = 'lemonsqueezy-webhooks';
+  readonly #secret: string;
+  constructor(opts: { webhookSecret: string }) {
+    if (!opts.webhookSecret) throw new Error('LemonSqueezyWebhooks needs a webhook signing secret');
+    this.#secret = opts.webhookSecret;
+  }
+  async listStores(): Promise<StoreInfo[]> {
+    return [];
+  }
+  async listProducts(): Promise<StoreProduct[]> {
+    return [];
+  }
+  async getProduct(): Promise<StoreProduct | null> {
+    return null;
+  }
+  async createCheckout(): Promise<{ url: string }> {
+    throw new Error('lemonsqueezy: checkouts need the API key (paste the product checkout link instead)');
+  }
+  async createDiscount(): Promise<{ id: string; code: string }> {
+    throw new Error('lemonsqueezy: discount codes need the API key');
+  }
+  verifyWebhook(rawBody: string, signature: string): boolean {
+    if (!/^[0-9a-f]{64}$/i.test(signature ?? '')) return false;
+    const expected = createHmac('sha256', this.#secret).update(rawBody).digest();
+    const got = Buffer.from(signature, 'hex');
+    return expected.length === got.length && timingSafeEqual(expected, got);
+  }
+  parseWebhook(rawBody: string): StoreEvent {
+    return parseLemonSqueezyWebhook(rawBody);
+  }
+  toJSON(): string {
+    return '[LemonSqueezyWebhooks]';
+  }
+  [inspect.custom](): string {
+    return '[LemonSqueezyWebhooks]';
+  }
+}
+
 function toProduct(p: JsonApiResource, included: readonly JsonApiResource[]): StoreProduct {
   const a = p.attributes;
   const rel = asRecord(p.relationships?.variants);
@@ -240,9 +284,11 @@ export function parseLemonSqueezyWebhook(rawBody: string): StoreEvent {
     case 'subscription_payment_success':
     case 'subscription_payment_recovered': {
       // Payment events carry a subscription invoice; its subscription id is in the attributes.
-      const subscriptionId = data.type === 'subscription-invoices' ? asString(a.subscription_id) : id;
-      const status = data.type === 'subscription-invoices' ? 'active' : subStatus(a.status);
-      return { type: 'subscription_updated', subscriptionId, status, endsAt: asString(a.ends_at) || null, storeId };
+      const invoice = data.type === 'subscription-invoices';
+      const subscriptionId = invoice ? asString(a.subscription_id) : id;
+      // An invoice says a payment went through; it carries no subscription status or end date.
+      if (invoice) return { type: 'subscription_updated', subscriptionId, status: 'active', endsAt: null, storeId, source: 'invoice', updatedAt: asString(a.updated_at) || null };
+      return { type: 'subscription_updated', subscriptionId, status: subStatus(a.status), endsAt: asString(a.ends_at) || null, storeId, source: 'subscription', updatedAt: asString(a.updated_at) || null };
     }
     case 'subscription_payment_failed':
       return { type: 'subscription_payment_failed', subscriptionId: data.type === 'subscription-invoices' ? asString(a.subscription_id) : id, storeId };

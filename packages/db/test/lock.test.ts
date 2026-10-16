@@ -88,6 +88,48 @@ describe('PGlite single-process lock', () => {
     expect(existsSync(lockPathFor(dir))).toBe(false);
   }, 30_000);
 
+  it('exactly one of several processes racing for a stale lock takes it over', async () => {
+    const dead = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' });
+    const deadPid = Number(dead.stdout);
+    for (let trial = 0; trial < 3; trial++) {
+      const dir = scratch();
+      fakeLock(dir, deadPid);
+      const script = join(dir, '..', 'racer.mts');
+      // Every racer loads first, then all go at the same instant (startAt); each keeps what it got until killed.
+      writeFileSync(
+        script,
+        `import { acquirePgliteLock } from ${JSON.stringify(join(ROOT, 'packages/db/src/lock.ts'))};
+const startAt = Number(process.argv[2]);
+process.stdout.write('ready\\n');
+const idle = startAt - Date.now() - 30;
+if (idle > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, idle);
+while (Date.now() < startAt) {}
+try { acquirePgliteLock(${JSON.stringify(dir)}, { role: 'cli' }); process.stdout.write('ACQUIRED\\n'); }
+catch (e) { process.stdout.write((e && e.name === 'DbLockedError' ? 'LOCKED' : 'ERROR ' + e) + '\\n'); }
+setInterval(() => {}, 1000);`,
+      );
+      const startAt = Date.now() + 4_000;
+      const results = await Promise.all(
+        Array.from({ length: 6 }, () => {
+          const c = spawn(process.execPath, ['--import', 'tsx', script, String(startAt)], { cwd: ROOT, stdio: ['ignore', 'pipe', 'inherit'] });
+          children.push(c);
+          return new Promise<string>((res, rej) => {
+            let out = '';
+            c.stdout!.on('data', (b: Buffer) => {
+              out += b.toString();
+              const line = out.split('\n').find((l) => /^(ACQUIRED|LOCKED|ERROR)/.test(l));
+              if (line) res(line);
+            });
+            c.once('exit', (code) => rej(new Error(`racer exited ${code}: ${out}`)));
+          });
+        }),
+      );
+      expect(results.filter((r) => r === 'ACQUIRED'), results.join(',')).toHaveLength(1);
+      expect(results.filter((r) => r === 'LOCKED')).toHaveLength(5);
+      for (const c of children.splice(0)) c.kill('SIGKILL');
+    }
+  }, 90_000);
+
   it('a real second process is refused while the first has the database open', async () => {
     const dir = scratch();
     const script = join(dir, '..', 'holder.mts');

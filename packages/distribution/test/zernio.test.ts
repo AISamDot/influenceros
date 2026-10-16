@@ -100,6 +100,43 @@ describe('Zernio request mapping', () => {
     expect(calls.at(-1)!.headers.Authorization).toBeUndefined();
   });
 
+  it('uses the documented inbox routes: private reply for comment-to-DM, conversation messages for thread DMs', async () => {
+    const { fn, calls } = fakeFetch([
+      { body: { post: { platforms: [{ platform: 'instagram', accountId: 'acc_9', platformPostId: 'ig_77', status: 'published' }] } } },
+      { body: { id: 'pm_1' } },
+      { status: 400, body: { error: 'Private reply already sent', code: 'privateReplyConsumed' } },
+      { body: { messageId: 'm_9' } },
+      { status: 500, body: { error: 'boom' } },
+    ]);
+    const z = new ZernioPublisher({ apiKey: KEY, fetch: fn });
+    expect(await z.sendPrivateReply({ externalId: 'zp_9', commentId: 'cm1', text: 'here' })).toEqual({ id: 'pm_1' });
+    expect(calls[1]!.url).toBe('https://zernio.com/api/v1/inbox/comments/ig_77/cm1/private-reply');
+    expect(calls[1]!.body).toEqual({ accountId: 'acc_9', message: 'here' });
+    // Consumed (one per comment) is a result, not an error: callers never retry it.
+    expect(await z.sendPrivateReply({ externalId: 'zp_9', commentId: 'cm1', text: 'again' })).toEqual({ id: null, reason: 'consumed' });
+    expect(await z.sendDm({ accountRef: 'acc_9', userRef: 'u1', threadRef: 'conv 1', text: 'hi' })).toEqual({ id: 'm_9' });
+    expect(calls[3]!.method).toBe('POST');
+    expect(calls[3]!.url).toBe('https://zernio.com/api/v1/inbox/conversations/conv%201/messages');
+    expect(calls[3]!.body).toEqual({ accountId: 'acc_9', message: 'hi' });
+    // No conversation → no DM (Zernio can't start one on Instagram or TikTok); other errors still throw.
+    await expect(z.sendDm({ accountRef: 'acc_9', userRef: 'u1', text: 'hi' })).rejects.toThrow(/existing conversation/);
+    await expect(z.sendPrivateReply({ externalId: 'zp_9', commentId: 'cm2', text: 'x' })).rejects.toThrow(/500/);
+    expect(calls.some((c) => c.url.includes('/inbox/messages'))).toBe(false);
+  });
+
+  it('never calls private-reply on platforms without the route', async () => {
+    const { fn, calls } = fakeFetch([{ body: { post: { platforms: [{ platform: 'tiktok', accountId: 'acc_1', platformPostId: 'tt_1', status: 'published' }] } } }]);
+    const z = new ZernioPublisher({ apiKey: KEY, fetch: fn });
+    expect(await z.sendPrivateReply({ externalId: 'zp_t', commentId: 'c', text: 'x' })).toEqual({ id: null, reason: 'unsupported' });
+    expect(calls).toHaveLength(1);
+  });
+
+  it('treats an AI flag the vendor does not echo as unlabelled (unknown is never "labelled")', async () => {
+    const { fn } = fakeFetch([{ body: { post: { platforms: [{ platform: 'instagram', status: 'published', platformPostUrl: 'https://ig/p', platformSpecificData: {} }] } } }]);
+    const z = new ZernioPublisher({ apiKey: KEY, fetch: fn });
+    expect(await z.verify('x')).toEqual({ status: 'live', url: 'https://ig/p', aiLabel: false });
+  });
+
   it('verifies webhook signatures only with the webhook secret, and parses Zernio events', () => {
     const body = JSON.stringify({ event: 'comment.received', data: { platform: 'instagram', accountId: 'acc_9', postId: 'zp_9', comment: { id: 'c1', text: 'BUDGET', from: { id: 'u1' } } } });
     const sig = createHmac('sha256', 'whsec').update(body).digest('hex');

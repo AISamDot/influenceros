@@ -76,7 +76,7 @@ describe('persona sites: public read model', () => {
     await product(t, p.id, { name: 'Members Club', rung: 'membership', status: 'live', checkoutUrl: 'https://a.lemonsqueezy.com/buy/3' });
     await product(t, p.id, { name: 'Draft Thing', rung: 'addon', status: 'brief' });
     const site = (await loadSite(t.db, p.slug))!;
-    expect(site.colors).toEqual({ bg: '#F7F1E8', ink: '#1F1B16', accent: '#C4572E', accent2: '#7F9C7A' });
+    expect(site.colors).toMatchObject({ bg: '#F7F1E8', ink: '#1F1B16', accent: '#C4572E', accent2: '#7F9C7A' });
     expect(site.leadMagnet?.name).toBe('Free Checklist');
     expect(site.products.map((x) => x.name)).toEqual(['Entry Workbook', 'Core Bundle']);
     expect(site.membership?.name).toBe('Members Club');

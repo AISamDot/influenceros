@@ -1,4 +1,5 @@
 import { loadSite, siteBase, type SiteData, type SiteProduct } from '@ios/commerce';
+import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
@@ -16,6 +17,13 @@ export async function siteFor(slug: string): Promise<{ site: SiteData; base: str
   const site = await loadSite(db, slug, studio.id);
   if (!site) notFound();
   return { site, base: siteBase(slug, h.get('x-ios-site') === slug) };
+}
+
+/** Per-page <title> on persona sites ("Free guide · Rosa"); thank-you and email-link pages are not indexed. */
+export async function sitePageMetadata(slug: string, page: string | ((site: SiteData) => string), opts: { noindex?: boolean } = {}): Promise<Metadata> {
+  const { site } = await siteFor(slug);
+  const label = typeof page === 'string' ? page : page(site);
+  return { title: { absolute: `${label} · ${site.persona.name}` }, ...(opts.noindex ? { robots: { index: false, follow: false } } : {}) };
 }
 
 export function money(cents: number, currency = 'USD'): string {
@@ -50,7 +58,13 @@ export function SiteHeader({ site, small }: { site: SiteData; small?: boolean })
 export function SiteFooter({ site, base }: { site: SiteData; base: string }) {
   return (
     <footer className="site-foot">
-      <a href={`${base}/`}>{site.persona.name}</a> · <a href={`${base}/privacy`}>Privacy</a> · <a href={`${base}/members`}>Members</a>
+      <a href={`${base}/`}>{site.persona.name}</a> · <a href={`${base}/privacy`}>Privacy</a>
+      {site.membership ? (
+        <>
+          {' '}
+          · <a href={`${base}/members`}>Members</a>
+        </>
+      ) : null}
     </footer>
   );
 }

@@ -1,6 +1,13 @@
-import { SiteFooter, SiteHeader, SitePage, siteFor } from '@/components/site-shell';
+import type { Metadata } from 'next';
+import { SiteFooter, siteFor, SiteHeader, SitePage, sitePageMetadata } from '@/components/site-shell';
+import { SubmitButton } from '@/components/submit-button';
 
 export const dynamic = 'force-dynamic';
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  return sitePageMetadata((await params).slug, 'Unsubscribe', { noindex: true });
+}
+
 
 /** Unsubscribe page (footer link). Mail clients use the one-click List-Unsubscribe endpoint instead. */
 export default async function UnsubscribePage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -23,9 +30,9 @@ export default async function UnsubscribePage({ params, searchParams }: { params
             <p className="site-lead">You’ll stop getting emails from {site.persona.name}.</p>
             <input type="hidden" name="slug" value={slug} />
             <input type="hidden" name="t" value={token} />
-            <button type="submit" className="site-btn site-btn-primary">
+            <SubmitButton className="site-btn site-btn-primary">
               Unsubscribe me
-            </button>
+            </SubmitButton>
           </form>
         ) : (
           <>

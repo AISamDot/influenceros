@@ -82,8 +82,20 @@ export async function subscribe(services: StudioServices, input: SubscribeInput)
     : null;
   const wording = consentWording(persona.name, await leadMagnetName(db, persona.id));
 
-  const existing = await db.maybeOne<{ id: string; status: string }>('SELECT id, status FROM subscriber WHERE persona_id = $1 AND email = $2', [persona.id, email]);
+  const existing = await db.maybeOne<{ id: string; status: string; first_name: string | null }>('SELECT id, status, first_name FROM subscriber WHERE persona_id = $1 AND email = $2', [persona.id, email]);
   if (existing?.status === 'active') return { outcome: 'already', persona };
+  // An opt-out stands until the person proves they control the mailbox. Anyone can type an address into the form, so
+  // a complained or bounced address is never mailed again from here, and an unsubscribed one only gets the double
+  // opt-in email; its status (and the provider's suppression) is unchanged until that link is clicked.
+  if (existing && (existing.status === 'complained' || existing.status === 'bounced')) return { outcome: 'already', persona };
+  if (existing?.status === 'unsubscribed') {
+    await db.query(
+      `INSERT INTO consent_record (persona_id, subscriber_id, kind, wording, source, region, ip_hash) VALUES ($1, $2, 'opt_in_requested', $3, $4, $5, $6)`,
+      [persona.id, existing.id, wording, input.source ?? 'site', region, client],
+    );
+    await sendConfirmation(services, persona, existing.id, email, firstName ?? existing.first_name, { resubscribe: true });
+    return { outcome: 'confirm_sent', persona };
+  }
 
   const sub = await db.one<{ id: string }>(
     `INSERT INTO subscriber (persona_id, email, email_hash, first_name, consent, consent_at, status, double_opt_in, region, source, source_post_id, short_link_id, unsub_token)
@@ -122,10 +134,10 @@ export async function subscribe(services: StudioServices, input: SubscribeInput)
 }
 
 /** The double opt-in email (transactional: it's the request to confirm, not marketing). */
-async function sendConfirmation(services: StudioServices, persona: SitePersona, subscriberId: string, email: string, firstName: string | null): Promise<void> {
+async function sendConfirmation(services: StudioServices, persona: SitePersona, subscriberId: string, email: string, firstName: string | null, opts: { resubscribe?: boolean } = {}): Promise<void> {
   const { db } = services;
   const now = services.now();
-  const token = await issueToken(db, { personaId: persona.id, purpose: 'confirm', subscriberId, now });
+  const token = await issueToken(db, { personaId: persona.id, purpose: 'confirm', subscriberId, now, ref: opts.resubscribe ? { resubscribe: true } : {} });
   const list = await ensureList(services, persona.id);
   const kit = await loadPersonaKit(db, persona.id);
   const settings = await getCommerceSettings(db, persona.studioId);
@@ -163,8 +175,13 @@ export async function confirmSubscription(services: StudioServices, token: strin
     `SELECT s.id, s.status, s.persona_id, p.slug, s.region FROM subscriber s JOIN persona p ON p.id = s.persona_id WHERE s.id = $1`,
     [row.subscriber_id],
   );
-  if (s.status !== 'pending') return { ok: s.status === 'active', slug: s.slug };
-  await db.query(`UPDATE subscriber SET status = 'active', consent = true, consent_at = $2, confirmed_at = $2, updated_at = now() WHERE id = $1`, [s.id, now]);
+  // Pending sign-ups confirm; an unsubscribed person comes back only through a link issued for that (resubscribe).
+  const resubscribe = s.status === 'unsubscribed' && row.ref?.resubscribe === true;
+  if (s.status !== 'pending' && !resubscribe) return { ok: s.status === 'active', slug: s.slug };
+  await db.query(
+    `UPDATE subscriber SET status = 'active', consent = true, consent_at = $2, confirmed_at = $2, unsubscribed_at = NULL, double_opt_in = true, updated_at = now() WHERE id = $1 AND status IN ('pending','unsubscribed')`,
+    [s.id, now],
+  );
   await db.query(`INSERT INTO consent_record (persona_id, subscriber_id, kind, source, region) VALUES ($1, $2, 'confirmed', 'double_opt_in', $3)`, [s.persona_id, s.id, s.region]);
   await db.query(`INSERT INTO email_event (persona_id, subscriber_id, type, meta) VALUES ($1, $2, 'confirmed', '{}'::jsonb)`, [s.persona_id, s.id]);
   await activate(services, s.id);
@@ -214,11 +231,41 @@ export async function unsubscribeSubscriber(services: StudioServices, subscriber
   await db.query(`UPDATE email_enrollment SET status = 'stopped', updated_at = now() WHERE subscriber_id = $1 AND status = 'active'`, [s.id]);
   await db.query(`INSERT INTO consent_record (persona_id, subscriber_id, kind, source) VALUES ($1, $2, $3, $4)`, [s.persona_id, s.id, kind, source]);
   await db.query(`INSERT INTO email_event (persona_id, subscriber_id, type, meta) VALUES ($1, $2, $3, $4::jsonb)`, [s.persona_id, s.id, kind === 'complaint' ? 'complained' : 'unsubscribed', json({ source })]);
-  const list = await db.maybeOne<{ audience_id: string }>('SELECT audience_id FROM email_list WHERE persona_id = $1', [s.persona_id]);
-  if (list && source !== 'webhook') {
-    await services.providers.audience.upsertContact({ audienceId: list.audience_id, email: s.email, unsubscribed: true }).catch(() => undefined);
+  if (source !== 'webhook') {
+    // Broadcasts go to the provider's audience, so the opt-out must reach it. A failure is recorded (provider_synced =
+    // false): email.send_due retries it, and sendBroadcast refuses while any opt-out of this persona is unsynced.
+    await db.query(`UPDATE subscriber SET provider_synced = false WHERE id = $1`, [s.id]);
+    await syncSubscriberOptOut(services, s.id);
   }
   return { ok: true, slug: s.slug };
+}
+
+/** Pushes one local opt-out to the provider; true when it is synced (or there is nothing to sync). */
+async function syncSubscriberOptOut(services: StudioServices, subscriberId: string): Promise<boolean> {
+  const { db } = services;
+  const s = await db.maybeOne<{ id: string; persona_id: string; email: string }>(`SELECT id, persona_id, email FROM subscriber WHERE id = $1`, [subscriberId]);
+  if (!s) return true;
+  const list = await db.maybeOne<{ audience_id: string }>('SELECT audience_id FROM email_list WHERE persona_id = $1', [s.persona_id]);
+  try {
+    if (list) await services.providers.audience.upsertContact({ audienceId: list.audience_id, email: s.email, unsubscribed: true });
+  } catch {
+    return false;
+  }
+  await db.query(`UPDATE subscriber SET provider_synced = true WHERE id = $1`, [s.id]);
+  return true;
+}
+
+/** Retries opt-outs that haven't reached the provider (email.send_due, and before every broadcast). Returns how many are still unsynced. */
+export async function syncPendingOptOuts(services: StudioServices, opts: { personaId?: string; limit?: number } = {}): Promise<{ synced: number; pending: number }> {
+  const { db } = services;
+  const rows = await db.query<{ id: string }>(
+    `SELECT id FROM subscriber WHERE provider_synced = false AND ($1::uuid IS NULL OR persona_id = $1) ORDER BY updated_at LIMIT $2`,
+    [opts.personaId ?? null, opts.limit ?? 200],
+  );
+  let synced = 0;
+  for (const r of rows) if (await syncSubscriberOptOut(services, r.id)) synced += 1;
+  const left = await db.one<{ n: number }>(`SELECT count(*)::int AS n FROM subscriber WHERE provider_synced = false AND ($1::uuid IS NULL OR persona_id = $1)`, [opts.personaId ?? null]);
+  return { synced, pending: left.n };
 }
 
 /** The unsubscribe URL for a subscriber (List-Unsubscribe + footer). */

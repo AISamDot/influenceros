@@ -1,7 +1,14 @@
+import type { Metadata } from 'next';
 import { upsellFor } from '@ios/commerce';
-import { ProductCard, SiteFooter, SiteHeader, SitePage, siteFor } from '@/components/site-shell';
+import { ProductCard, SiteFooter, siteFor, SiteHeader, SitePage, sitePageMetadata } from '@/components/site-shell';
 
 export const dynamic = 'force-dynamic';
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string; product: string }> }): Promise<Metadata> {
+  const { slug, product } = await params;
+  return sitePageMetadata(slug, (site) => `Thank you: ${[...site.products, ...(site.membership ? [site.membership] : [])].find((x) => x.slug === product)?.name ?? 'your order'}`, { noindex: true });
+}
+
 
 /**
  * Thank-you page (the Lemon Squeezy checkout redirect): confirms the order and offers the next rung of the ladder

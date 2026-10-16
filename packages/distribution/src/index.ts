@@ -32,6 +32,7 @@ export {
   classify,
   classifyHeuristic,
   type Classification,
+  cleanReply,
   CRISIS_PURPOSE,
   DEFAULT_CRISIS_TEXT,
   dmLinkFor,
@@ -43,6 +44,10 @@ export {
   ingestDm,
   ingestEvents,
   isPaused,
+  MAX_HANDLE_ATTEMPTS,
+  mergeClassification,
+  PRIVATE_REPLY_PLATFORMS,
+  PRIVATE_REPLY_WINDOW_MS,
   pollCommunity,
   proposeCrisisText,
   REPLY_BUDGET,
@@ -52,6 +57,7 @@ export {
   templateReply,
 } from './community';
 export * from './platforms';
+export { ANOMALY, detectAnomalies, recordTakedown, tripCircuitBreaker, type AnomalyFinding } from './anomalies';
 export {
   applyPostStatus,
   enqueueDuePosts,
@@ -65,7 +71,7 @@ export {
   syncLiveSlots,
 } from './publishing';
 export { assertAiFlagOptions, buildPostBody, parseZernioEvent, ROUTES as ZERNIO_ROUTES, ZERNIO_AI_FIELD, ZERNIO_BASE_URL, ZernioError, ZernioPublisher } from './zernio';
-export { JOB as DISTRIBUTION_JOBS } from './jobs';
+export { JOB as DISTRIBUTION_JOBS, PREPARE_DEAD_LIMIT, sweepStuckPrepares } from './jobs';
 export { F_TOOLS } from './tools';
 export { fenceUntrusted } from './util';
 

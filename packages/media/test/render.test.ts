@@ -1,3 +1,4 @@
+import { decide, OWNER } from '@ios/core';
 import { MEDIA_RENDER_JOB, PUBLISH_PREPARE_JOB, type PublishPreparePayload } from '@ios/agents';
 import { pipelineBoard } from '@ios/content';
 import { DeferJob, type JobRow, type PostFormat } from '@ios/core';
@@ -145,6 +146,16 @@ describe('media.render: auto-fix loops (≤ 2), then block', () => {
     expect(await publishJobs(f.db, payload.slotId)).toHaveLength(0);
     // Captions were re-sized on each loop (the maker's fix), never edited by QC.
     expect(toolkit.calls.filter((c) => c.method === 'renderVideo')).toHaveLength(3);
+    // Majors only: an Owner-only "publish anyway" card with the report, the failing checks and the payload.
+    expect(out.reason).toMatch(/publish anyway/);
+    const card = await f.db.one<{ id: string; mode: string; payload: { report_id: string; failing: Array<{ severity: string }>; prepare: { slotId: string; media: unknown[] } } }>(`SELECT id, mode, payload FROM approval WHERE kind = 'qc_override'`);
+    expect(card.mode).toBe('explicit');
+    expect(card.payload.failing.every((x) => x.severity === 'major')).toBe(true);
+    expect(card.payload.prepare.slotId).toBe(payload.slotId);
+    expect(card.payload.prepare.media).toHaveLength(1);
+    await decide(f.db, { approvalId: card.id, decision: 'approve', actor: OWNER, note: 'captions are fine on a manual check' });
+    expect((await f.db.one<{ status: string }>('SELECT status FROM calendar_slot WHERE id = $1', [payload.slotId])).status).toBe('final_gate');
+    expect(await publishJobs(f.db, payload.slotId)).toHaveLength(1);
   });
 
   it('Q3: a talking clip whose face drifted is regenerated, then passes', async () => {
@@ -158,6 +169,26 @@ describe('media.render: auto-fix loops (≤ 2), then block', () => {
     const q3 = (await slotMedia(f.db, payload.slotId))!.reports.filter((r) => r.stage === 'Q3');
     expect(q3.map((r) => r.pass)).toEqual([false, true]);
     expect(q3[0]!.checks.find((c) => c.check === 'face_similarity' && !c.pass)!.message).toMatch(/0\.31/);
+  });
+
+  it('Q3 also checks the persona on activity and static posts: a drifted Soul still is regenerated with its clip', async () => {
+    let soul = 0;
+    // Soul still #1 is the persona's face reference (prepared first); #2 is the post's still.
+    const toolkit = new FakeToolkit({ onFetch: (url) => (/\/stills\/soul\//.test(url) && ++soul === 2 ? { face: { identity: 'other', similarity: 0.3 } } : undefined) });
+    const f = await mediaFixture({ toolkit, face: new FakeFaceMatcher() });
+    const payload = await f.queued('activity_text');
+    const out = await renderSlot(f.services, payload);
+    expect(out.status).toBe('final_gate');
+    expect(out.loops).toMatchObject({ q3: 1 });
+    const q3 = (await slotMedia(f.db, payload.slotId))!.reports.filter((r) => r.stage === 'Q3');
+    expect(q3.map((r) => r.pass)).toEqual([false, true]);
+    // The still and the clip made from it were both bought again (plus the one-off face reference still).
+    expect(f.providers.imageVideo.callsTo('generateStill').filter((c) => (c.args as { soulId?: string }).soulId)).toHaveLength(3);
+    expect(f.providers.imageVideo.callsTo('imageToVideo')).toHaveLength(2);
+
+    const st = await f.queued('static');
+    expect((await renderSlot(f.services, st)).status).toBe('final_gate');
+    expect((await slotMedia(f.db, st.slotId))!.reports.some((r) => r.stage === 'Q3' && r.pass)).toBe(true);
   });
 
   it('Q2: a voice track that keeps being misheard is re-voiced twice, then blocked before any Higgsfield spend', async () => {

@@ -1,7 +1,14 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { money, SiteFooter, SiteHeader, SitePage, siteFor, srcParam } from '@/components/site-shell';
+import { money, SiteFooter, siteFor, SiteHeader, SitePage, sitePageMetadata, srcParam } from '@/components/site-shell';
 
 export const dynamic = 'force-dynamic';
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string; product: string }> }): Promise<Metadata> {
+  const { slug, product } = await params;
+  return sitePageMetadata(slug, (site) => [...site.products, ...(site.membership ? [site.membership] : [])].find((x) => x.slug === product)?.name ?? 'Shop');
+}
+
 
 /** Product page: what's inside and the buy button (Lemon Squeezy checkout with the post's attribution). */
 export default async function ProductPage({

@@ -1,7 +1,7 @@
 import { PUBLISH_PREPARE_JOB } from '@ios/agents';
 import { DeferJob, decide, OWNER, recoverPublishing, setKillSwitch, sweepAutoApprovals } from '@ios/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { enqueueDuePosts, jobs, preparePublish, publishOne } from '../src';
+import { enqueueDuePosts, jobs, PREPARE_DEAD_LIMIT, preparePublish, publishOne, sweepStuckPrepares } from '../src';
 import { account, type Ctx, persona, preparePayload, setup, slot, status } from './helpers';
 
 let ctx: Ctx;
@@ -208,5 +208,62 @@ describe('publish.post', () => {
     const ext = (await ctx.db.one<{ external_id: string }>('SELECT external_id FROM post WHERE id = $1', [tt.id])).external_id;
     ctx.providers.publish.completeDraft(ext);
     expect((await recoverPublishing(ctx.db, ctx.providers.publish, { now: soon })).live).toEqual([tt.id]);
+  });
+});
+
+describe('publish.sweep', () => {
+  it('re-queues a dead publish.prepare for a slot stuck in final_gate, and blocks it after repeated deaths', async () => {
+    const p = await persona(ctx);
+    const s = await slot(ctx, p.id);
+    await ctx.db.query(`UPDATE calendar_slot SET stage_changed_at = $2 WHERE id = $1`, [s.id, new Date(ctx.clock.now.getTime() - 2 * 3_600_000)]);
+    const payload = await preparePayload(ctx, p.id, s.id, 'talking');
+    const dead = () =>
+      ctx.db.query(`INSERT INTO job (kind, payload, persona_id, status, last_error) VALUES ($1, $2::jsonb, $3, 'dead', 'gate llm 500')`, [PUBLISH_PREPARE_JOB, JSON.stringify({ ...payload, dedupe: `slot:${s.id}` }), p.id]);
+    await dead();
+    expect(await sweepStuckPrepares(ctx.svc, ctx.clock.now)).toEqual({ requeued: 1, blocked: 0 });
+    const queued = await ctx.db.one<{ payload: { slotId: string; dedupe: string } }>(`SELECT payload FROM job WHERE kind = $1 AND status = 'queued'`, [PUBLISH_PREPARE_JOB]);
+    expect(queued.payload).toMatchObject({ slotId: s.id, dedupe: `slot:${s.id}` });
+    // While one is queued, nothing more is added.
+    expect(await sweepStuckPrepares(ctx.svc, ctx.clock.now)).toEqual({ requeued: 0, blocked: 0 });
+    await ctx.db.query(`UPDATE job SET status = 'dead' WHERE kind = $1 AND status = 'queued'`, [PUBLISH_PREPARE_JOB]);
+    for (let i = 2; i < PREPARE_DEAD_LIMIT; i++) await dead();
+    expect(await sweepStuckPrepares(ctx.svc, ctx.clock.now)).toEqual({ requeued: 0, blocked: 1 });
+    expect(await status(ctx, 'calendar_slot', s.id)).toBe('blocked');
+  });
+});
+
+describe('publish anyway (qc_override, FR-21.5/21.6)', () => {
+  it('post QC failing on majors only proposes an Owner-only card; approving with a reason publishes, blockers never', async () => {
+    const p = await persona(ctx, { autonomy: 'L0' });
+    await account(ctx, p.id, 'tiktok');
+    const s = await slot(ctx, p.id);
+    // No CTA keyword in the caption: a major.
+    const payload = await preparePayload(ctx, p.id, s.id, 'talking', { caption: 'Three envelopes, one rule: spend on purpose.' });
+    const res = await preparePublish(ctx.svc, payload);
+    expect(res.slotStatus).toBe('blocked');
+    const card = await ctx.db.one<{ id: string; mode: string; payload: { failing: Array<{ check: string; severity: string }>; stage: string } }>(`SELECT id, mode, payload FROM approval WHERE kind = 'qc_override' AND status = 'pending'`);
+    expect(card.mode).toBe('explicit');
+    expect(card.payload.stage).toBe('post_Q4');
+    expect(card.payload.failing.map((f) => f.check)).toEqual(['cta']);
+    // A second blocked run doesn't stack cards.
+    await preparePublish(ctx.svc, payload);
+    expect(await ctx.db.query(`SELECT 1 FROM approval WHERE kind = 'qc_override'`)).toHaveLength(1);
+
+    // A reason is required.
+    await expect(decide(ctx.db, { approvalId: card.id, decision: 'approve', actor: OWNER })).rejects.toThrow(/reason/);
+    await decide(ctx.db, { approvalId: card.id, decision: 'approve', actor: OWNER, note: 'CTA is in the pinned comment' });
+    expect(await status(ctx, 'calendar_slot', s.id)).toBe('final_gate');
+    const job = await ctx.db.one<{ id: string; payload: Record<string, unknown> }>(`SELECT id, payload FROM job WHERE kind = $1 AND payload ? 'qcOverride'`, [PUBLISH_PREPARE_JOB]);
+    expect(job.payload.qcOverride).toMatchObject({ approvalId: card.id, reason: 'CTA is in the pinned comment' });
+    const out = (await jobs[PUBLISH_PREPARE_JOB]!({ services: ctx.svc, job: job as never, heartbeat: async () => true })) as { slotStatus: string };
+    expect(out.slotStatus).toBe('scheduled');
+    const rows = await posts(s.id);
+    expect(rows[0]!.status).toBe('awaiting_approval');
+    expect(rows[0]!.meta.qc_override).toMatchObject({ reason: 'CTA is in the pinned comment' });
+
+    // Blockers never get a card, and a card that lists one can't be approved.
+    const s2 = await slot(ctx, p.id);
+    await preparePublish(ctx.svc, await preparePayload(ctx, p.id, s2.id, 'talking', { size: [720, 1280] }));
+    expect(await ctx.db.query(`SELECT 1 FROM approval WHERE kind = 'qc_override' AND payload->'prepare'->>'slotId' = $1`, [s2.id])).toHaveLength(0);
   });
 });

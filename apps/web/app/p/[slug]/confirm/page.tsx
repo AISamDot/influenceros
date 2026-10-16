@@ -1,6 +1,13 @@
-import { SiteFooter, SiteHeader, SitePage, siteFor } from '@/components/site-shell';
+import type { Metadata } from 'next';
+import { SiteFooter, siteFor, SiteHeader, SitePage, sitePageMetadata } from '@/components/site-shell';
+import { SubmitButton } from '@/components/submit-button';
 
 export const dynamic = 'force-dynamic';
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  return sitePageMetadata((await params).slug, 'Confirm your email', { noindex: true });
+}
+
 
 /**
  * Double opt-in confirmation. The email link opens this page; the visitor confirms with a button (a POST), so link
@@ -18,7 +25,7 @@ export default async function ConfirmPage({ params, searchParams }: { params: Pr
         {sp.done === '1' ? (
           <>
             <h2 className="site-h2">You’re in.</h2>
-            <p className="site-lead">Your first email is on its way with the download link.</p>
+            <p className="site-lead">{site.leadMagnet ? 'Your first email is on its way with the download link.' : 'Your first email is on its way.'}</p>
           </>
         ) : sp.error === '1' || !token ? (
           <>
@@ -34,9 +41,9 @@ export default async function ConfirmPage({ params, searchParams }: { params: Pr
             <p className="site-lead">One tap and you’re on {site.persona.name}’s list.</p>
             <input type="hidden" name="slug" value={slug} />
             <input type="hidden" name="t" value={token} />
-            <button type="submit" className="site-btn site-btn-primary">
+            <SubmitButton className="site-btn site-btn-primary">
               Yes, sign me up
-            </button>
+            </SubmitButton>
           </form>
         )}
       </section>
