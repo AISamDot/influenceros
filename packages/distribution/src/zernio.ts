@@ -12,7 +12,10 @@ import {
   type PublishComment,
   type PublishProvider,
   type PublishRequest,
+  type StoryCapability,
+  type StoryMetrics,
 } from '@ios/providers';
+import { ZERNIO_STORY_SUPPORT } from './platforms';
 
 /**
  * Live Zernio adapter (REST, https://docs.zernio.com) behind `PublishProvider`.
@@ -100,6 +103,12 @@ export function buildPostBody(req: PublishRequest): Json {
   assertAiFlagOptions(req.platform, req.platformOptions);
   if (!req.mediaUrls.length) throw new Error('zernio: a post needs media');
   const kind = req.kind ?? 'video';
+  // (IOS-5 stream L) Stories: one image frame, only where Zernio supports Stories for the platform.
+  if (kind === 'story') {
+    if (!ZERNIO_STORY_SUPPORT.some((c) => c.platform === req.platform && c.stories)) throw new Error(`zernio: ${req.platform} has no Stories through the API`);
+    if (req.mediaUrls.length !== 1) throw new Error('zernio: a story is exactly one frame');
+    if (req.mode === 'draft_inbox') throw new Error('zernio: stories are never inbox drafts');
+  }
   const draft = req.mode === 'draft_inbox';
   const extra: Json = { ...(req.platformOptions ?? {}) };
   delete extra.tiktokSettings;
@@ -128,7 +137,12 @@ export function buildPostBody(req: PublishRequest): Json {
       video_made_with_ai: true,
     };
   } else if (req.platform === 'instagram') {
-    platformSpecificData = { ...platformSpecificData, ...(req.coverUrl && kind === 'video' ? { instagramThumbnail: req.coverUrl } : {}), isAiGenerated: true };
+    platformSpecificData = {
+      ...platformSpecificData,
+      ...(req.coverUrl && kind === 'video' ? { instagramThumbnail: req.coverUrl } : {}),
+      ...(kind === 'story' ? { contentType: 'story' } : {}),
+      isAiGenerated: true,
+    };
   } else if (req.platform === 'youtube') {
     platformSpecificData = {
       visibility: 'public',
@@ -364,6 +378,17 @@ export class ZernioPublisher implements PublishProvider {
     };
   }
 
+  /** (IOS-5 stream L) Which platforms take Stories through Zernio (a flag per platform). */
+  async storyCapabilities(): Promise<StoryCapability[]> {
+    return ZERNIO_STORY_SUPPORT.map((c) => ({ ...c }));
+  }
+
+  /** (IOS-5 stream L) Story frame insights (Instagram: reach, replies, taps forward and back, exits). */
+  async fetchStoryMetrics(req: { externalId: string; platform: Platform }): Promise<StoryMetrics> {
+    const { data } = await this.#call('GET', `${ROUTES.analytics}?postId=${encodeURIComponent(req.externalId)}&platform=${req.platform}`);
+    return parseStoryMetrics(rec(data));
+  }
+
   async listAccounts(): Promise<PublishAccount[]> {
     const { data } = await this.#call('GET', ROUTES.accounts);
     const d = rec(data);
@@ -466,4 +491,18 @@ export function parseZernioEvent(e: Json): DistributionEvent[] {
     return [{ type: 'post_status', externalId, status, url: str(d.platformPostUrl) ?? str(rec(d.post).platformPostUrl) }];
   }
   return [];
+}
+
+/** Story insights from a Zernio analytics response (Meta's names and Zernio's camelCase both read). Exported for tests. */
+export function parseStoryMetrics(d: Json): StoryMetrics {
+  const first = rec(arr(d.posts ?? d.data)[0]);
+  const a = { ...rec(d.analytics), ...rec(first.analytics), ...rec(rec(d.post).analytics) };
+  const nav = rec(a.navigation);
+  return {
+    reach: num(a.reach, a.impressions, a.views),
+    replies: num(a.replies, a.storyReplies),
+    tapsForward: num(a.tapsForward, a.taps_forward, nav.taps_forward, nav.tapsForward),
+    tapsBack: num(a.tapsBack, a.taps_back, nav.taps_back, nav.tapsBack),
+    exits: num(a.exits, a.exited, nav.exited, nav.exits),
+  };
 }

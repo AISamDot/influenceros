@@ -38,7 +38,11 @@ export interface PersonaContext {
   readonly cached: readonly LlmCacheBlock[];
 }
 
-const FORMATS: readonly PostFormat[] = ['talking', 'activity_text', 'voiceover', 'static', 'carousel'];
+/** (IOS-5) Every format a pillar may name, optional formats included. */
+const FORMATS: readonly PostFormat[] = [
+  'talking', 'activity_text', 'voiceover', 'static', 'carousel',
+  'product_in_hand', 'trend_reenactment', 'photo_dump', 'text_note', 'facecam_screen', 'reply_comment', 'news_greenscreen', 'meme',
+];
 
 /** Stable studio-wide rules every content agent works under (cached first; change the version when editing). */
 export const STUDIO_CONTENT_RULES = `Studio content rules v2 (Influencer OS).

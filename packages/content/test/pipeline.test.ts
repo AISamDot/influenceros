@@ -29,7 +29,9 @@ describe('content pipeline: dry run on fakes', () => {
       }
       expect(r.mediaJobs).toHaveLength(10);
       const spoken = r.mediaJobs.filter((j) => j.format === 'talking' || j.format === 'voiceover');
-      expect(spoken).toHaveLength(5);
+      expect(spoken).toHaveLength(3); // FR-4.3c default (IOS-5): 2 talking + 1 voiceover
+      const dump = r.mediaJobs.find((j) => j.format === 'photo_dump')!; // graded as its carousel shape until stream K's rules
+      expect(dump.voiceover).toBeNull();
       for (const j of spoken) {
         expect(wordCount(j.voiceover!)).toBeGreaterThanOrEqual(40);
         expect(wordCount(j.voiceover!)).toBeLessThanOrEqual(95);

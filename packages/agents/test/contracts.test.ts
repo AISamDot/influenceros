@@ -29,7 +29,8 @@ const ownerOnly: ToolDef<Record<string, never>, string> = {
 describe('IOS-2 contracts: fake runtime', () => {
   it('maps tiers to the 5.5 models', () => {
     expect(MODEL_IDS).toEqual({ fast: 'claude-haiku-5-5', standard: 'claude-sonnet-5-5', strong: 'claude-opus-5-5' });
-    expect(Object.values(DEFAULT_CADENCE.formatMix).reduce((a, b) => a + b, 0)).toBe(DEFAULT_CADENCE.postsPerWeek);
+    expect(Object.values(DEFAULT_CADENCE.formatMix).reduce((a, b) => a + (b ?? 0), 0)).toBe(DEFAULT_CADENCE.postsPerWeek);
+    expect(DEFAULT_CADENCE.formatMix).toMatchObject({ talking: 2, activity_text: 2, voiceover: 1, static: 2, carousel: 2, photo_dump: 1 });
     expect(Object.values(DEFAULT_CADENCE.purposeMix).reduce((a, b) => a + b, 0)).toBe(DEFAULT_CADENCE.postsPerWeek);
   });
 

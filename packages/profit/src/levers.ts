@@ -1,9 +1,9 @@
 import { type AgentName, CADENCE_BOUNDS, type CadenceTarget, DEFAULT_ROUTING, type FormatMix } from '@ios/agents';
-import { audit, getSettings, personaCaps, type PostFormat } from '@ios/core';
+import { audit, getSettings, isOptionalFormat, personaCaps, type PostFormat } from '@ios/core';
 import { type Db, json } from '@ios/db';
 import { LLM_PRICES, type ModelTier } from '@ios/providers';
 import { aggregate, type Facts, isSyntheticRow, loadFacts } from './pnl';
-import { cadenceTarget, formatBounds, routingOverride, scaleTarget } from './policies';
+import { cadenceTarget, formatBounds, formatsOn, latestPlanRow, planMix, routingOverride, scaleTarget } from './policies';
 import { getProfitSettings, type ProfitSettings } from './settings';
 import type { LeverAction, LeverKind, PnlRow } from './types';
 import { addDays, DAY_MS, isoDate, mondayOf, round, sum, WEEKS_PER_MONTH } from './util';
@@ -163,6 +163,79 @@ export async function planCadence(inp: LeverInputs, personaId: string, opts: { i
 
 // ───────────────────────────── Format mix ─────────────────────────────
 
+/** Per-format results the format lever weighs (FR-4.3c): reach, follows, saves + shares, clicks, revenue ÷ cost. */
+export interface FormatResult {
+  format: PostFormat;
+  label: string;
+  posts: number;
+  reachPerPost: number;
+  followsPerPost: number;
+  savesSharesPerPost: number;
+  clicksPerPost: number;
+  revenuePerPostCents: number;
+  costPerPostCents: number;
+  profitPerPostCents: number;
+  /** Net revenue per post ÷ cost per post (cost floored at 1 cent). */
+  roi: number;
+  /** Composite score, 1 = the persona's average format. */
+  score: number;
+}
+
+/** Score weights: money first (revenue ÷ cost), then reach, follows, saves/shares and clicks equally. */
+export const FORMAT_SCORE_WEIGHTS = { roi: 0.4, reach: 0.15, follows: 0.15, savesShares: 0.15, clicks: 0.15 } as const;
+
+/** Latest metrics per post in the window, summed per format (stream F's metric_snapshot). */
+async function formatEngagement(db: Db, personaId: string, from: Date, to: Date): Promise<Map<string, { views: number; follows: number; savesShares: number; clicks: number }>> {
+  const rows = await db.query<{ format: string; views: number; follows: number; ss: number; clicks: number }>(
+    `SELECT p.format, COALESCE(sum(m.views), 0)::float8 AS views, COALESCE(sum(m.follows), 0)::float8 AS follows,
+            COALESCE(sum(m.saves + m.shares), 0)::float8 AS ss, COALESCE(sum(m.link_clicks), 0)::float8 AS clicks
+       FROM post p
+       LEFT JOIN LATERAL (SELECT views, follows, saves, shares, link_clicks FROM metric_snapshot ms WHERE ms.post_id = p.id ORDER BY captured_on DESC, created_at DESC LIMIT 1) m ON true
+      WHERE p.persona_id = $1 AND p.published_at >= $2 AND p.published_at < $3
+      GROUP BY p.format`,
+    [personaId, from, to],
+  );
+  return new Map(rows.map((r) => [r.format, { views: Number(r.views), follows: Number(r.follows), savesShares: Number(r.ss), clicks: Number(r.clicks) }]));
+}
+
+/** Scores each format with ≥ 2 posts in the format window (the P&L rows plus engagement). */
+export async function formatResults(inp: LeverInputs, personaId: string): Promise<FormatResult[]> {
+  const rows = aggregate(factsFor(inp.formatWindow, personaId), 'format', personaId).filter((r) => !isSyntheticRow(r) && r.format && r.posts >= 2);
+  if (!rows.length) return [];
+  const eng = await formatEngagement(inp.db, personaId, addDays(inp.now, -inp.settings.formatWindowDays), inp.now);
+  const base = rows.map((r) => {
+    const e = eng.get(r.format!) ?? { views: r.views, follows: 0, savesShares: 0, clicks: 0 };
+    return {
+      format: r.format!,
+      label: r.label,
+      posts: r.posts,
+      reachPerPost: Math.max(e.views, r.views) / r.posts,
+      followsPerPost: e.follows / r.posts,
+      savesSharesPerPost: e.savesShares / r.posts,
+      clicksPerPost: e.clicks / r.posts,
+      revenuePerPostCents: r.revenuePerPostCents,
+      costPerPostCents: r.costPerPostCents,
+      profitPerPostCents: r.profitCents / r.posts,
+      roi: Math.max(0, r.revenuePerPostCents) / Math.max(1, r.costPerPostCents),
+    };
+  });
+  const rel = (k: keyof (typeof base)[number]) => {
+    const avg = base.reduce((a, x) => a + Number(x[k]), 0) / base.length;
+    return (x: (typeof base)[number]) => (avg > 0 ? Number(x[k]) / avg : 0);
+  };
+  const [roi, reach, follows, ss, clicks] = [rel('roi'), rel('reachPerPost'), rel('followsPerPost'), rel('savesSharesPerPost'), rel('clicksPerPost')];
+  const W = FORMAT_SCORE_WEIGHTS;
+  return base.map((x) => ({ ...x, score: W.roi * roi(x) + W.reach * reach(x) + W.follows * follows(x) + W.savesShares * ss(x) + W.clicks * clicks(x) }));
+}
+
+/**
+ * The format lever (FR-4.3c, FR-24.2): moves one weekly slot from the weakest to the strongest format by per-format
+ * results (revenue per post ÷ cost per post, reach, follows, saves/shares, clicks), never toward a less profitable one.
+ * Bounds (formatBounds): each core format and each optional format the Format Plan has on keeps ≥ 1, none takes more
+ * than half the week, formats the plan has off stay off, and no line drifts more than LEVER_DRIFT from the approved
+ * plan. The new mix is the persona's plan in force from next Monday (profit_cadence_override, composed over
+ * format_plan by the CadencePolicy and the Format Plan service).
+ */
 export async function planFormatMix(
   inp: LeverInputs,
   personaId: string,
@@ -172,23 +245,27 @@ export async function planFormatMix(
   if (!p || !PUBLISHING.includes(p.state)) return null;
   const { settings, now } = inp;
   if (!opts.ignoreCooldown && (await recentLever(inp.db, personaId, inp.studioId, 'format_mix', addDays(now, -6)))) return null;
-  const rows = aggregate(factsFor(inp.formatWindow, personaId), 'format', personaId).filter((r) => !isSyntheticRow(r) && r.format && r.posts >= 2);
-  if (rows.length < 2) return null;
-  const ppp = (r: PnlRow) => r.profitCents / r.posts;
-  const sorted = [...rows].sort((a, b) => ppp(b) - ppp(a));
+  const results = await formatResults(inp, personaId);
+  if (results.length < 2) return null;
+  const sorted = [...results].sort((a, b) => b.score - a.score || b.profitPerPostCents - a.profitPerPostCents);
   const effectiveFrom = addDays(mondayOf(now), 7);
   const current = opts.current ?? (await cadenceTarget(inp.db, personaId, effectiveFrom));
-  const bounds = formatBounds(current.postsPerWeek);
+  const plan = await latestPlanRow(inp.db, personaId, effectiveFrom);
+  const planned = plan ? planMix(plan.plan) : null;
+  const on = (planned ? formatsOn(planned) : formatsOn(current.formatMix)).filter(isOptionalFormat);
+  const base = planned ? scaleTarget({ ...DEFAULT_CADENCE_LIKE, formatMix: planned as FormatMix, postsPerWeek: sum(Object.values(planned).map((v) => v ?? 0)) }, current.postsPerWeek, 'lever').formatMix : undefined;
+  const bounds = formatBounds(current.postsPerWeek, { on, base });
   const count = (f: PostFormat) => current.formatMix[f] ?? 0;
-  const best = sorted.find((r) => count(r.format!) < (bounds.max[r.format!] ?? 0));
-  const worst = [...sorted].reverse().find((r) => r !== best && count(r.format!) > (bounds.min[r.format!] ?? 0));
-  if (!best || !worst || ppp(best) <= ppp(worst)) return null;
-  const gap = ppp(best) - ppp(worst);
-  if (gap < Math.max(100, 0.25 * Math.abs(ppp(best)))) return null;
+  const best = sorted.find((r) => count(r.format) < (bounds.max[r.format] ?? 0));
+  const worst = [...sorted].reverse().find((r) => r !== best && count(r.format) > (bounds.min[r.format] ?? 0));
+  if (!best || !worst || best.score - worst.score < 0.3 || best.profitPerPostCents < worst.profitPerPostCents) return null;
+  const gap = best.profitPerPostCents - worst.profitPerPostCents;
   const mix: Record<string, number> = { ...current.formatMix };
-  mix[best.format!] = (mix[best.format!] ?? 0) + 1;
-  mix[worst.format!] = (mix[worst.format!] ?? 0) - 1;
-  const reason = `${p.name}: ${best.label} makes ${usd(ppp(best))} profit per post vs ${usd(ppp(worst))} for ${worst.label} (last ${settings.formatWindowDays} days): moving one weekly slot to ${best.label}.`;
+  mix[best.format] = (mix[best.format] ?? 0) + 1;
+  mix[worst.format] = (mix[worst.format] ?? 0) - 1;
+  if (isOptionalFormat(worst.format) && mix[worst.format] === 0) delete mix[worst.format];
+  const why = (r: FormatResult) => `${usd(r.profitPerPostCents)} profit, ${Math.round(r.reachPerPost)} reach, ${r.savesSharesPerPost.toFixed(1)} saves+shares per post (score ${r.score.toFixed(2)})`;
+  const reason = `${p.name}: ${best.label} makes ${why(best)} vs ${worst.label} ${why(worst)} over the last ${settings.formatWindowDays} days: moving one weekly slot to ${best.label}.`;
   const target: CadenceTarget = { ...current, formatMix: mix as FormatMix, source: 'lever', reason };
   return {
     lever: 'format_mix',
@@ -197,18 +274,22 @@ export async function planFormatMix(
     before: { formatMix: current.formatMix },
     after: { formatMix: mix },
     rationale: reason,
-    expectedImpactCents: round(gap * WEEKS_PER_MONTH * 0.5),
+    expectedImpactCents: round(Math.max(0, gap) * WEEKS_PER_MONTH * 0.5),
     confidence: confidenceFor(Math.min(best.posts, worst.posts) * 2),
     reviewDays: settings.reviewDays + 14,
     baseline: {
       weeklyProfitCents: weeklyProfit(aggregate(factsFor(inp.formatWindow, personaId), 'persona').find((r) => r.key === personaId), settings.formatWindowDays),
       windowDays: settings.formatWindowDays,
-      best: { format: best.format, profitPerPostCents: round(ppp(best)), posts: best.posts },
-      worst: { format: worst.format, profitPerPostCents: round(ppp(worst)), posts: worst.posts },
+      best: { format: best.format, profitPerPostCents: round(best.profitPerPostCents), posts: best.posts, score: Math.round(best.score * 100) / 100 },
+      worst: { format: worst.format, profitPerPostCents: round(worst.profitPerPostCents), posts: worst.posts, score: Math.round(worst.score * 100) / 100 },
+      planVersion: plan?.version ?? null,
     },
     effect: { type: 'cadence', target, effectiveFrom },
   };
 }
+
+/** A neutral shell for scaling a plan's mix (only formatMix and postsPerWeek matter to scaleTarget's format split). */
+const DEFAULT_CADENCE_LIKE: CadenceTarget = { postsPerWeek: 10, formatMix: { talking: 1, activity_text: 1, voiceover: 1, static: 1, carousel: 1 }, purposeMix: { reach: 6, trust: 3, sell: 1 }, source: 'default' };
 
 // ───────────────────────────── Model routing ─────────────────────────────
 

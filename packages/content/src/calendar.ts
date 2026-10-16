@@ -1,5 +1,5 @@
 import { CADENCE_BOUNDS, type CadenceTarget, DEFAULT_CADENCE, type SlotBeat, type StudioServices, WINNER_CADENCE, WINNER_STATES } from '@ios/agents';
-import { type PersonaState, type PostFormat, type PostPurpose, PUBLISHING_STATES, thumbnailUri } from '@ios/core';
+import { CORE_FORMATS, isOptionalFormat, type PersonaState, POST_FORMATS, type PostFormat, type PostPurpose, PUBLISHING_STATES, thumbnailUri } from '@ios/core';
 import { json } from '@ios/db';
 import { loadPersonaContext, type PersonaContext } from './persona';
 import { sellQueue, type SellItem } from './monetization';
@@ -12,7 +12,8 @@ import { asRecord, asString, DAY_MS, hashInt, isoDate, lowerFirst, mondayUtc, sa
  * Winners (SCALING / BRAND) scale to 2–3 posts a day.
  */
 
-export const FORMATS: readonly PostFormat[] = ['talking', 'activity_text', 'voiceover', 'static', 'carousel'];
+/** The core formats: every weekly mix covers each of them at least once (the core-format invariant). */
+export const FORMATS: readonly PostFormat[] = CORE_FORMATS;
 export const PURPOSES: readonly PostPurpose[] = ['reach', 'trust', 'sell'];
 
 export { WINNER_CADENCE, WINNER_STATES };
@@ -41,11 +42,48 @@ function apportion<K extends string>(weights: Readonly<Record<K, number>>, keys:
   return out;
 }
 
+/**
+ * (IOS-5, stream L) The formats a mix plans: every core format, plus each optional format the persona's Format Plan
+ * has on (count > 0), in POST_FORMATS order.
+ */
+export function mixFormats(mix: Readonly<Partial<Record<PostFormat, number>>>): PostFormat[] {
+  return POST_FORMATS.filter((f) => !isOptionalFormat(f) || (mix[f] ?? 0) > 0);
+}
+
+/**
+ * Spreads `total` posts over the mix's formats in proportion to its counts, keeping the core-format invariant (each core
+ * format ≥ 1) and at least one post for every optional format that is on. When the week is too small for every format
+ * that is on, the lightest optional formats drop out first. Parts always sum to `total`.
+ */
+export function apportionFormats(mix: Readonly<Partial<Record<PostFormat, number>>>, total: number): Record<string, number> {
+  const keys = mixFormats(mix);
+  const w = (f: PostFormat) => Math.max(0, mix[f] ?? 0);
+  const min = Object.fromEntries(keys.map((f) => [f, 1])) as Record<string, number>;
+  // Too small a week: drop optional minimums (lightest first), then core ones (only for weeks under 5 posts).
+  const byWeight = [...keys].sort((a, b) => Number(isOptionalFormat(b)) - Number(isOptionalFormat(a)) || w(a) - w(b));
+  for (const f of byWeight) if (Object.values(min).reduce((a, b) => a + b, 0) > total) min[f] = 0;
+  const wsum = keys.reduce((a, f) => a + w(f), 0);
+  const ideal = Object.fromEntries(keys.map((f) => [f, wsum > 0 ? (w(f) / wsum) * total : total / keys.length])) as Record<string, number>;
+  const out = Object.fromEntries(keys.map((f) => [f, Math.max(min[f]!, Math.floor(ideal[f]!))])) as Record<string, number>;
+  const sumOut = () => keys.reduce((a, f) => a + out[f]!, 0);
+  while (sumOut() > total) {
+    const k = keys.filter((f) => out[f]! > min[f]!).sort((a, b) => out[b]! - ideal[b]! - (out[a]! - ideal[a]!))[0];
+    if (!k) break;
+    out[k] -= 1;
+  }
+  while (sumOut() < total) {
+    const k = [...keys].sort((a, b) => ideal[b]! - out[b]! - (ideal[a]! - out[a]!))[0]!;
+    out[k] += 1;
+  }
+  for (const f of keys) if (out[f] === 0 && isOptionalFormat(f)) delete out[f];
+  return out;
+}
+
 /** Clamps to CADENCE_BOUNDS (or `cap`, e.g. the windows left this week) and makes both mixes sum to postsPerWeek. */
 export function normaliseCadence(t: CadenceTarget, cap: number = CADENCE_BOUNDS.max): CadenceTarget {
   const n = Math.max(0, Math.min(cap, Math.max(CADENCE_BOUNDS.min, Math.round(t.postsPerWeek)), CADENCE_BOUNDS.max));
-  // Core formats only until stream L (IOS-5) plans the optional ones (a FormatMix may leave them out).
-  const formatMix = apportion(t.formatMix as Readonly<Record<PostFormat, number>>, FORMATS, n);
+  // (IOS-5) Core formats plus the optional formats the persona's Format Plan has on.
+  const formatMix = apportionFormats(t.formatMix, n) as CadenceTarget['formatMix'];
   const purposeMix = apportion(t.purposeMix, PURPOSES, n);
   // Every post has a CTA, and every week sells at least once.
   if (n > 0 && purposeMix.sell === 0) {
@@ -56,10 +94,15 @@ export function normaliseCadence(t: CadenceTarget, cap: number = CADENCE_BOUNDS.
   return { ...t, postsPerWeek: n, formatMix, purposeMix };
 }
 
-const PREFER: Record<PostPurpose, readonly PostFormat[]> = {
-  sell: ['talking', 'carousel', 'voiceover', 'static', 'activity_text'],
-  trust: ['carousel', 'voiceover', 'talking', 'static', 'activity_text'],
-  reach: ['activity_text', 'talking', 'voiceover', 'static', 'carousel'],
+/**
+ * Which format a purpose takes first (IOS-5: the optional formats slot in where they work best): sell → walkthroughs and
+ * the product in hand, trust → teaching formats (carousels, notes, facecam explainers), reach → scroll-stoppers (loops,
+ * memes, dumps, reactions).
+ */
+export const PREFER: Readonly<Record<PostPurpose, readonly PostFormat[]>> = {
+  sell: ['product_in_hand', 'talking', 'carousel', 'facecam_screen', 'voiceover', 'static', 'text_note', 'activity_text', 'photo_dump', 'reply_comment', 'news_greenscreen', 'meme', 'trend_reenactment'],
+  trust: ['carousel', 'voiceover', 'facecam_screen', 'text_note', 'reply_comment', 'talking', 'static', 'photo_dump', 'news_greenscreen', 'activity_text', 'meme', 'product_in_hand', 'trend_reenactment'],
+  reach: ['activity_text', 'meme', 'photo_dump', 'trend_reenactment', 'news_greenscreen', 'reply_comment', 'talking', 'static', 'text_note', 'voiceover', 'carousel', 'facecam_screen', 'product_in_hand'],
 };
 
 /** Pairs each post's format with a purpose: sell → walkthrough-friendly formats, trust → teach, reach → scroll-stoppers. */
@@ -68,7 +111,7 @@ export function assignMix(t: CadenceTarget): Array<{ format: PostFormat; purpose
   const out: Array<{ format: PostFormat; purpose: PostPurpose }> = [];
   for (const purpose of ['sell', 'trust', 'reach'] as const) {
     for (let i = 0; i < t.purposeMix[purpose]; i++) {
-      const format = PREFER[purpose].find((f) => left[f] > 0) ?? FORMATS.find((f) => left[f] > 0);
+      const format = PREFER[purpose].find((f) => (left[f] ?? 0) > 0) ?? POST_FORMATS.find((f) => (left[f] ?? 0) > 0);
       if (!format) break;
       left[format] -= 1;
       out.push({ format, purpose });
@@ -204,9 +247,15 @@ export function fakeTitles(ctx: PersonaContext, slots: ReadonlyArray<{ format: P
             ? `Storytime: ${lowerFirst(e)}`
             : s.format === 'carousel'
               ? `${upperFirst(e)}: the checklist`
-              : s.purpose === 'trust'
-                ? `How to: ${lowerFirst(e)}`
-                : upperFirst(e),
+              : s.format === 'photo_dump'
+                ? `Photo dump: ${lowerFirst(e)}`
+                : s.format === 'text_note'
+                  ? `A note on ${lowerFirst(e)}`
+                  : s.format === 'meme'
+                    ? `Me vs ${lowerFirst(e)}`
+                    : s.purpose === 'trust'
+                      ? `How to: ${lowerFirst(e)}`
+                      : upperFirst(e),
       ),
       ...fw.map((f) => `${f}, explained in 30 seconds`),
       ...examples.map((e) => `${upperFirst(e)} (the honest version)`),

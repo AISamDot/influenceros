@@ -275,6 +275,15 @@ importers:
       '@ios/db':
         specifier: workspace:*
         version: link:../db
+      '@ios/generator':
+        specifier: workspace:*
+        version: link:../generator
+      '@ios/media':
+        specifier: workspace:*
+        version: link:../media
+      '@ios/profit':
+        specifier: workspace:*
+        version: link:../profit
       '@ios/providers':
         specifier: workspace:*
         version: link:../providers

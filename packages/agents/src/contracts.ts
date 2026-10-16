@@ -362,10 +362,14 @@ export interface CadenceTarget {
 }
 
 // >>> stream L default cadence (IOS-5: L moves the studio default to FR-4.3c's still-heavier mix)
-/** 10 posts a week: 3 talking, 3 activity + text, 2 voiceover, 1 static, 1 carousel; ~6 reach / 3 trust / 1 sell. */
+/**
+ * FR-4.3c studio default (Owner, 16 Oct: heavier on stills and written posts), 10 posts a week: 2 talking, 2 activity +
+ * text, 1 voiceover, 2 static, 2 carousel, 1 photo dump (50% stills, was 20%); ~6 reach / 3 trust / 1 sell. A persona's
+ * Format Plan (stream L) replaces it once one is approved.
+ */
 export const DEFAULT_CADENCE: CadenceTarget = {
   postsPerWeek: 10,
-  formatMix: { talking: 3, activity_text: 3, voiceover: 2, static: 1, carousel: 1 },
+  formatMix: { talking: 2, activity_text: 2, voiceover: 1, static: 2, carousel: 2, photo_dump: 1 },
   purposeMix: { reach: 6, trust: 3, sell: 1 },
   source: 'default',
 };
