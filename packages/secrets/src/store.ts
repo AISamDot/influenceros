@@ -23,6 +23,10 @@ export const SECRETS = {
   // polls instead of accepting webhooks.
   'zernio.webhook_secret': { env: 'ZERNIO_WEBHOOK_SECRET', label: 'Zernio webhook signing secret (optional)' },
   'resend.webhook_secret': { env: 'RESEND_WEBHOOK_SECRET', label: 'Resend webhook signing secret (optional)' },
+  // IOS-4 stream H: product template backends (Sheets / Notion stay fake without these).
+  'google.sheets_token': { env: 'GOOGLE_SHEETS_TOKEN', label: 'Google Sheets OAuth token (product templates)' },
+  'notion.api_key': { env: 'NOTION_API_KEY', label: 'Notion integration key (product templates)' },
+  'notion.template_parent_id': { env: 'NOTION_TEMPLATE_PARENT_ID', label: 'Notion parent page ID for product templates' },
   'apify.token': { env: 'APIFY_TOKEN', label: 'Apify token' },
   'pixabay.api_key': { env: 'PIXABAY_API_KEY', label: 'Pixabay API key' },
   'discord.bot_token': { env: 'DISCORD_BOT_TOKEN', label: 'Discord bot token' },

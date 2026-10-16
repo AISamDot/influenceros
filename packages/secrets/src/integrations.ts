@@ -31,6 +31,8 @@ export const INTEGRATIONS: readonly IntegrationDef[] = [
   { id: 'lemonsqueezy', name: 'Lemon Squeezy', purpose: 'Stores, products (read-only), checkouts, discount codes, order and subscription webhooks', secrets: ['lemonsqueezy.api_key', 'lemonsqueezy.webhook_secret'], liveAdapter: true, milestone: 'IOS-4', kind: 'provider' },
   // <<< stream G integrations
   { id: 'resend', name: 'Resend', purpose: 'Owner sign-in links (IOS-2); email lists, sequences and the daily digest', secrets: ['resend.api_key'], liveAdapter: true, milestone: 'IOS-2', kind: 'provider' },
+  { id: 'google-sheets', name: 'Google Sheets', purpose: 'Product Builder spreadsheet templates', secrets: ['google.sheets_token'], liveAdapter: true, milestone: 'IOS-4', kind: 'provider' },
+  { id: 'notion', name: 'Notion', purpose: 'Product Builder Notion templates', secrets: ['notion.api_key', 'notion.template_parent_id'], liveAdapter: true, milestone: 'IOS-4', kind: 'provider' },
   { id: 'apify', name: 'Apify', purpose: 'Trend and competitor research scrapers', secrets: ['apify.token'], liveAdapter: false, milestone: 'IOS-2', kind: 'provider' },
   { id: 'pixabay', name: 'Pixabay', purpose: 'Royalty-free B-roll and music', secrets: ['pixabay.api_key'], liveAdapter: false, milestone: 'IOS-3', kind: 'provider' },
   { id: 'discord', name: 'Discord', purpose: 'Membership community access', secrets: ['discord.bot_token'], liveAdapter: false, milestone: 'Phase 1', kind: 'provider' },
