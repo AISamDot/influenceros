@@ -338,6 +338,33 @@ describe('community worker', () => {
     expect((await handleCommunity(ctx.svc, p.id)).errors).toBe(0);
   });
 
+  it('a crisis still reaches the Owner (S1) when the vendor fails to send the helpline text', async () => {
+    const p = await persona(ctx);
+    const { ext } = await livePost(p.id);
+    const card = await proposeCrisisText(ctx.svc, ctx.studioId);
+    await decide(ctx.db, { approvalId: card!, decision: 'approve', actor: OWNER });
+    const pub = ctx.providers.publish;
+    pub.replyToComment = async () => {
+      throw new Error('zernio 503');
+    };
+    pub.failDms = true;
+    const crisis = comment('i want to kill myself tonight', 'vendor_down_user');
+    pub.comments.set(ext, [crisis]);
+    pub.inbox.push({ id: 'vd1', threadRef: 'vdth', userRef: 'dm_down', platform: 'instagram', direction: 'in', text: 'i have been thinking about suicide', at: new Date('2026-10-20T11:58:00Z') });
+    await pollCommunity(ctx.svc, p.id);
+    // Runs past the retry limit: the S1 must never end up as a silent S3 handling error.
+    for (let i = 0; i < MAX_HANDLE_ATTEMPTS; i++) await handleCommunity(ctx.svc, p.id).catch(() => undefined);
+    expect(await commentRow(crisis.id)).toMatchObject({ classification: 'crisis', severity: 'S1', status: 'escalated' });
+    const esc = await ctx.db.query<{ severity: string; category: string; source_type: string }>(`SELECT severity, category, source_type FROM escalation WHERE persona_id = $1 ORDER BY source_type`, [p.id]);
+    expect(esc).toEqual([
+      { severity: 'S1', category: 'crisis', source_type: 'comment' },
+      { severity: 'S1', category: 'crisis', source_type: 'dm_thread' },
+    ]);
+    const critical = await ctx.db.one<{ n: number }>(`SELECT count(*)::int AS n FROM notification WHERE kind = 'escalation' AND severity = 'critical'`);
+    expect(critical.n).toBe(2);
+    expect((await ctx.db.one<{ status: string }>(`SELECT status FROM dm_thread WHERE external_id = 'vdth'`)).status).toBe('bot_paused');
+  });
+
   it('throws only when every item failed, so the job retries', async () => {
     const p = await persona(ctx);
     const { ext } = await livePost(p.id);

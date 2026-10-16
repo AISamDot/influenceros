@@ -224,6 +224,30 @@ describe('opt-outs stand', () => {
   });
 });
 
+describe('opt-out sync never re-suppresses someone who came back', () => {
+  it('an unsynced opt-out followed by a confirmed resubscribe is not pushed to Resend as unsubscribed', async () => {
+    const t = await studio();
+    const p = await persona(t);
+    await subscribe(t.services, { slug: p.slug, email: 'back@example.com', region: 'US' });
+    const token = (await t.db.one<{ unsub_token: string }>('SELECT unsub_token FROM subscriber')).unsub_token;
+    const aud = t.providers.audience;
+    const real = aud.upsertContact.bind(aud);
+    aud.upsertContact = async () => {
+      throw new Error('resend 503');
+    };
+    await unsubscribe(t.services, token);
+    aud.upsertContact = real;
+    const before = sends(t).length;
+    expect((await subscribe(t.services, { slug: p.slug, email: 'back@example.com', region: 'US' })).outcome).toBe('confirm_sent');
+    const link = /\/confirm\?t=([A-Za-z0-9_-]+)/.exec(sends(t)[before]!.html)![1]!;
+    expect((await confirmSubscription(t.services, link)).ok).toBe(true);
+    expect(await syncPendingOptOuts(t.services)).toMatchObject({ pending: 0 });
+    const row = await t.db.one<{ status: string; provider_synced: boolean }>('SELECT status, provider_synced FROM subscriber');
+    expect(row).toEqual({ status: 'active', provider_synced: true });
+    expect([...aud.contacts.values()].find((c) => c.email === 'back@example.com')!.unsubscribed).toBe(false);
+  });
+});
+
 describe('Resend webhooks', () => {
   it('records delivery events, bounces stop the sequence, complaints unsubscribe; unsigned is refused; replays skip', async () => {
     const t = await studio();

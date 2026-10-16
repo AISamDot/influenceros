@@ -573,22 +573,33 @@ export async function handleComment(services: StudioServices, c: CommentRow, bit
   // S1: threats, crisis, minors, legal/press — stop replying to this person (the pause stays); crisis gets the approved
   // helpline text only; threats are hidden. Always escalated and alerted, paused person or not.
   if (cls.severity === 'S1') {
+    // Vendor calls here never throw: a failed hide or helpline send must not stop the S1 alert (a thrown error would
+    // retry the comment and, after MAX_HANDLE_ATTEMPTS, set it aside as a silent S3).
+    let vendorError: string | null = null;
+    const vendor = <T>(p: Promise<T>, failed: T): Promise<T> =>
+      p.catch((err) => {
+        vendorError = errorText(err).slice(0, 200);
+        return failed;
+      });
     let hidden = false;
-    if (cls.threat && canAct) hidden = (await providers.publish.hideComment({ externalId: c.post_external_id!, commentId: c.external_id! })).ok;
+    if (cls.threat && canAct) hidden = (await vendor(providers.publish.hideComment({ externalId: c.post_external_id!, commentId: c.external_id! }), { ok: false })).ok;
     if (hidden) sum.hidden += 1;
     await pauseUser(services, c.persona_id, c.platform, userRef, cls.threat ? cls.reason : cls.cls);
     let sent: string | null = null;
+    let helpline: string | null = null;
     if (cls.cls === 'crisis') {
-      const text = await approvedCrisisText(services, bits.studioId);
-      if (text && canAct) sent = (await providers.publish.replyToComment({ externalId: c.post_external_id!, commentId: c.external_id!, text })).id;
-      if (!text) await proposeCrisisText(services, bits.studioId).catch((err) => (err instanceof ApprovalError ? null : Promise.reject(err)));
+      helpline = await approvedCrisisText(services, bits.studioId);
+      if (helpline && canAct) sent = await vendor<string | null>(providers.publish.replyToComment({ externalId: c.post_external_id!, commentId: c.external_id!, text: helpline }).then((r) => r.id), null);
+      if (!helpline) await proposeCrisisText(services, bits.studioId).catch((err) => (err instanceof ApprovalError ? null : Promise.reject(err)));
     }
     const what = cls.threat
-      ? `Threatening comment on ${c.platform}:`
+      ? `Threatening comment on ${c.platform}${vendorError ? ` (hiding it failed: ${vendorError})` : ''}:`
       : cls.cls === 'crisis'
         ? sent
           ? 'Crisis comment: the approved helpline text was sent.'
-          : 'Crisis comment: no helpline text is approved yet, so nothing was sent.'
+          : helpline && vendorError
+            ? `Crisis comment: sending the approved helpline text failed (${vendorError}), so nothing was sent. Reply by hand.`
+            : 'Crisis comment: no helpline text is approved yet, so nothing was sent.'
         : `${cls.cls.replace('_', '/')} comment.`;
     await escalate(services, {
       studioId: bits.studioId,
@@ -738,12 +749,18 @@ export async function handleThread(services: StudioServices, t: ThreadRow, bits:
 
   if (cls.severity === 'S1') {
     let sent = false;
+    let sendError: string | null = null;
     if (cls.cls === 'crisis') {
       const helpline = await approvedCrisisText(services, bits.studioId);
       if (helpline) {
-        await sendThreadDm(services, t, helpline, 'helpline');
-        sent = true;
-        sum.dmsSent += 1;
+        // A failed send must not stop the S1 alert below (see handleComment).
+        try {
+          await sendThreadDm(services, t, helpline, 'helpline');
+          sent = true;
+          sum.dmsSent += 1;
+        } catch (err) {
+          sendError = errorText(err).slice(0, 200);
+        }
       } else {
         await proposeCrisisText(services, bits.studioId).catch((err) => (err instanceof ApprovalError ? null : Promise.reject(err)));
       }
@@ -758,7 +775,7 @@ export async function handleThread(services: StudioServices, t: ThreadRow, bits:
       sourceId: t.id,
       severity: 'S1',
       category: cls.threat ? 'threat' : cls.cls,
-      summary: `${cls.cls === 'crisis' ? (sent ? 'Crisis DM: the approved helpline text was sent; the thread is paused.' : 'Crisis DM: no helpline text is approved yet, nothing was sent; the thread is paused.') : `${cls.cls.replace('_', '/')} DM; the thread is paused.`}${paused ? ' (This person was already paused.)' : ''} "${excerpt(text)}"`,
+      summary: `${cls.cls === 'crisis' ? (sent ? 'Crisis DM: the approved helpline text was sent; the thread is paused.' : sendError ? `Crisis DM: sending the approved helpline text failed (${sendError}), nothing was sent; the thread is paused. Reply by hand.` : 'Crisis DM: no helpline text is approved yet, nothing was sent; the thread is paused.') : `${cls.cls.replace('_', '/')} DM; the thread is paused.`}${paused ? ' (This person was already paused.)' : ''} "${excerpt(text)}"`,
       fresh: paused || cls.cls === 'crisis',
     });
     sum.escalated += 1;

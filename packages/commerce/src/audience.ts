@@ -179,7 +179,7 @@ export async function confirmSubscription(services: StudioServices, token: strin
   const resubscribe = s.status === 'unsubscribed' && row.ref?.resubscribe === true;
   if (s.status !== 'pending' && !resubscribe) return { ok: s.status === 'active', slug: s.slug };
   await db.query(
-    `UPDATE subscriber SET status = 'active', consent = true, consent_at = $2, confirmed_at = $2, unsubscribed_at = NULL, double_opt_in = true, updated_at = now() WHERE id = $1 AND status IN ('pending','unsubscribed')`,
+    `UPDATE subscriber SET status = 'active', consent = true, consent_at = $2, confirmed_at = $2, unsubscribed_at = NULL, double_opt_in = true, provider_synced = true, updated_at = now() WHERE id = $1 AND status IN ('pending','unsubscribed')`,
     [s.id, now],
   );
   await db.query(`INSERT INTO consent_record (persona_id, subscriber_id, kind, source, region) VALUES ($1, $2, 'confirmed', 'double_opt_in', $3)`, [s.persona_id, s.id, s.region]);
@@ -243,8 +243,14 @@ export async function unsubscribeSubscriber(services: StudioServices, subscriber
 /** Pushes one local opt-out to the provider; true when it is synced (or there is nothing to sync). */
 async function syncSubscriberOptOut(services: StudioServices, subscriberId: string): Promise<boolean> {
   const { db } = services;
-  const s = await db.maybeOne<{ id: string; persona_id: string; email: string }>(`SELECT id, persona_id, email FROM subscriber WHERE id = $1`, [subscriberId]);
+  const s = await db.maybeOne<{ id: string; persona_id: string; email: string; status: string }>(`SELECT id, persona_id, email, status FROM subscriber WHERE id = $1`, [subscriberId]);
   if (!s) return true;
+  // The person came back (a confirmed resubscribe) after an opt-out that never synced: that opt-out is superseded, and
+  // pushing it now would suppress an active subscriber at the provider.
+  if (!['unsubscribed', 'complained', 'bounced'].includes(s.status)) {
+    await db.query(`UPDATE subscriber SET provider_synced = true WHERE id = $1`, [s.id]);
+    return true;
+  }
   const list = await db.maybeOne<{ audience_id: string }>('SELECT audience_id FROM email_list WHERE persona_id = $1', [s.persona_id]);
   try {
     if (list) await services.providers.audience.upsertContact({ audienceId: list.audience_id, email: s.email, unsubscribed: true });
