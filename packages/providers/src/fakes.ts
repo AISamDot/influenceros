@@ -587,6 +587,8 @@ export class FakePinterest extends Recorder implements PinterestProvider {
   readonly name = 'fake-pinterest';
   readonly boards: PinterestBoard[] = [];
   readonly pins: Array<{ id: string; boardId: string; title: string; description: string; link?: string; mediaUrl: string }> = [];
+  /** false: search answers `supported: false`, as the real API does for apps without search access (tests the Apify fallback). */
+  searchSupported = true;
   async listBoards() {
     this.record('listBoards', {});
     return [...this.boards];
@@ -604,6 +606,7 @@ export class FakePinterest extends Recorder implements PinterestProvider {
   }
   async searchPins(req: { query: string; limit?: number }) {
     const id = this.record('searchPins', req);
+    if (!this.searchSupported) return { supported: false, pins: [] as InspirationPin[] };
     const pins: InspirationPin[] = Array.from({ length: Math.min(req.limit ?? 6, 12) }, (_, i) => ({
       id: `pin_${id}_${i}`,
       url: `https://fake.pinterest.local/pin/${id}-${i}`,

@@ -517,6 +517,10 @@ importers:
       '@ios/secrets':
         specifier: workspace:*
         version: link:../secrets
+    devDependencies:
+      '@ios/generator':
+        specifier: workspace:*
+        version: link:../generator
 
 packages:
 
