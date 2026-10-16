@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { enqueueOnceFor, loadPersonaKit, type MediaRenderPayload, PUBLISH_PREPARE_JOB, type PublishPreparePayload, type QcCheck, type RenderedMedia, type StudioServices } from '@ios/agents';
 import { loadPersonaContext, type PersonaContext, saveQcReport, voiceCheck } from '@ios/content';
-import { BudgetExceededError, DeferJob, notify, type PostFormat, propose } from '@ios/core';
+import { BudgetExceededError, CORE_FORMATS, DeferJob, notify, type PostFormat, propose, scriptShape } from '@ios/core';
 import { json } from '@ios/db';
 import {
   ACTIVITY_LOOP_S,
@@ -138,7 +138,12 @@ export async function renderSlot(services: StudioServices, payload: MediaRenderP
       [slotId, payload.scriptId, payload.format],
     );
   }
-  const r = new Render(services, deps, payload, scope, mr, slot.title, opts.heartbeat);
+  // (IOS-5 interim, stream L) An optional format without its own render template yet renders as its script shape
+  // (FORMAT_SHAPE, e.g. photo_dump → carousel); the post keeps its own format. Stream K replaces this with templates.
+  const shape = scriptShape(payload.format);
+  const slides = payload.carousel ?? (shape === 'carousel' ? payload.onScreenText.map((title, i, all) => ({ title, body: i === all.length - 1 ? `Comment ${payload.ctaKeyword.toUpperCase()}` : '' })) : null);
+  const renderable = CORE_FORMATS.includes(payload.format as never) ? payload : { ...payload, format: shape, carousel: slides };
+  const r = new Render(services, deps, renderable, scope, mr, slot.title, opts.heartbeat);
   try {
     const out = await r.run();
     await db.query('UPDATE media_render SET waiting = NULL WHERE slot_id = $1', [slotId]);
@@ -826,7 +831,7 @@ class Render {
       slotId: this.p.slotId,
       personaId: this.p.personaId,
       scriptId: this.p.scriptId,
-      format: this.p.format,
+      format: this.row.format,
       media: rendered,
       cover: coverMedia,
       caption: this.p.caption,

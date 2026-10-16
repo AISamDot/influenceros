@@ -1,5 +1,5 @@
 import type { PostFormat } from '@ios/core';
-import { AI_FLAG_FIELDS, type Platform } from '@ios/providers';
+import { AI_FLAG_FIELDS, type Platform, type StoryCapability } from '@ios/providers';
 import { DAY_MS } from './util';
 
 /**
@@ -65,3 +65,20 @@ export function shortsTitle(caption: string, fallback: string): string {
 export function aiPlatformOptions(platform: Platform): Record<string, unknown> {
   return { [AI_FLAG_FIELDS[platform]]: true };
 }
+
+// ─── (IOS-5 stream L) Stories (FR-4.3d) ───
+
+/**
+ * Story support through Zernio's API, per platform (a capability flag each; the Stories engine publishes a frame only
+ * where it is on). Instagram Stories go through the Graph API as an image post with `contentType: 'story'`. TikTok's
+ * Content Posting API and YouTube have no Stories endpoint, and Pinterest has none we use. Facebook Stories are
+ * supported by Zernio but the studio has no Facebook accounts yet. Checked again with the first live key.
+ */
+export const ZERNIO_STORY_SUPPORT: readonly StoryCapability[] = [
+  { platform: 'instagram', stories: true, note: 'image story via contentType "story"; link and poll stickers are not available through the API' },
+  { platform: 'tiktok', stories: false, note: 'the Content Posting API has no Stories' },
+  { platform: 'youtube', stories: false, note: 'no Stories' },
+  { platform: 'pinterest', stories: false, note: 'no Stories' },
+];
+/** Story frames are 9:16 stills at the vertical export size. */
+export const STORY_SIZE = EXPORT_SIZE.vertical;

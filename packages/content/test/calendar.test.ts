@@ -2,7 +2,8 @@ import { type CadencePolicy, CADENCE_BOUNDS, DEFAULT_CADENCE } from '@ios/agents
 import { createTestStudio, makeTestPersona } from '@ios/agents/testing';
 import { json } from '@ios/db';
 import { describe, expect, it } from 'vitest';
-import { assignMix, bookReactionIdeas, effectiveCadence, normaliseCadence, planWeek, postingTimes, WINNER_CADENCE } from '../src/calendar';
+import { CORE_FORMATS } from '@ios/core';
+import { apportionFormats, assignMix, bookReactionIdeas, effectiveCadence, mixFormats, normaliseCadence, planWeek, postingTimes, WINNER_CADENCE } from '../src/calendar';
 import { fakeHooks, HOOK_TYPES, parseHooks, scoreHook, selectHooks } from '../src/hooks';
 import { loadPersonaContext } from '../src/persona';
 import { attachSampleBible } from '../src/sample';
@@ -24,14 +25,14 @@ const isoDateOf = (d: Date) => new Date(d).toISOString().slice(0, 10);
 const localDay = (d: Date, tz: string) => new Date(new Date(d).getTime() + tzOffsetMs(new Date(d), tz)).toISOString().slice(0, 10);
 
 describe('weekly calendar', () => {
-  it('plans 10 posts with the 3/3/2/1/1 format mix, ~6/3/1 purposes, a CTA keyword on each and posting windows in local time', async () => {
+  it('plans 10 posts with the 2/2/1/2/2/1 still-heavier format mix (FR-4.3c), ~6/3/1 purposes, a CTA keyword on each and posting windows in local time', async () => {
     const t = await createTestStudio({ now: () => NOW });
     const p = await makeTestPersona(t, { timezone: 'America/New_York' });
     await attachSampleBible(t.db, p.id);
     const res = await planWeek(t.services, p.id, NEXT_MONDAY);
     expect(res.created).toBe(10);
     const rows = await slotsOf(t.db, p.id);
-    expect(tally(rows, 'format')).toEqual({ talking: 3, activity_text: 3, voiceover: 2, static: 1, carousel: 1 });
+    expect(tally(rows, 'format')).toEqual({ talking: 2, activity_text: 2, voiceover: 1, static: 2, carousel: 2, photo_dump: 1 });
     expect(tally(rows, 'purpose')).toEqual({ reach: 6, trust: 3, sell: 1 });
     for (const r of rows) {
       expect(r.cta_keyword).toMatch(/^[A-Z]{3,12}$/);
@@ -62,7 +63,8 @@ describe('weekly calendar', () => {
     const lever = { ...DEFAULT_CADENCE, postsPerWeek: 30, source: 'lever' as const };
     const n = normaliseCadence(lever);
     expect(n.postsPerWeek).toBe(CADENCE_BOUNDS.max);
-    expect(Object.values(n.formatMix).reduce((a, b) => a + b, 0)).toBe(21);
+    expect(Object.values(n.formatMix).reduce((a, b) => a + (b ?? 0), 0)).toBe(21);
+    for (const f of CORE_FORMATS) expect(n.formatMix[f]).toBeGreaterThanOrEqual(1);
     expect(Object.values(n.purposeMix).reduce((a, b) => a + b, 0)).toBe(21);
     expect(assignMix(normaliseCadence(DEFAULT_CADENCE)).filter((x) => x.purpose === 'sell').map((x) => x.format)).toEqual(['talking']);
 
@@ -72,7 +74,7 @@ describe('weekly calendar', () => {
     const res = await planWeek(t.services, winner.id, NEXT_MONDAY);
     expect(res.created).toBe(17);
     const rows = await slotsOf(t.db, winner.id);
-    expect(tally(rows, 'format')).toEqual({ talking: 5, activity_text: 5, voiceover: 3, static: 2, carousel: 2 });
+    expect(tally(rows, 'format')).toEqual({ talking: 4, activity_text: 3, voiceover: 2, static: 3, carousel: 3, photo_dump: 2 });
     const perDay = Object.values(tally(rows.map((r) => ({ d: localDay(r.slot_at, 'Asia/Dubai') })), 'd'));
     expect(Math.min(...perDay)).toBeGreaterThanOrEqual(2);
     expect(Math.max(...perDay)).toBe(3);
@@ -84,6 +86,31 @@ describe('weekly calendar', () => {
     const w2 = await makeTestPersona(t2, { state: 'SCALING' });
     expect((await planWeek(t2.services, w2.id, NEXT_MONDAY)).created).toBe(7);
     await t2.db.close();
+  });
+
+  it('(IOS-5) plans the optional formats a plan has on, keeps every core format, and drops the lightest optional when the week is small', async () => {
+    // normaliseCadence keeps the studio default exactly, and scales it to the winner default.
+    expect(normaliseCadence(DEFAULT_CADENCE).formatMix).toEqual(DEFAULT_CADENCE.formatMix);
+    expect(normaliseCadence({ ...DEFAULT_CADENCE, postsPerWeek: 17 }).formatMix).toEqual(WINNER_CADENCE.formatMix);
+    expect(mixFormats({ talking: 1, activity_text: 1, voiceover: 1, static: 1, carousel: 1, meme: 0, text_note: 2 })).toEqual(['talking', 'activity_text', 'voiceover', 'static', 'carousel', 'text_note']);
+    // 7 posts but 5 core + 4 optional on: the core stays, the lightest optional formats drop out.
+    const small = apportionFormats({ talking: 2, activity_text: 1, voiceover: 1, static: 2, carousel: 2, photo_dump: 1, text_note: 3, meme: 1, news_greenscreen: 1 }, 7);
+    expect(Object.values(small).reduce((a, b) => a + b, 0)).toBe(7);
+    for (const f of CORE_FORMATS) expect(small[f]).toBeGreaterThanOrEqual(1);
+    expect(small.text_note).toBeGreaterThanOrEqual(1);
+    // Optional formats find their purpose: a meme goes to reach, a text note to trust, the product in hand to sell.
+    const mix = assignMix({ ...DEFAULT_CADENCE, postsPerWeek: 10, formatMix: { talking: 1, activity_text: 1, voiceover: 1, static: 1, carousel: 2, product_in_hand: 1, text_note: 1, meme: 2 }, purposeMix: { reach: 6, trust: 3, sell: 1 } });
+    expect(mix).toHaveLength(10);
+    expect(mix.find((x) => x.format === 'product_in_hand')?.purpose).not.toBe('reach');
+    expect(mix.filter((x) => x.format === 'meme').every((x) => x.purpose === 'reach')).toBe(true);
+
+    const plan: CadencePolicy = { target: async () => ({ postsPerWeek: 10, formatMix: { talking: 1, activity_text: 1, voiceover: 1, static: 2, carousel: 2, text_note: 2, meme: 1 }, purposeMix: { reach: 6, trust: 3, sell: 1 }, source: 'owner' }) };
+    const t = await createTestStudio({ now: () => NOW, cadence: () => plan });
+    const p = await makeTestPersona(t);
+    await attachSampleBible(t.db, p.id);
+    expect((await planWeek(t.services, p.id, NEXT_MONDAY)).created).toBe(10);
+    expect(tally(await slotsOf(t.db, p.id), 'format')).toEqual({ talking: 1, activity_text: 1, voiceover: 1, static: 2, carousel: 2, text_note: 2, meme: 1 });
+    await t.db.close();
   });
 
   it('skips windows already past and less than 2 h away when planning the current week', () => {

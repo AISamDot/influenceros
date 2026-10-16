@@ -1,5 +1,5 @@
 import type { QcCheck, StudioServices } from '@ios/agents';
-import { type CostRef, metered, type PostFormat } from '@ios/core';
+import { type CostRef, metered, type PostFormat, scriptShape } from '@ios/core';
 import { json } from '@ios/db';
 import type { TranscriptWord } from '@ios/providers';
 import type { PersonaContext } from './persona';
@@ -59,7 +59,9 @@ export function checkScript(
 ): QcResult & { voiceover: string | null; ttsRisks: TtsRisk[]; wordCount: number; estSeconds: number | null } {
   const checks: QcCheck[] = [];
   const all = [d.body, d.caption, ...d.onScreenText, ...(d.carousel ?? []).flatMap((s) => [s.title, s.body])].join('\n');
-  const { primary, ctaHost } = surfaces(d, o.format);
+  // (IOS-5, stream L) Formats without their own Q1 rules yet are graded as their script shape (FORMAT_SHAPE in @ios/core).
+  const shape = scriptShape(o.format);
+  const { primary, ctaHost } = surfaces(d, shape);
 
   // English only.
   const tokens = all.toLowerCase().match(/[a-zà-ÿ]+/g) ?? [];
@@ -84,9 +86,9 @@ export function checkScript(
   );
 
   // Length vs target duration.
-  const words = wordCount(SPOKEN.includes(o.format) ? d.body : primary.join(' '));
+  const words = wordCount(SPOKEN.includes(shape) ? d.body : primary.join(' '));
   let estSeconds: number | null = null;
-  if (SPOKEN.includes(o.format)) {
+  if (SPOKEN.includes(shape)) {
     estSeconds = Math.round((words / o.ctx.voice.wpm) * 600) / 10;
     checks.push(
       words >= WORDS.min && words <= WORDS.max
@@ -98,7 +100,7 @@ export function checkScript(
         ? ok('duration', 'minor', `About ${estSeconds} s at ${o.ctx.voice.wpm} wpm.`)
         : fail('duration', 'minor', `About ${estSeconds} s at ${o.ctx.voice.wpm} wpm (target ${SECONDS.min}–${SECONDS.max} s).`),
     );
-  } else if (o.format === 'activity_text') {
+  } else if (shape === 'activity_text') {
     const long = d.onScreenText.filter((l) => wordCount(l) > 8);
     const n = d.onScreenText.length;
     checks.push(
@@ -106,7 +108,7 @@ export function checkScript(
         ? ok('length', 'major', `${n} on-screen lines.`)
         : fail('length', 'major', `Activity posts need 3–5 on-screen lines of at most 8 words (${n} lines${long.length ? `, ${long.length} too long` : ''}).`),
     );
-  } else if (o.format === 'carousel') {
+  } else if (shape === 'carousel') {
     const n = d.carousel?.length ?? 0;
     checks.push(n >= 6 && n <= 8 ? ok('length', 'major', `${n} slides.`) : fail('length', 'major', `Carousels have 6–8 slides (${n}).`));
   } else {

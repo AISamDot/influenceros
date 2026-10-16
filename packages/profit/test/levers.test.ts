@@ -2,7 +2,7 @@ import { CADENCE_BOUNDS, DEFAULT_CADENCE, WINNER_CADENCE } from '@ios/agents';
 import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
 import { json } from '@ios/db';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createCadencePolicy, createRoutingPolicy, leverInputs, listLeverActions, measureLevers, planCadence, planFormatMix, runLevers, scaleTarget, validTarget } from '../src';
+import { createCadencePolicy, createRoutingPolicy, formatBounds, leverInputs, listLeverActions, measureLevers, planCadence, planFormatMix, runLevers, scaleTarget, validTarget } from '../src';
 import { addDebit, addOrder, addPost, addWeeklyHistory, DAY, daysAgo, NOW } from './fixtures';
 
 let t: TestStudio | null = null;
@@ -221,5 +221,34 @@ describe('Profit Engine levers', () => {
     expect(cadence.status).toBe('measured');
     expect(cadence.measuredImpactCents).toBeGreaterThan(0);
     expect(cadence.measuredAt).toEqual(later);
+  });
+});
+
+describe('(IOS-5) optional formats in cadence targets', () => {
+  it('scales the new default to the winner default exactly, keeps optional formats ≥ 1 and the core invariant', () => {
+    expect(scaleTarget(DEFAULT_CADENCE, 17, 'default').formatMix).toEqual(WINNER_CADENCE.formatMix);
+    for (const n of [7, 8, 13, 21]) {
+      const s = scaleTarget({ ...DEFAULT_CADENCE, formatMix: { ...DEFAULT_CADENCE.formatMix, meme: 2 } }, n, 'lever');
+      expect(validTarget(s), String(n)).toBe(true);
+      for (const f of ['talking', 'activity_text', 'voiceover', 'static', 'carousel'] as const) expect(s.formatMix[f]).toBeGreaterThanOrEqual(1);
+      expect(s.formatMix.photo_dump).toBeGreaterThanOrEqual(1);
+      expect(s.formatMix.meme).toBeGreaterThanOrEqual(1);
+    }
+    const b = formatBounds(10, { on: ['photo_dump'] });
+    expect(b.min).toMatchObject({ talking: 1, photo_dump: 1, meme: 0 });
+    expect(b.max).toMatchObject({ talking: 5, photo_dump: 5, meme: 0 });
+    expect(validTarget({ ...DEFAULT_CADENCE, formatMix: { ...DEFAULT_CADENCE.formatMix, bogus: 1 } as never, postsPerWeek: 11 })).toBe(false);
+  });
+
+  it('reads an override written before IOS-5 (core formats only) as it was, never adding the new default photo dump', async () => {
+    t = await createTestStudio({ cadence: createCadencePolicy, now: () => NOW });
+    const p = await makeTestPersona(t);
+    await t.db.query(
+      `INSERT INTO profit_cadence_override (studio_id, persona_id, effective_from, posts_per_week, format_mix, purpose_mix) VALUES ($1, $2, '2026-10-12', 10, $3::jsonb, $4::jsonb)`,
+      [t.studioId, p.id, json({ talking: 3, activity_text: 3, voiceover: 2, static: 1, carousel: 1 }), json({ reach: 6, trust: 3, sell: 1 })],
+    );
+    const target = await t.services.cadence.target(p.id, NEXT_MONDAY);
+    expect(target.formatMix).toEqual({ talking: 3, activity_text: 3, voiceover: 2, static: 1, carousel: 1 });
+    expect(validTarget(target)).toBe(true);
   });
 });

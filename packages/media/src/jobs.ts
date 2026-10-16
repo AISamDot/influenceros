@@ -1,5 +1,5 @@
 import { enqueueOnceFor, MEDIA_RENDER_JOB, type JobHandlerMap, type MediaRenderPayload, type ScheduledTask, type StudioServices } from '@ios/agents';
-import { BudgetExceededError, DeferJob, enqueue, notify } from '@ios/core';
+import { BudgetExceededError, DeferJob, enqueue, isOptionalFormat, notify } from '@ios/core';
 import { BUDGET_DEFER_MS } from './config';
 import { mediaDeps } from './deps';
 import { buildLookPack, ensureProfile } from './profile';
@@ -26,7 +26,7 @@ export const MEDIA_DEAD_LIMIT = 3;
 export function parseRenderPayload(raw: unknown): MediaRenderPayload {
   const p = (raw ?? {}) as Partial<MediaRenderPayload>;
   if (!UUID_RE.test(String(p.slotId)) || !UUID_RE.test(String(p.personaId)) || !UUID_RE.test(String(p.scriptId))) throw new Error('media.render needs slotId, personaId and scriptId');
-  if (!FORMATS.includes(String(p.format))) throw new Error('media.render: unknown format');
+  if (!FORMATS.includes(String(p.format)) && !isOptionalFormat(String(p.format))) throw new Error('media.render: unknown format');
   return {
     slotId: p.slotId!,
     personaId: p.personaId!,

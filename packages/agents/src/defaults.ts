@@ -11,10 +11,13 @@ import {
 } from './ios5';
 
 // >>> stream L winner cadence (IOS-5: L scales the new default proportionally to ~17)
-/** FR-4.3 winner column: ~17 a week (2–3 a day): 5 talking, 5 activity, 3 voiceover, 2 static, 2 carousel. */
+/**
+ * FR-4.3 winners, ~17 a week (2–3 a day): the 10-post default scaled ×1.7 by largest remainder: 4 talking, 3 activity,
+ * 2 voiceover, 3 static, 3 carousel, 2 photo dump (the same split `scaleTarget(DEFAULT_CADENCE, 17)` gives).
+ */
 export const WINNER_CADENCE: CadenceTarget = {
   postsPerWeek: 17,
-  formatMix: { talking: 5, activity_text: 5, voiceover: 3, static: 2, carousel: 2 },
+  formatMix: { talking: 4, activity_text: 3, voiceover: 2, static: 3, carousel: 3, photo_dump: 2 },
   purposeMix: { reach: 10, trust: 5, sell: 2 },
   source: 'default',
   reason: 'winner cadence (FR-4.3): 2–3 posts a day',

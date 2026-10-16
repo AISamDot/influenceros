@@ -50,7 +50,15 @@ describe('IOS-5 shared contracts', () => {
     for (const t of [DEFAULT_CADENCE, WINNER_CADENCE]) {
       for (const f of CORE_FORMATS) expect(t.formatMix[f]).toBeGreaterThanOrEqual(1);
       expect(Object.values(t.formatMix).reduce((a, b) => a + (b ?? 0), 0)).toBe(t.postsPerWeek);
+      expect(Object.values(t.purposeMix).reduce((a, b) => a + b, 0)).toBe(t.postsPerWeek);
     }
+    // FR-4.3c (Owner, 16 Oct): the still-heavier studio default, and the winner default scaled to ~17.
+    expect(DEFAULT_CADENCE.formatMix).toEqual({ talking: 2, activity_text: 2, voiceover: 1, static: 2, carousel: 2, photo_dump: 1 });
+    expect(WINNER_CADENCE.postsPerWeek).toBe(17);
+    expect(WINNER_CADENCE.formatMix).toEqual({ talking: 4, activity_text: 3, voiceover: 2, static: 3, carousel: 3, photo_dump: 2 });
+    const stills = (t: typeof DEFAULT_CADENCE) => (t.formatMix.static ?? 0) + (t.formatMix.carousel ?? 0) + (t.formatMix.photo_dump ?? 0);
+    expect(stills(DEFAULT_CADENCE) / DEFAULT_CADENCE.postsPerWeek).toBe(0.5);
+    expect(stills(WINNER_CADENCE) / WINNER_CADENCE.postsPerWeek).toBeCloseTo(0.47, 2);
   });
 
   it('composes the null services into createServices', async () => {

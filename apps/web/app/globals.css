@@ -306,4 +306,8 @@
 /* >>> stream K css */
 /* <<< stream K css */
 /* >>> stream L css */
+/* Story frames (Stories lane, persona page): a 9:16 hint so a row reads as a strip of phone screens. */
+.stories-frame {
+  min-height: 7.5rem;
+}
 /* <<< stream L css */
