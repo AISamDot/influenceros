@@ -35,8 +35,8 @@ export const INTEGRATIONS: readonly IntegrationDef[] = [
   { id: 'apify', name: 'Apify', purpose: 'Growth Radar and Winner Finder scrapers (public data, low volume, weekly cap)', secrets: ['apify.token'], liveAdapter: false, milestone: 'IOS-5', kind: 'provider' },
   // <<< stream I integrations
   // >>> stream J integrations
-  { id: 'open-meteo', name: 'Open-Meteo', purpose: 'Local weather and sun times for real-time grounding (no key)', secrets: [], liveAdapter: false, milestone: 'IOS-5', kind: 'provider' },
-  { id: 'pinterest', name: 'Pinterest', purpose: 'Boards and pins for products and carousels; inspiration search (mood only)', secrets: ['pinterest.access_token'], liveAdapter: false, milestone: 'IOS-5', kind: 'provider' },
+  { id: 'open-meteo', name: 'Open-Meteo', purpose: 'Local weather and sun times for real-time grounding (no key; @ios/world serves it live unless IOS_FAKE_PROVIDERS)', secrets: [], liveAdapter: false, milestone: 'IOS-5', kind: 'provider' },
+  { id: 'pinterest', name: 'Pinterest', purpose: 'Boards and pins for products and carousels; inspiration search (mood only)', secrets: ['pinterest.access_token'], liveAdapter: true, milestone: 'IOS-5', kind: 'provider' },
   // <<< stream J integrations
   // >>> stream K integrations
   // <<< stream K integrations

@@ -18,5 +18,8 @@
     "@ios/db": "workspace:*",
     "@ios/providers": "workspace:*",
     "@ios/secrets": "workspace:*"
+  },
+  "devDependencies": {
+    "@ios/generator": "workspace:*"
   }
 }
