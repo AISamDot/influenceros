@@ -11,12 +11,19 @@ import { DAY_MS } from './util';
 export const PLATFORM_ORDER: readonly Platform[] = ['tiktok', 'instagram', 'youtube'];
 export const YOUTUBE_FROM_DAY = 30;
 
-const VIDEO_FORMATS: readonly PostFormat[] = ['talking', 'activity_text', 'voiceover'];
-export const isVideoFormat = (f: PostFormat): boolean => VIDEO_FORMATS.includes(f);
+/**
+ * (IOS-5 integration) What the renderer (stream K) exports per format: stills are one 1080×1920 image (static,
+ * text_note, meme) or a 1080×1350 slide set (carousel, photo_dump); every other format, the core reels and the
+ * optional talking / text-loop formats, is one vertical video.
+ */
+const IMAGE_FORMATS: readonly PostFormat[] = ['static', 'text_note', 'meme'];
+const SLIDE_FORMATS: readonly PostFormat[] = ['carousel', 'photo_dump'];
+export const isSlideFormat = (f: PostFormat): boolean => SLIDE_FORMATS.includes(f);
+export const isVideoFormat = (f: PostFormat): boolean => !IMAGE_FORMATS.includes(f) && !SLIDE_FORMATS.includes(f);
 
 export function mediaKind(format: PostFormat): 'video' | 'image' | 'carousel' {
   if (isVideoFormat(format)) return 'video';
-  return format === 'carousel' ? 'carousel' : 'image';
+  return isSlideFormat(format) ? 'carousel' : 'image';
 }
 
 /**

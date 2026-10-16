@@ -32,14 +32,13 @@ export const jobs: JobHandlerMap = WORLD_JOB_HANDLERS;
 export const schedules: readonly ScheduledTask[] = WORLD_SCHEDULES;
 
 /**
- * Pinterest goes live with `pinterest.access_token`. Open-Meteo has no key, so it is served live whenever the
- * process doesn't force fakes (IOS_FAKE_PROVIDERS: tests, demos). Its integration entry stays `liveAdapter: false`
- * for now because the frozen secrets test pins the live set to keyed integrations (integrator: flip it with that test).
+ * Pinterest goes live with `pinterest.access_token`. Open-Meteo has no key: its integration entry is live
+ * (`liveAdapter: true`, no secrets), so it is served live whenever the process doesn't force fakes
+ * (IOS_FAKE_PROVIDERS: tests, demos).
  */
 export function liveProviders(env: ProviderEnv): Partial<Providers> {
   const out: { weather?: Providers['weather']; pinterest?: Providers['pinterest'] } = {};
-  const forced = (process.env.IOS_FAKE_PROVIDERS ?? '').split(',').map((x) => x.trim());
-  if (!forced.some((x) => x === '1' || x === 'all' || x === 'open-meteo')) out.weather = new OpenMeteoWeather();
+  if (env.isLive('open-meteo')) out.weather = new OpenMeteoWeather();
   const token = env.isLive('pinterest') ? env.secret('pinterest.access_token') : null;
   if (token) out.pinterest = new PinterestApiV5(token);
   return out;

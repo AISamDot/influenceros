@@ -73,9 +73,13 @@ describe('Pinterest publishing', () => {
     expect(await meteo.current({ lat: 53.96, lon: -1.08, timezone: 'Europe/London' })).toMatchObject({ tempC: 5.5, summary: 'rain', isDay: false, sunset: '2026-11-18T16:02' });
     expect((await meteo.geocode({ name: 'York', country: 'United Kingdom' }))[0]).toMatchObject({ lat: 53.96, timezone: 'Europe/London' });
 
-    // Wiring: Pinterest goes live only with its token; Open-Meteo stays fake under IOS_FAKE_PROVIDERS (tests).
-    expect(liveProviders({ isLive: () => true, secret: () => null })).toEqual({});
-    expect(liveProviders({ isLive: () => true, secret: (n) => (n === 'pinterest.access_token' ? 'tok' : null) }).pinterest?.name).toBe('pinterest-api-v5');
+    // Wiring: Pinterest goes live only with its token; Open-Meteo goes live when its (keyless) entry is live, and
+    // stays fake when fakes are forced (IOS_FAKE_PROVIDERS makes isLive false).
+    const only = (id: string) => (x: string) => x === id;
+    expect(liveProviders({ isLive: () => false, secret: () => null })).toEqual({});
+    expect(liveProviders({ isLive: only('pinterest'), secret: () => null })).toEqual({});
+    expect(liveProviders({ isLive: only('pinterest'), secret: (n) => (n === 'pinterest.access_token' ? 'tok' : null) }).pinterest?.name).toBe('pinterest-api-v5');
+    expect(liveProviders({ isLive: only('open-meteo'), secret: () => null }).weather?.name).toBe('open-meteo');
     // Apify scraper items map to pins.
     expect(pinFromItem({ id: '123', title: 'Cosy kitchen', images: { orig: { url: 'https://i.test/1.jpg' } }, board: { name: 'Kitchens' } }, 'apify')).toMatchObject({ id: '123', imageUrl: 'https://i.test/1.jpg', board: 'Kitchens', url: 'https://www.pinterest.com/pin/123/' });
   });

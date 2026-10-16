@@ -8,6 +8,7 @@ import {
   CAPTION_MAX,
   CAROUSEL_SLIDES,
   EXPORT_SIZE,
+  isSlideFormat,
   isVideoFormat,
   MAX_VIDEO_S,
   mediaKind,
@@ -342,9 +343,10 @@ export async function postQ4(services: StudioServices, postId: string, q4opts: {
   const media = post.media ?? [];
   const video = isVideoFormat(post.format);
   const count = media.length;
-  const countOk = video || post.format === 'static' ? count === 1 : count >= CAROUSEL_SLIDES.min && count <= CAROUSEL_SLIDES.max;
-  add('media_count', countOk, 'blocker', countOk ? `${count} media file(s).` : `${post.format} needs ${video || post.format === 'static' ? '1 file' : `${CAROUSEL_SLIDES.min}–${CAROUSEL_SLIDES.max} slides`}, got ${count}.`);
-  const size = post.format === 'carousel' ? EXPORT_SIZE.carousel : EXPORT_SIZE.vertical;
+  const slides = isSlideFormat(post.format);
+  const countOk = !slides ? count === 1 : count >= CAROUSEL_SLIDES.min && count <= CAROUSEL_SLIDES.max;
+  add('media_count', countOk, 'blocker', countOk ? `${count} media file(s).` : `${post.format} needs ${!slides ? '1 file' : `${CAROUSEL_SLIDES.min}–${CAROUSEL_SLIDES.max} slides`}, got ${count}.`);
+  const size = slides ? EXPORT_SIZE.carousel : EXPORT_SIZE.vertical;
   const wrong = media.findIndex((m) => m.width !== size.width || m.height !== size.height);
   add('export_size', count > 0 && wrong < 0, 'blocker', wrong < 0 ? `Exports at ${size.width}×${size.height}.` : `File ${wrong + 1} is ${media[wrong]?.width}×${media[wrong]?.height}, not ${size.width}×${size.height}.`, wrong >= 0 ? `file ${wrong + 1}` : undefined);
   let missing = -1;

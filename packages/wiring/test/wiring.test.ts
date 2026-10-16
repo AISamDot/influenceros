@@ -26,9 +26,11 @@ describe('wiring', () => {
     // IOS-3/4 members exist on the fakes (live overlays come from the stream packages).
     expect(typeof p.audience.ensureAudience).toBe('function');
     expect(typeof p.storage.put).toBe('function');
-    // IOS-5 members.
-    expect(p.weather.name).toBe('fake-open-meteo');
+    // IOS-5 members. Open-Meteo needs no key, so it is live unless fakes are forced.
+    expect(p.weather.name).toBe('open-meteo');
     expect(p.pinterest.name).toBe('fake-pinterest');
+    const forced = resolveProviders(providerEnv({ IOS_FAKE_PROVIDERS: '1' }, new MemoryKeyring()));
+    expect(forced.weather.name).toBe('fake-open-meteo');
   });
 
   it('builds studio services in fake mode', async () => {

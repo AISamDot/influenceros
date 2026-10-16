@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { enqueueOnceFor, type StudioServices } from '@ios/agents';
-import { type Actor, actorRef, addMessage, ApprovalError, type ApprovalRow, decide, ensureThreads, findThread, notify, payloadHash, type PostFormat, type PostPurpose } from '@ios/core';
+import { DEFAULT_CADENCE, enqueueOnceFor, type FormatPlan, type StudioServices } from '@ios/agents';
+import { type Actor, actorRef, addMessage, ApprovalError, type ApprovalRow, decide, ensureThreads, findThread, isOptionalFormat, notify, payloadHash, POST_FORMATS, type PostFormat, type PostPurpose } from '@ios/core';
 import { BIBLE_SECTIONS, type FieldBrainSeed, importLaunchPersona, type LaunchPersona, type LaunchProduct, type LaunchSlot, listArchivedPersonas, zonedTimeToUtc } from '@ios/core/seed';
 import { type Db, json } from '@ios/db';
 import { archetypeFor } from './fake';
@@ -19,10 +19,42 @@ import type { DraftRow, DraftState, ReviewState } from './types';
 
 const SLOT_DAYS = [0, 0, 1, 2, 2, 3, 4, 4, 5, 6];
 const SLOT_TIMES = ['08:00', '19:00', '12:30', '08:00', '19:30', '12:30', '08:00', '19:00', '10:00', '18:00'];
-const FORMATS: PostFormat[] = ['talking', 'activity_text', 'voiceover', 'talking', 'activity_text', 'static', 'talking', 'activity_text', 'carousel', 'voiceover'];
 const PURPOSES: PostPurpose[] = ['reach', 'reach', 'trust', 'reach', 'reach', 'trust', 'reach', 'sell', 'trust', 'reach'];
 
+/**
+ * (IOS-5 integration) The launch fortnight's 10 formats a week follow the draft's Format Plan (step 6), or the studio
+ * default (DEFAULT_CADENCE) when there is none: the plan's weekly counts are scaled to 10 (each core format ≥ 1, each
+ * optional format that is on ≥ 1 while there is room) and interleaved so the same format never runs back to back
+ * when it can be avoided.
+ */
+export function launchFormats(plan: FormatPlan | null | undefined, n = SLOT_DAYS.length): PostFormat[] {
+  const mix: Partial<Record<PostFormat, number>> = plan
+    ? Object.fromEntries(plan.lines.filter((l) => l.enabled && l.perWeek > 0).map((l) => [l.format, l.perWeek]))
+    : { ...DEFAULT_CADENCE.formatMix };
+  const keys = POST_FORMATS.filter((f) => !isOptionalFormat(f) || (mix[f] ?? 0) > 0);
+  const w = (f: PostFormat) => Math.max(0, mix[f] ?? 0);
+  const wsum = keys.reduce((a, f) => a + w(f), 0) || keys.length;
+  const ideal = new Map(keys.map((f) => [f, ((w(f) || (wsum === keys.length ? 1 : 0)) / wsum) * n]));
+  const count = new Map(keys.map((f) => [f, isOptionalFormat(f) ? 0 : 1]));
+  const total = () => [...count.values()].reduce((a, b) => a + b, 0);
+  // Optional formats that are on get one post each while the week has room, heaviest first.
+  for (const f of keys.filter(isOptionalFormat).sort((a, b) => w(b) - w(a))) if (total() < n) count.set(f, 1);
+  while (total() < n) {
+    const f = [...keys].sort((a, b) => ideal.get(b)! - count.get(b)! - (ideal.get(a)! - count.get(a)!))[0]!;
+    count.set(f, count.get(f)! + 1);
+  }
+  const out: PostFormat[] = [];
+  const left = new Map(count);
+  while (out.length < n) {
+    const f = [...keys].filter((k) => left.get(k)! > 0).sort((a, b) => Number(a === out.at(-1)) - Number(b === out.at(-1)) || left.get(b)! - left.get(a)!)[0]!;
+    out.push(f);
+    left.set(f, left.get(f)! - 1);
+  }
+  return out;
+}
+
 export function launchCalendar(state: DraftState, review: ReviewState): LaunchSlot[] {
+  const FORMATS = launchFormats(state.formatPlan);
   const content = state.content.chosen!;
   const hooks = content.hookBank.length ? content.hookBank : state.concept.chosen!.hooks;
   const start = new Date(`${review.launchDate}T00:00:00Z`);
@@ -142,7 +174,7 @@ export function deepProfile(d: Pick<DraftRow, 'id' | 'version'>, state: DraftSta
       pillars: content.pillars,
       series: content.series,
       hook_library: content.hookBank,
-      purpose_mix: 'About 6 reach / 3 trust / 1 sell a week; 10 posts (3 talking, 3 activity + text, 2 voiceover, 1 static, 1 carousel)',
+      purpose_mix: `About 6 reach / 3 trust / 1 sell a week; 10 posts (${launchMixLabel(state.formatPlan)})`,
       banned_hook_styles: ['A story used as proof that a product works', 'Real people or brands as endorsers', 'Income or result guarantees', 'Credential claims', 'Fake scarcity'],
     },
     engagement_style: { reply_tone: `${a.personality.slice(0, 2).join(', ')}; ${c.voiceLine}`, keywords: content.ctaKeywords, boundaries: ['No personal advice in replies: general information only', 'Never denies being AI'] },
@@ -172,7 +204,15 @@ export function draftToLaunchPersona(d: DraftRow, state: DraftState, review: Rev
   const opp = state.opportunity.chosen!;
   const look = state.look.chosen!;
   const content = state.content.chosen!;
-  const products: LaunchProduct[] = content.ladder.map((r) => ({ slug: slugify(r.name), name: r.name, rung: r.rung, priceCents: r.priceCents, note: r.when }));
+  // Two rungs can share a name (and so a slug): the second one gets its rung appended so no ladder product is dropped.
+  const seen = new Set<string>();
+  const products: LaunchProduct[] = content.ladder.map((r) => {
+    let slug = slugify(r.name) || r.rung;
+    if (seen.has(slug)) slug = `${slug}-${r.rung}`;
+    for (let i = 2; seen.has(slug); i++) slug = `${slugify(r.name) || r.rung}-${r.rung}-${i}`;
+    seen.add(slug);
+    return { slug, name: r.name, rung: r.rung, priceCents: r.priceCents, note: r.when };
+  });
   const bible = deepProfile(d, state, review);
   return {
     slug,
@@ -310,4 +350,11 @@ export async function launchDraft(services: StudioServices, draftId: string, ctx
     link: '/settings/accounts',
   });
   return { persona, approval, slots, nodes, fieldBrainQueued: !!job, draft };
+}
+
+/** e.g. "2 talking, 2 activity_text, 1 voiceover, 2 static, 2 carousel, 1 photo_dump" for the deep profile. */
+function launchMixLabel(plan: FormatPlan | null | undefined): string {
+  const counts = new Map<PostFormat, number>();
+  for (const f of launchFormats(plan)) counts.set(f, (counts.get(f) ?? 0) + 1);
+  return POST_FORMATS.filter((f) => counts.has(f)).map((f) => `${counts.get(f)} ${f}`).join(', ');
 }
