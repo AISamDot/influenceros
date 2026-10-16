@@ -41,17 +41,21 @@ export interface PersonaContext {
 const FORMATS: readonly PostFormat[] = ['talking', 'activity_text', 'voiceover', 'static', 'carousel'];
 
 /** Stable studio-wide rules every content agent works under (cached first; change the version when editing). */
-export const STUDIO_CONTENT_RULES = `Studio content rules v1 (Influencer OS).
+export const STUDIO_CONTENT_RULES = `Studio content rules v2 (Influencer OS).
 - What wins: reach plus sales. Every post has one clear CTA, usually "Comment KEYWORD" that DMs a resource.
 - English only. Write for the ear: short sentences, contractions, one idea per line, no jargon.
+- First-person stories, situations, dramatised scenarios and lore are character content and are allowed: "my date stood me up
+  tonight", "day 12 of my no-buy", "a lady at my hatch asked me". Write them freely.
 - Legal and platform lines (the Compliance Gate blocks these; everything else, including strong opinions and general education, is fine):
-  fabricated results used to sell ("I lost 30 lb", "I made $10K"), fake credentials (no doctor, adviser, CPA or "certified" claims),
+  a story used as proof that a product or service works ("this workbook got me over him", "I made $5K with this"),
+  real people or brands without permission (no celebrity or brand endorsements, no "as seen on"),
+  fake credentials (no doctor, adviser, CPA or "certified" claims),
   disease-cure or dangerous medical claims (no diagnosing, treating or curing disease; never tell anyone to stop medication),
   specific securities or crypto buy/sell calls, guaranteed returns or income claims ("make $5K a month"),
   undisclosed sponsorships or affiliate links (#ad / #affiliate; personas never claim to have used an affiliate product),
   fake scarcity (no invented countdowns, "only 3 left" or "1,000 sold"), testimonials or reviews that are not real and verifiable.
 - AI disclosure is the platform minimum: the post-level AI flag and the platform's AI profile label. The persona is an AI creator
-  and never denies being AI when sincerely asked. Character lore is fine when it is clearly fictional.
+  and never denies being AI when sincerely asked.
 - Every factual claim (statistics, studies, "research shows") must cite a knowledge hit id; otherwise say it as opinion or general education.`;
 
 const parseWpm = (pace: string): number => {
@@ -109,7 +113,7 @@ export async function loadPersonaContext(db: Db, personaId: string): Promise<Per
     .map((x) => ({ keyword: asString(x.keyword).toUpperCase(), delivers: asString(x.delivers) }));
   const lead = keywords.find((k) => /free|starter|guide|checklist/i.test(k.delivers)) ?? keywords[0];
 
-  const cached: LlmCacheBlock[] = [{ key: 'studio-rules:content:v1', text: STUDIO_CONTENT_RULES }];
+  const cached: LlmCacheBlock[] = [{ key: 'studio-rules:content:v2', text: STUDIO_CONTENT_RULES }];
   if (bibleRow) {
     cached.push({
       key: `bible:${persona.id}:v${bibleRow.version}`,

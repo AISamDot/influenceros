@@ -10,7 +10,7 @@ A persona bible is the single source of truth a Persona Manager loads on every r
 ## The 16 sections (always all of them)
 
 1. **Identity**: name, display name, age shown, home-base vibe, one-line positioning, bio per platform, handles (three options per platform), and the platform AI-label settings. The bio carries no disclosure line; the post-level AI flag and the platform's AI profile label do that job.
-2. **Character lore**: a clearly fictional backstory, cast, running storylines and quirks. Lore is entertainment, never proof: no invented results, purchases or testimonials presented as real.
+2. **Character lore**: a fictional backstory, cast, running storylines and quirks. First-person stories, situations and dramatised scenarios are character content and are allowed. Lore is never proof: no story used to show that a product or service works, no testimonials, no real people or brands as endorsers.
 3. **Worldview**: what the persona believes about its field, as 5 to 10 principles.
 4. **Expertise map**: the Field Brain it draws on, its depth areas, its blind spots, and "what I'm known for".
 5. **Signature frameworks**: 3 to 5 named methods, each with steps and a worked example.

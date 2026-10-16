@@ -21,7 +21,9 @@ export function mergeSettings(s: Partial<StudioSettings> | null | undefined): St
     caps: { ...DEFAULT_SETTINGS.caps, ...(v.caps ?? {}) },
     persona_default_caps: { ...DEFAULT_SETTINGS.persona_default_caps, ...(v.persona_default_caps ?? {}) },
     approvals: { ...DEFAULT_SETTINGS.approvals, ...(v.approvals ?? {}) },
-    gate: { ...DEFAULT_SETTINGS.gate, ...(v.gate ?? {}) },
+    // The Gate's lines are PRD-derived, not Owner settings: a stored copy never outlives a rule change.
+    gate: DEFAULT_SETTINGS.gate,
+    formats: { ...DEFAULT_SETTINGS.formats, ...(v.formats ?? {}) },
   };
 }
 
@@ -58,6 +60,7 @@ export async function updateSettings(
       caps: { ...current.caps, ...(patch.caps ?? {}) },
       persona_default_caps: { ...current.persona_default_caps, ...(patch.persona_default_caps ?? {}) },
       approvals: { ...current.approvals, ...(patch.approvals ?? {}) },
+      formats: { ...current.formats, ...(patch.formats ?? {}) },
       disclosure_text: current.disclosure_text,
     });
     await tx.query('UPDATE studio SET settings = $2::jsonb, updated_at = now() WHERE id = $1', [studioId, json(next)]);

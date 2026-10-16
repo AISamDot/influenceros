@@ -98,7 +98,7 @@ export function deepProfile(d: Pick<DraftRow, 'id' | 'version'>, state: DraftSta
       summary: ch.identity,
       ai_label: 'Openly AI: the platform AI flag on every post and the AI profile label wherever it exists. Never denies being AI when sincerely asked.',
     },
-    character_lore: { premise: c.premise, backstory: ch.lore, quirks: ch.personality, note: 'Clearly fictional character lore: entertainment, never sales proof.' },
+    character_lore: { premise: c.premise, backstory: ch.lore, quirks: ch.personality, note: 'Character lore and first-person stories are allowed as character content; never used as proof that a product works.' },
     worldview: { principles: ch.worldview },
     expertise_map: {
       field_brain: `${n.key} (${n.subNiche})`,
@@ -143,7 +143,7 @@ export function deepProfile(d: Pick<DraftRow, 'id' | 'version'>, state: DraftSta
       series: content.series,
       hook_library: content.hookBank,
       purpose_mix: 'About 6 reach / 3 trust / 1 sell a week; 10 posts (3 talking, 3 activity + text, 2 voiceover, 1 static, 1 carousel)',
-      banned_hook_styles: ['Fabricated results', 'Income or result guarantees', 'Credential claims', 'Fake scarcity'],
+      banned_hook_styles: ['A story used as proof that a product works', 'Real people or brands as endorsers', 'Income or result guarantees', 'Credential claims', 'Fake scarcity'],
     },
     engagement_style: { reply_tone: `${a.personality.slice(0, 2).join(', ')}; ${c.voiceLine}`, keywords: content.ctaKeywords, boundaries: ['No personal advice in replies: general information only', 'Never denies being AI'] },
     products: {

@@ -2,7 +2,7 @@ import type { Autonomy, PersonaState, PostFormat, PostPurpose } from '../types';
 
 /**
  * Sample personas for the seed: deep profiles following PRD Appendix A. All fictional and openly AI.
- * No credentials, no invented life experiences presented as real, no income or health claims.
+ * No credentials, no story used as proof that a product works, no income or health claims; first-person stories and lore are character content.
  */
 export interface SeedProduct {
   slug: string;

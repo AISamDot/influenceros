@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createSession, revokeSession } from '@ios/auth';
-import { findThread, payloadHash, proposeKill, STUDIO_MANAGER } from '@ios/core';
+import { findThread, payloadHash, propose, proposeKill, STUDIO_MANAGER } from '@ios/core';
 import type { Db } from '@ios/db';
 import { createTestDb } from '@ios/db/testing';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -94,6 +94,52 @@ describe('approvals API: kills need the typed name and the payload hash on both 
     r = await call({ decision: 'approve', payload_hash: payloadHash(k.approval.payload), confirm: k.name });
     expect(r.headers.get('location')).toBe('/approvals?ok=approved');
     expect(await state(k.personaId)).toBe('KILLED');
+  });
+});
+
+describe('approvals API: an Owner-only persona launch is never approved by a bare approve', () => {
+  beforeEach(() => vi.spyOn(console, 'error').mockImplementation(() => {}));
+
+  it('returns 409 (JSON) and redirects with an error (form); the card stays pending', async () => {
+    n += 1;
+    const { id: personaId } = await db.one<{ id: string }>(
+      `INSERT INTO persona (studio_id, slug, name, niche, state) VALUES ($1, $2, $3, 'x', 'PROPOSED') RETURNING id`,
+      [studioId, `launch${n}`, `Nell Brook ${n}`],
+    );
+    const card = await propose(db, {
+      studioId,
+      personaId,
+      kind: 'persona_launch',
+      title: `Launch Nell Brook ${n}`,
+      summary: 'From the Persona Generator.',
+      subjectType: 'persona',
+      subjectId: personaId,
+      proposedBy: STUDIO_MANAGER,
+      ownerOnly: true,
+    });
+    expect(card.payload.owner_only).toBe(true);
+    const r = await decideRoute(
+      new Request(`${BASE}/api/approvals/${card.id}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify({ decision: 'approve', payloadHash: payloadHash(card.payload) }),
+      }),
+      ctx(card.id),
+    );
+    expect(r.status).toBe(409);
+    expect((await r.json()).error).toMatch(/Persona Generator review/);
+    const form = await decideRoute(
+      new Request(`${BASE}/api/approvals/${card.id}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded', cookie, host: '127.0.0.1:3100', referer: `${BASE}/approvals` },
+        body: new URLSearchParams({ decision: 'approve' }).toString(),
+      }),
+      ctx(card.id),
+    );
+    expect(form.status).toBe(303);
+    expect(form.headers.get('location')).toMatch(/^\/approvals\?error=.*Persona/);
+    expect((await db.one<{ status: string }>('SELECT status FROM approval WHERE id = $1', [card.id])).status).toBe('pending');
+    expect(await state(personaId)).toBe('PROPOSED');
   });
 });
 

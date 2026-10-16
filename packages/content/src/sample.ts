@@ -3,7 +3,7 @@ import { json } from '@ios/db';
 
 /**
  * A compact, fictional persona bible (PRD Appendix A shape) for the dry run and the package's tests. Not seed data:
- * stream C owns the launch personas. Openly AI, no credentials, no invented results.
+ * stream C owns the launch personas. Openly AI, no credentials, no story used as proof that a product works.
  */
 export const SAMPLE_BIBLE = {
   identity: { name: 'Nora Vale', ai_label: 'Platform AI label on the profile and every post; never denies being AI when asked' },
@@ -41,7 +41,7 @@ export const SAMPLE_BIBLE = {
     ],
   },
   products: { price_band: '$7–39' },
-  compliance: { never_claims: ['Being an accountant, adviser or any credential', 'Fabricated results used to sell'] },
+  compliance: { never_claims: ['Being an accountant, adviser or any credential', 'A story used as proof that a product works'] },
 };
 
 /** Gives a persona the sample bible (approved, v1). */

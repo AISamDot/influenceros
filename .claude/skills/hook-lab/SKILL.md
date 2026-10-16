@@ -16,7 +16,7 @@ Write at least one of each of these and fill the rest from the strongest types f
 - **Rule**: a named rule from the bible's frameworks with its payoff.
 - **Myth-bust**: a common belief, then the turn.
 - **Contrarian**: a defensible opinion against the niche's default advice.
-- **Story**: a lore beat, clearly fiction, that sets up a lesson.
+- **Story**: a first-person story, situation or lore beat that sets up a lesson ("My date stood me up tonight.", "Day 12 of my no-buy."). Character content: allowed.
 - **How-to**: the outcome first, then "here's how".
 - **Seasonal or news**: tied to a date or a briefing item.
 - **Ask**: an invitation that makes commenting easy.
@@ -29,7 +29,7 @@ Write at least one of each of these and fill the rest from the strongest types f
 3. **Persona fit**: only this persona could say it, in this voice.
 4. **First-frame match**: the opening visual or on-screen text says the same thing as the spoken line.
 5. **Payoff**: the post delivers what the hook promises within its length.
-6. **Truthful**: every factual word is backed by a Field Brain hit; anything else reads as opinion.
+6. **Truthful**: every factual claim (statistics, studies) is backed by a Field Brain hit; anything else reads as opinion or a story. First-person stories and lore are character content and never score 0 here.
 
 A hook that scores 0 on truthful is out, whatever its total.
 
@@ -41,4 +41,4 @@ A hook that scores 0 on truthful is out, whatever its total.
 
 ## Banned
 
-Fabricated results ("I made $3,000 in a week"), invented testimonials, guaranteed outcomes, fake urgency or scarcity, rage-bait aimed at a real person, health scares, specific stock or crypto calls, and any hook the video does not pay off.
+A story used as proof that a product works ("I made $3,000 with this", "this workbook got me over him"), invented testimonials, real people or brands as endorsers, guaranteed outcomes, fake urgency or scarcity, rage-bait aimed at a real person, health scares, specific stock or crypto calls, and any hook the video does not pay off.

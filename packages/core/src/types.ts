@@ -16,7 +16,22 @@ export type PersonaState = (typeof PERSONA_STATES)[number];
 export type Autonomy = 'L0' | 'L1' | 'L2';
 export type Platform = 'tiktok' | 'instagram' | 'youtube' | 'pinterest';
 export const PLATFORMS: readonly Platform[] = ['tiktok', 'instagram', 'youtube', 'pinterest'];
-export type PostFormat = 'talking' | 'activity_text' | 'voiceover' | 'static' | 'carousel';
+/** The five weekly-mix formats (PRD §3.3); the cadence mix always covers these. */
+export type CoreFormat = 'talking' | 'activity_text' | 'voiceover' | 'static' | 'carousel';
+/**
+ * (16 Oct, PRD §3.12 step 4) Optional formats the Owner switches on per week (settings.formats): "product in hand"
+ * (the persona holding our own product, from its cover as a second reference, for sell slots) and "trend reenactment"
+ * (a reference movement clip drives the character: Kling 3.0 motion transfer through Higgsfield).
+ */
+export type OptionalFormat = 'product_in_hand' | 'trend_reenactment';
+export type PostFormat = CoreFormat | OptionalFormat;
+export const CORE_FORMATS: readonly CoreFormat[] = ['talking', 'activity_text', 'voiceover', 'static', 'carousel'];
+export const OPTIONAL_FORMATS: readonly OptionalFormat[] = ['product_in_hand', 'trend_reenactment'];
+export const POST_FORMATS: readonly PostFormat[] = [...CORE_FORMATS, ...OPTIONAL_FORMATS];
+/** Formats written and cut like an activity + on-screen text loop: no voice, on-screen lines carry the post. */
+export const TEXT_LOOP_FORMATS: readonly PostFormat[] = ['activity_text', 'product_in_hand', 'trend_reenactment'];
+/** The core format a post is written as (the optional formats are written like activity + text). */
+export const scriptShape = (f: PostFormat): CoreFormat => (TEXT_LOOP_FORMATS.includes(f) ? 'activity_text' : (f as CoreFormat));
 export type PostPurpose = 'reach' | 'trust' | 'sell';
 export type GateVerdict = 'green' | 'amber' | 'red';
 
@@ -67,6 +82,11 @@ export interface StudioSettings {
   disclosure_text: string;
   /** Compliance Gate rule config: legal/platform lines only. Opinions and general education pass. */
   gate: { block: string[]; pass: string[] };
+  /**
+   * (16 Oct) Optional formats, per persona per week (0 = off). product_in_hand takes sell slots that carry a product;
+   * trend_reenactment takes reach slots booked from a trend idea with a reference clip.
+   */
+  formats: Record<OptionalFormat, number>;
 }
 
 export const DEFAULT_SETTINGS: StudioSettings = {
@@ -77,19 +97,22 @@ export const DEFAULT_SETTINGS: StudioSettings = {
   default_autonomy: 'L1',
   disclosure_text: '',
   gate: {
+    // PRD §3.4 (relaxed 16 Oct): only these lines block. First-person stories, situations and lore pass.
     block: [
+      'A story used as proof that a product or service works ("this workbook got me over him", "I made $5K with this")',
+      'Real people or brands without permission (celebrity or brand endorsements)',
+      'Undisclosed sponsorships or affiliate links',
+      'Fake credentials',
       'Disease-cure claims',
       'Dangerous medical advice',
       'Specific securities or crypto buy/sell calls',
       'Guaranteed returns or income claims',
-      'Fabricated results used to sell',
-      'Fake credentials',
-      'Undisclosed sponsorships or affiliate links',
-      'Denying being AI when asked',
       'Missing post-level AI flag',
+      'Denying being AI when asked',
     ],
-    pass: ['Opinions', 'General education'],
+    pass: ['Opinions', 'General education', 'First-person stories and situations ("my date stood me up tonight", "day 12 of my no-buy")', 'Dramatised scenarios and character lore'],
   },
+  formats: { product_in_hand: 0, trend_reenactment: 0 },
 };
 
 export interface PersonaRow {

@@ -193,8 +193,8 @@ export async function writeWelcomeSequence(services: StudioServices, personaId: 
   const system = `You are the Email Writer for ${c.name}, an openly AI creator in ${c.niche}. Write a 5-email welcome sequence in the persona's voice.
 English only. Plain text bodies (paragraphs separated by a blank line; {{first_name}} may be used). Short, warm, specific, useful.
 Email 1 delivers the free lead magnet; 2 a quick win; 3 the persona's point of view; 4 a soft offer of the entry product; 5 an invitation (membership if there is one).
-Legal lines (the Compliance Gate blocks these): no income, savings or health guarantees, no fabricated results or testimonials, no fake
-credentials, no invented deadlines, countdowns or stock limits. The persona is an AI creator and never claims to be human.`;
+Legal lines (the Compliance Gate blocks these): no income, savings or health guarantees, no story used as proof that the product works
+and no testimonials, no real people or brands as endorsers, no fake credentials, no invented deadlines, countdowns or stock limits. The persona is an AI creator and never claims to be human.`;
   let feedback = '';
   let steps: EmailStep[] = [];
   const runIds: string[] = [];

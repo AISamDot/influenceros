@@ -62,6 +62,8 @@ const FORMAT_GLYPH: Record<PostFormat, string> = {
   voiceover: '<g fill="#fff"><rect x="80" y="190" width="12" height="40" rx="6"/><rect x="104" y="165" width="12" height="90" rx="6"/><rect x="128" y="150" width="12" height="120" rx="6"/><rect x="152" y="175" width="12" height="70" rx="6"/><rect x="176" y="195" width="12" height="30" rx="6"/></g>',
   static: '<rect x="75" y="150" width="120" height="110" rx="12" fill="none" stroke="#fff" stroke-width="10"/><circle cx="110" cy="185" r="12" fill="#fff"/><path d="M80 250 L125 210 L190 255" fill="none" stroke="#fff" stroke-width="10" stroke-linejoin="round"/>',
   carousel: '<rect x="100" y="150" width="100" height="120" rx="12" fill="#fff" opacity=".5"/><rect x="70" y="165" width="100" height="120" rx="12" fill="#fff"/>',
+  product_in_hand: '<rect x="105" y="150" width="70" height="90" rx="8" fill="#fff"/><path d="M80 290 c0-30 20-50 45-50 h40" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round"/>',
+  trend_reenactment: '<circle cx="135" cy="160" r="20" fill="#fff"/><path d="M135 185 v55 M135 200 l-40 -25 M135 200 l40 20 M135 240 l-30 45 M135 240 l35 40" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round"/>',
 };
 
 function wrap(text: string, max: number, lines: number): string[] {

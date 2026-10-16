@@ -198,6 +198,7 @@ export async function runHookLab(
     label: 'hook-lab: 10 hooks',
     system: `You are the Scriptwriter running the hook-lab. Write exactly 10 opening hooks for one short video idea, one per type: ${HOOK_TYPES.join(', ')}.
 Each hook is the first line spoken or shown, under 12 words, in the persona's voice, English only, and true to the studio rules.
+First-person story hooks are welcome ("My date stood me up tonight.", "Day 12 of my no-buy."); never a story used as proof that a product works, never a real person or brand as an endorser.
 Self-score each 0–100 for stopping the scroll with this audience.`,
     cached: args.ctx.cached,
     skills: ['hook-lab'],

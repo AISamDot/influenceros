@@ -8,6 +8,61 @@ const reds = (text: string, extra: Partial<Parameters<typeof gateRules>[0]> = {}
     .filter((c) => c.verdict === 'red')
     .map((c) => c.rule);
 
+// Owner, 16 Oct (PRD §3.4 "Personal experiences"): first-person stories, situations, dramatised scenarios and lore are
+// character content. Only a story used as proof that a product works, and real people or brands without permission,
+// stay red.
+describe('Compliance Gate: first-person stories are character content (relaxed 16 Oct)', () => {
+  it.each([
+    'My date stood me up tonight.',
+    'Day 12 of my no-buy.',
+    'A lady at my hatch asked me what to cook for forty on a tenner.',
+    "Day 12 of my no-buy and I've saved $200 so far.",
+    'I paid off $3,000 last year and cried in the car park.',
+    'Last night my landlord texted me at 2 a.m. about the boiler, so here is what I did.',
+    'I saved $200 this month with my envelope system.',
+    'When I was a dinner lady we fed four hundred kids on a budget, every single day.',
+    'My Mom loves this recipe.',
+    'Grandma Rose swears by this trick.',
+    'I went to Costco and the eggs were $9.',
+  ])('passes the story: %s', (text) => {
+    expect(verdict(text), text).toBe('green');
+    expect(verdict(text, { kind: 'caption', purpose: 'reach' }), text).toBe('green');
+  });
+
+  it.each([
+    ['This workbook got me over him.', 'fabricated_results'],
+    ['I made $5K with this.', 'fabricated_results'],
+    ['I got over him with this workbook, link in bio.', 'fabricated_results'],
+    ['Honestly this planner is the reason I finally sleep.', 'fabricated_results'],
+    ['This planner helped me pay off $12,000 of debt.', 'fabricated_results'],
+    ['Taylor Swift uses this planner.', 'real_people_brands'],
+    ['Recommended by Oprah.', 'real_people_brands'],
+    ['As seen on Shark Tank.', 'real_people_brands'],
+    ['Nike sent me this and I live in it.', 'real_people_brands'],
+  ])('(a)/(b) still go red: %s', (text, rule) => {
+    expect(reds(text)).toContain(rule);
+  });
+
+  it('a story told inside a sell asset is offered as proof', () => {
+    expect(verdict("Day 12 of my no-buy and I've saved $200 so far.", { purpose: 'sell' })).toBe('red');
+    expect(verdict("Day 12 of my no-buy and I've saved $200 so far.", { kind: 'listing' })).toBe('red');
+  });
+
+  it('a real name passes with written permission on file, and a disclosed sponsor may be named', () => {
+    expect(verdict('Taylor Swift uses this planner.', { permissions: ['Taylor Swift'] })).toBe('green');
+    expect(verdict('Sponsored by Acme. #ad')).toBe('green');
+  });
+
+  it('the other lines are unchanged: credentials, cures, calls, guarantees, sponsorships, AI', () => {
+    expect(reds("As a certified financial planner, here's my story.")).toContain('fake_credentials');
+    expect(reds('My aunt drank this tea and it cured her diabetes.')).toContain('medical_claims');
+    expect(reds('Day 3 of loading up on Bitcoin before it moons.')).toContain('securities_calls');
+    expect(reds('Guaranteed income of $2,000 a month.')).toContain('guaranteed_returns');
+    expect(reds('Grab it here: https://shop.example.com/item?ref=nora')).toContain('undisclosed_sponsorship');
+    expect(reds("Honestly I'm a real person, not a bot.", { kind: 'reply' })).toContain('never_deny_ai');
+  });
+});
+
 describe('Compliance Gate v1: the red lines (contract §1)', () => {
   it.each([
     ['fabricated results used to sell', 'I made $10K with this budget system, grab the template.', 'fabricated_results'],
