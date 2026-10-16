@@ -244,7 +244,7 @@ export const NICHES: readonly NicheDef[] = [
     audience: 'Adults 45–70 and their grown children; walkers; people told to "take it easy"',
     object: 'workout',
     noise: 'chair yoga for everyone and 25-year-old trainers',
-    trigger: 'Was offered chair yoga by a trainer half her age.',
+    trigger: 'Watched a trainer offer chair yoga to a strong 70-year-old.',
     myths: ['After 60 you should rest', 'Strength training is for the young', 'Walking is not exercise'],
     hooks: [
       '"{myth}"? {retort}',
@@ -554,8 +554,16 @@ export const NICHES: readonly NicheDef[] = [
   },
 ];
 
+/**
+ * Archetype families, so the three concepts on step 2 differ in kind, not only in job: an elder with a working life
+ * behind them (the strongest reach pattern), a peer the audience's own age, and a character from another era.
+ */
+export type ArchetypeFamily = 'elder' | 'peer' | 'era';
+
 export interface Archetype {
   key: string;
+  /** Default 'elder'. */
+  family?: ArchetypeFamily;
   role: string;
   pronoun: 'she' | 'he';
   years: number;
@@ -842,12 +850,176 @@ export const ARCHETYPES: readonly Archetype[] = [
     loreAlt: 'Ran security for touring bands and has a story about every one. Running storyline: he is learning to bake and judging himself harshly.',
     homeBases: ['a flat in Manchester', 'a semi in Glasgow'],
   },
+  // ── Peers: the audience's own age, a job with a point of view ──
+  {
+    key: 'barista',
+    family: 'peer',
+    role: 'night-shift barista',
+    pronoun: 'she',
+    years: 6,
+    age: 28,
+    unit: 'closing shifts behind the bar',
+    ritual: 'Last Orders',
+    verdicts: ['on the house', 'closing time'],
+    retort: 'We are closed, babe.',
+    retorts: ['That is a decaf decision.', 'Wipe the counter and start again.', 'Not on my shift.'],
+    signOff: 'Tips appreciated, judgement free.',
+    authority: 'six years of reading tired people at 11 p.m.',
+    anchors: ['oat-milk-stained apron', 'pen tucked behind one ear', 'chipped enamel name badge'],
+    wardrobe: ['black tee under a canvas apron', 'oversized thrifted cardigan', 'band hoodie for days off'],
+    settings: ['café counter after close', 'tiny flat kitchen with fairy lights', 'night bus window seat'],
+    palette: [{ name: 'Espresso', hex: '#3B2A20' }, { name: 'Oat', hex: '#E9DCC6' }, { name: 'Neon tip-jar teal', hex: '#2EC4B6' }, { name: 'Chalkboard', hex: '#2B2D2F' }],
+    hue: 172,
+    voice: 'quick, dry, a laugh under every line',
+    voiceAlts: ['slower and warmer, a friend at closing time', 'flatter and drier, deadpan stand-up'],
+    personality: ['quick', 'unbothered', 'kind under the sarcasm', 'nosy'],
+    personalityAlt: ['chaotic but organised', 'protective of regulars', 'competitive', 'secretly soft'],
+    lore: 'Has closed the same café six nights a week for six years and hears everyone\'s story at the counter. Running storyline: she is saving for her own place, one tip jar at a time.',
+    loreAlt: 'Does open-mic comedy on her nights off and tests her material on the regulars. Running storyline: the manager keeps nearly catching her filming.',
+    homeBases: ['a shared flat above a laundrette, Leeds', 'a studio apartment in Queens, New York'],
+  },
+  {
+    key: 'referee',
+    family: 'peer',
+    role: 'Sunday-league football referee',
+    pronoun: 'he',
+    years: 9,
+    age: 33,
+    unit: 'Sunday mornings in the rain',
+    ritual: 'Second Yellow',
+    verdicts: ['play on', 'straight red'],
+    retort: 'That is a booking.',
+    retorts: ['Off you go.', 'Advantage played. Barely.', 'I saw that.'],
+    signOff: 'Full time. Shake hands.',
+    authority: 'nine seasons of making unpopular calls and sticking to them',
+    anchors: ['whistle on a lanyard', 'red and yellow cards in the top pocket', 'mud on one knee'],
+    wardrobe: ['black referee kit', 'grey rain jacket with the hood up', 'plain navy jumper off duty'],
+    settings: ['muddy touchline', 'changing-room bench', 'kitchen with a whiteboard'],
+    palette: [{ name: 'Card red', hex: '#D62828' }, { name: 'Card yellow', hex: '#FCBF49' }, { name: 'Pitch green', hex: '#3A7D44' }, { name: 'Kit black', hex: '#161616' }],
+    hue: 110,
+    voice: 'clear, firm, fair, with a dry northern edge',
+    voiceAlts: ['calmer, the post-match explanation', 'louder, shouting across a windy pitch'],
+    personality: ['fair', 'thick-skinned', 'dry', 'rule-loving'],
+    personalityAlt: ['secretly sentimental', 'pedantic', 'calm under abuse', 'good with kids'],
+    lore: 'Has refereed Sunday-league football for nine seasons and been called everything. Running storyline: he is working towards a higher grade and the assessor is harsh.',
+    loreAlt: 'Took up refereeing after an injury ended his own playing. Running storyline: his mum comes to every game and argues with the parents.',
+    homeBases: ['a terraced house in Stockport', 'an apartment in Columbus, Ohio'],
+  },
+  {
+    key: 'gamemaster',
+    family: 'peer',
+    role: 'escape-room game master',
+    pronoun: 'she',
+    years: 5,
+    age: 30,
+    unit: 'hours watching teams panic on camera',
+    ritual: 'Hint Button',
+    verdicts: ['you escaped', 'time is up'],
+    retort: 'Clue: no.',
+    retorts: ['You are overthinking the padlock.', 'The answer was on the wall.', 'One hint left. Use it.'],
+    signOff: 'The door was never locked.',
+    authority: 'five years of watching people panic, then think',
+    anchors: ['walkie-talkie on her belt', 'ring of tiny brass keys', 'stopwatch round her wrist'],
+    wardrobe: ['black staff polo with a keyhole logo', 'green utility jacket', 'striped jumper'],
+    settings: ['control room with monitors', 'puzzle room with a locked chest', 'bedroom desk with clue cards'],
+    palette: [{ name: 'Lock brass', hex: '#B08D57' }, { name: 'Control-room green', hex: '#1B4332' }, { name: 'Clue paper', hex: '#F1E9D2' }, { name: 'Alarm red', hex: '#C1121F' }],
+    hue: 150,
+    voice: 'bright, teasing, a game-show lilt',
+    voiceAlts: ['hushed, the voice over the speaker in the dark', 'faster, the last-minute countdown'],
+    personality: ['playful', 'patient', 'puzzle-brained', 'unflappable'],
+    personalityAlt: ['a little smug', 'generous with hints', 'theatrical', 'loves a system'],
+    lore: 'Has run escape rooms for five years and watched every kind of team fall apart and come back. Running storyline: she is building her own room, and viewers vote on the puzzles.',
+    loreAlt: 'Started as a maths tutor and moved to puzzles full time. Running storyline: her flatmate is the only person who has never escaped.',
+    homeBases: ['a flat in Bristol', 'an apartment in Austin, Texas'],
+  },
+  // ── Another era: a character out of time (clearly fictional) ──
+  {
+    key: 'homeec',
+    family: 'era',
+    role: '1958 home-economics teacher',
+    pronoun: 'she',
+    years: 20,
+    age: 46,
+    unit: 'thrift lessons in a 1958 classroom',
+    ritual: 'Domestic Science',
+    verdicts: ['top marks', 'see me after class'],
+    retort: 'We do not, dear.',
+    retorts: ['Pencils down.', 'That would not pass inspection.', 'Again, neatly this time.'],
+    signOff: 'Class dismissed. Wash your cup.',
+    authority: 'a 1958 classroom\'s rules for thrift and order, applied to 2026',
+    anchors: ['victory-roll hair', 'cat-eye glasses on a chain', 'chalk dust on one sleeve'],
+    wardrobe: ['pastel twinset and pearls', 'gingham pinafore over a blouse', 'tweed skirt suit'],
+    settings: ['1950s classroom kitchen', 'pastel kitchen with a wall calendar', 'blackboard with chalk diagrams'],
+    palette: [{ name: 'Mint enamel', hex: '#A8DADC' }, { name: 'Gingham red', hex: '#E63946' }, { name: 'Chalk', hex: '#F1FAEE' }, { name: 'Blackboard', hex: '#264653' }],
+    hue: 182,
+    voice: 'crisp mid-century received pronunciation, brisk and kind',
+    voiceAlts: ['warmer, a favourite teacher after the bell', 'sharper, the headmistress on a bad day'],
+    personality: ['brisk', 'thrifty', 'unshockable', 'secretly delighted by now'],
+    personalityAlt: ['old-fashioned', 'curious about gadgets', 'strict but fair', 'loves a list'],
+    lore: 'Taught home economics in 1958 and is (fictionally, and openly) posting from 2026, appalled and fascinated in equal measure. Running storyline: she is marking the modern world, one lesson at a time.',
+    loreAlt: 'A clearly fictional time-slip: her classroom clock stopped in 1958 and her lessons arrive on today\'s phones. Running storyline: she is trying to understand subscriptions.',
+    homeBases: ['a semi-detached house in Surrey (1958)', 'a clapboard house in Ohio (1958)'],
+  },
+  {
+    key: 'wireless',
+    family: 'era',
+    role: '1949 wireless announcer',
+    pronoun: 'he',
+    years: 18,
+    age: 52,
+    unit: 'evening bulletins on the wireless',
+    ritual: 'This Just In',
+    verdicts: ['on the air', 'dead air'],
+    retort: 'We interrupt this nonsense.',
+    retorts: ['Static. Try again.', 'That is not fit for broadcast.', 'And now, the facts.'],
+    signOff: 'This has been your wireless. Goodnight.',
+    authority: 'a 1949 announcer\'s habit of checking facts before saying them',
+    anchors: ['ribbon microphone', 'pencil moustache', 'headphones round his neck'],
+    wardrobe: ['three-piece suit with a pocket watch', 'cardigan and tie', 'dinner jacket for Saturdays'],
+    settings: ['wood-panelled radio studio', 'armchair beside a valve radio', 'office with a typewriter'],
+    palette: [{ name: 'Valve amber', hex: '#E09F3E' }, { name: 'Walnut', hex: '#5A3A22' }, { name: 'Ivory', hex: '#F4EFE3' }, { name: 'Bakelite', hex: '#2B2118' }],
+    hue: 35,
+    voice: 'rich mid-century broadcaster, measured and warm',
+    voiceAlts: ['brisker, the news at six', 'softer, the late-night music hour'],
+    personality: ['measured', 'courteous', 'fact-proud', 'quietly funny'],
+    personalityAlt: ['theatrical', 'sentimental about music', 'precise about words', 'curious'],
+    lore: 'Read the evening bulletins in 1949 and is (fictionally, and openly) broadcasting into 2026. Running storyline: he reports on modern life as if it were the news of the day.',
+    loreAlt: 'A clearly fictional time-slip: his studio\'s red light came on in 1949 and never went off. Running storyline: he is learning what a podcast is.',
+    homeBases: ['a mansion flat in London (1949)', 'an apartment in Chicago (1949)'],
+  },
 ];
 
+/** Elder names (NAMES), plus pools for the other families. */
 export const NAMES: Record<'she' | 'he', string[]> = {
   she: ['Vera Hollis', 'Marlene Okafor', 'Peggy Thornbury', 'Ines Calloway', 'Bernadette Quill', 'Lorraine Achebe', 'Ruth Pemberton', 'Gloria Vance', 'Edith Marlowe', 'Constance Reyes', 'Maeve Fairburn', 'Odile Hargreave'],
   he: ['Clement Ashby', 'Desmond Kowalczyk', 'Horace Bellamy', 'Rupert Nwosu', 'Felix Abernathy', 'Augustin Rourke', 'Barnaby Sheel', 'Cyril Mbeki-Hart', 'Lionel Fairweather', 'Ezra Pennick', 'Otto Larkspur', 'Hamish Doyle'],
 };
+
+const PEER_NAMES: Record<'she' | 'he', string[]> = {
+  she: ['Jade Okonkwo', 'Priya Marlow', 'Tess Albright', 'Nina Castellano', 'Maddie Kerr', 'Ayo Lindqvist', 'Freya Oduya', 'Carmen Holt'],
+  he: ['Theo Brannigan', 'Kofi Hartley', 'Sam Delacroix', 'Jonah Pike', 'Ravi Ellison', 'Luca Ferraby', 'Dev Okafor', 'Callum Reyes'],
+};
+const ERA_NAMES: Record<'she' | 'he', string[]> = {
+  she: ['Winifred Ashdown', 'Dorothea Blythe', 'Mabel Kittredge', 'Hazel Pendleford', 'Iris Wetherell'],
+  he: ['Cornelius Webb', 'Archibald Penrose', 'Wendell Frost', 'Lionel Ashcombe', 'Reginald Tate'],
+};
+
+export const familyOf = (a: Pick<Archetype, 'family'> | undefined): ArchetypeFamily => a?.family ?? 'elder';
+
+/** The first-name pool for an archetype family and pronoun. */
+export function namePool(family: ArchetypeFamily, pronoun: 'she' | 'he'): string[] {
+  return (family === 'peer' ? PEER_NAMES : family === 'era' ? ERA_NAMES : NAMES)[pronoun];
+}
+
+/** "a" or "an" for the word that follows ("an air-traffic controller", "a 1958 teacher", "an 1849…"). */
+export function article(word: string): 'a' | 'an' {
+  const w = word.trim().toLowerCase();
+  if (/^(?:8|11\b|11-|18)/.test(w)) return 'an';
+  if (/^(?:uni|use|usu|euro|one|once)/.test(w)) return 'a';
+  if (/^(?:hour|honest|honou?r|heir)/.test(w)) return 'an';
+  return /^[aeiou]/.test(w) ? 'an' : 'a';
+}
+export const withArticle = (word: string): string => `${article(word)} ${word}`;
 
 /** Deterministic PRNG (mulberry32 over a string hash). */
 export function rng(seed: string): () => number {

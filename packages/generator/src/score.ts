@@ -45,6 +45,46 @@ export interface ScoreInput {
   catchphrases?: string[];
   /** 0–100 from distinctness(), when known. */
   distinct?: number;
+  /** The other options drafted alongside this one: near-identical options lose captivation points. */
+  siblings?: readonly ConceptOption[];
+}
+
+const jaccard = (a: Set<string>, b: Set<string>): number => {
+  if (!a.size || !b.size) return 0;
+  const shared = [...a].filter((x) => b.has(x)).length;
+  return shared / (a.size + b.size - shared);
+};
+
+/** How much of `c` repeats its closest sibling: shared hooks, the same first product, a near-identical mechanic or premise. */
+export function siblingOverlap(c: ConceptOption, siblings: readonly ConceptOption[]): { penalty: number; nearest: string | null; why: string[] } {
+  let best = { penalty: 0, nearest: null as string | null, why: [] as string[] };
+  const norm = (h: string) => h.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+  const mine = new Set(c.hooks.map(norm));
+  for (const o of siblings) {
+    const why: string[] = [];
+    let p = 0;
+    const sharedHooks = o.hooks.map(norm).filter((h) => mine.has(h)).length;
+    if (sharedHooks) {
+      p += Math.min(3, sharedHooks);
+      why.push(`${sharedHooks} shared hook${sharedHooks > 1 ? 's' : ''}`);
+    }
+    if (o.firstProduct?.name && o.firstProduct.name === c.firstProduct?.name) {
+      p += 2;
+      why.push('same first product');
+    }
+    // Templated text with only the nouns swapped: compare the words that aren't the name, role or object.
+    const strip = (t: string, x: ConceptOption) => tokens(t.split(x.name).join(' ').split(firstName(x.name)).join(' '));
+    if (jaccard(strip(c.mechanic, c), strip(o.mechanic, o)) >= 0.5) {
+      p += 2;
+      why.push('the same mechanic shape');
+    }
+    if (jaccard(strip(c.premise, c), strip(o.premise, o)) >= 0.5) {
+      p += 1;
+      why.push('the same premise template');
+    }
+    if (p > best.penalty) best = { penalty: p, nearest: o.id, why };
+  }
+  return { penalty: Math.min(6, best.penalty), nearest: best.nearest, why: best.why };
 }
 
 export function scoreConcept(input: ScoreInput): Scorecard {
@@ -66,8 +106,10 @@ export function scoreConcept(input: ScoreInput): Scorecard {
   if (c.signOff || input.catchphrases?.length) cap += 4;
   if (c.lookLine && c.lookLine.length <= 110) cap += 3;
   if (hooks.some((h) => words(h).length <= 7)) cap += 3;
+  const twin = input.siblings?.length ? siblingOverlap(c, input.siblings) : null;
+  if (twin?.penalty) cap -= twin.penalty;
   cap = clamp(cap, 0, SCORECARD_WEIGHTS.captivation);
-  notes.captivation = premiseOk ? 'Elder-plus-contrast premise reads in a second' : 'Premise needs a sharper one-second contrast';
+  notes.captivation = `${premiseOk ? 'Elder-plus-contrast premise reads in a second' : 'Premise needs a sharper one-second contrast'}${twin?.penalty ? `; too like ${twin.nearest} (${twin.why.join(', ')}): -${twin.penalty}` : ''}`;
 
   // Demand and intent (20).
   const o = input.opportunity;

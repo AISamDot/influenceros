@@ -328,6 +328,7 @@ export async function sendDueEmails(services: StudioServices, opts: { now?: Date
             p.slug, p.name, p.studio_id
        FROM email_enrollment e JOIN subscriber s ON s.id = e.subscriber_id JOIN persona p ON p.id = e.persona_id
       WHERE e.status = 'active' AND e.next_at <= $1 AND ($3::uuid IS NULL OR p.studio_id = $3)
+        AND p.state <> 'ARCHIVED' -- parked: enrolments wait (not stopped) and resume when the persona is restored
       ORDER BY e.next_at LIMIT $2`,
     [now, opts.limit ?? 100, opts.studioId ?? null],
   );

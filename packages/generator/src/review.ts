@@ -35,10 +35,13 @@ export async function computeReview(services: StudioServices, d: Pick<DraftRow, 
       })
     : { captivation: 0, demand: 0, ladder: 0, gap: 0, producibility: 0, lineSafety: 0, total: 0, notes: {} };
 
+  // What blocks the launch: a step with nothing chosen, or one drafted before an earlier step changed (stale) and not
+  // yet regenerated or kept as is. Launching a stale look or voice would ship the old concept's character.
   const missing: string[] = [];
   for (const s of STEPS.slice(0, 6)) {
     const st = state[s.key] as StepState<unknown, unknown>;
     if (!st.chosen) missing.push(s.title);
+    else if (st.status === 'stale') missing.push(`${s.title} (out of date: regenerate it or keep it as is)`);
   }
   const risks: string[] = [];
   const flags = lineFlags(
@@ -48,7 +51,7 @@ export async function computeReview(services: StudioServices, d: Pick<DraftRow, 
   if (dist.verdict === 'clone') risks.push(`Too close to ${dist.nearest[0]?.name} (${dist.nearest[0]?.source}): change the name, premise or look.`);
   else if (dist.verdict === 'close') risks.push(`Close to ${dist.nearest[0]?.name} (${dist.nearest[0]?.source}, similarity ${dist.nearest[0]?.similarity}): keep the audiences apart.`);
   for (const k of ['character', 'look', 'voice', 'content'] as const) {
-    if ((state[k] as StepState<unknown, unknown>).status === 'stale') risks.push(`${STEPS.find((s) => s.key === k)!.title} was drafted before an earlier step changed: regenerate or confirm it.`);
+    if ((state[k] as StepState<unknown, unknown>).status === 'stale') risks.push(`${STEPS.find((s) => s.key === k)!.title} was drafted before an earlier step changed: regenerate it or keep it as is before launch.`);
   }
   const check = state.look.chosen?.check;
   if (check?.drift.verdict === 'drifting') risks.push(`Look: ${check.drift.note}`);

@@ -45,22 +45,48 @@ export default async function StudioWall() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Live personas" value={totals.live} hint={`${totals.setup} in setup · ${cards.length} on the wall`} />
-        <Kpi label="Views · 7 days" value={compact(views)} hint="all platforms" />
-        <Kpi label="Revenue · 7 days" value={usd(revenue)} hint="store orders" tone="ok" />
-        <Link href="/approvals" className="block">
-          <Kpi
-            label="Waiting for you"
-            value={totals.pending}
-            hint={totals.kills ? `${totals.kills} kill proposal${totals.kills > 1 ? 's' : ''} first` : 'approvals'}
-            tone={totals.kills ? 'danger' : undefined}
-          />
-        </Link>
-      </div>
+      {/* An empty studio: the way in comes first (on a phone it would otherwise sit under four zero tiles). */}
+      {cards.length === 0 ? (
+        <div className="card relative overflow-hidden p-6 sm:p-8">
+          <div className="pointer-events-none absolute inset-0 opacity-[0.08]" style={{ background: 'radial-gradient(70% 90% at 100% 0%, var(--accent), transparent 60%)' }} />
+          <div className="relative max-w-xl">
+            <div className="eyebrow">An empty studio</div>
+            <h2 className="mt-1 font-[family-name:var(--font-display)] text-[34px] leading-[1.05] tracking-tight">Create your first persona in the Persona Generator</h2>
+            <p className="mt-2 text-[14px] text-muted">
+              The Studio Manager ranks opportunities with evidence, drafts three concepts, then the character, look, voice, content and products. You pick, edit or mix at every step,
+              and you approve the launch.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Link href="/generator" className="btn btn-ink">
+                Open the Persona Generator
+              </Link>
+              <Link href="/archive" className="btn">
+                Restore from the archive
+              </Link>
+            </div>
+            <p className="mt-3 text-[12.5px] text-muted">The 14 Oct launch five (Rosa, Margot, Dot, Walt, Ambrose) are archived with everything kept.</p>
+          </div>
+        </div>
+      ) : null}
+
+      {cards.length || totals.pending ? (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Kpi label="Live personas" value={totals.live} hint={`${totals.setup} in setup · ${cards.length} on the wall`} />
+          <Kpi label="Views · 7 days" value={compact(views)} hint="all platforms" />
+          <Kpi label="Revenue · 7 days" value={usd(revenue)} hint="store orders" tone="ok" />
+          <Link href="/approvals" className="block">
+            <Kpi
+              label="Waiting for you"
+              value={totals.pending}
+              hint={totals.kills ? `${totals.kills} kill proposal${totals.kills > 1 ? 's' : ''} first` : 'approvals'}
+              tone={totals.kills ? 'danger' : undefined}
+            />
+          </Link>
+        </div>
+      ) : null}
 
       {/* Profit Engine card (IOS-2 stream D owns components/profit-card.tsx; renders nothing until it lands). */}
-      <ProfitCard db={db} studioId={studio.id} />
+      {cards.length ? <ProfitCard db={db} studioId={studio.id} /> : null}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
         <div className="min-w-0 xl:order-2">
@@ -75,28 +101,6 @@ export default async function StudioWall() {
           />
         </div>
         <section className="min-w-0 space-y-4 xl:order-1" aria-label="Personas">
-          {cards.length === 0 ? (
-            <div className="card relative overflow-hidden p-6 sm:p-8">
-              <div className="pointer-events-none absolute inset-0 opacity-[0.08]" style={{ background: 'radial-gradient(70% 90% at 100% 0%, var(--accent), transparent 60%)' }} />
-              <div className="relative max-w-xl">
-                <div className="eyebrow">An empty studio</div>
-                <h2 className="mt-1 font-[family-name:var(--font-display)] text-[34px] leading-[1.05] tracking-tight">Create your first persona in the Persona Generator</h2>
-                <p className="mt-2 text-[14px] text-muted">
-                  The Studio Manager ranks opportunities with evidence, drafts three concepts, then the character, look, voice, content and products. You pick, edit or mix at every step,
-                  and you approve the launch.
-                </p>
-                <div className="mt-5 flex flex-wrap gap-2">
-                  <Link href="/generator" className="btn btn-ink">
-                    Open the Persona Generator
-                  </Link>
-                  <Link href="/archive" className="btn">
-                    Restore from the archive
-                  </Link>
-                </div>
-                <p className="mt-3 text-[12.5px] text-muted">The 14 Oct launch five (Rosa, Margot, Dot, Walt, Ambrose) are archived with everything kept.</p>
-              </div>
-            </div>
-          ) : null}
           {drafts.length ? (
             <Link href="/generator" className="card flex items-center gap-3 px-4 py-3 text-[13.5px] transition hover:shadow-lift">
               <span className="pill bg-accent-soft text-accent">Generator</span>

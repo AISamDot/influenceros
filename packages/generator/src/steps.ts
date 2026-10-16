@@ -1,13 +1,15 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { runAgent, STUDIO_RULES_BLOCK, type StudioServices } from '@ios/agents';
 import { type Actor, BudgetExceededError } from '@ios/core';
 import { listArchivedPersonas } from '@ios/core/seed';
 import type { Db } from '@ios/db';
-import { buildConcept, fakeCharacter, fakeConcepts, fakeContent, fakeOpportunities, type StudioMix } from './fake';
+import { buildConcept, fakeCharacter, fakeConcepts, fakeContent, fakeLookProfile, fakeOpportunities, opportunityFor, sheetPrompt, type StudioMix, type VoiceBrief, voiceBriefs } from './fake';
 import { ARCHETYPES, archetypeByKey, type NicheDef, nicheByKey, nicheForText, rng } from './library';
+import { archiveStudioPersona, restoreStudioPersona } from './archive';
 import { checkLook, lookVariants, voicePreviews } from './media';
 import { computeReview } from './review';
 import { archiveSignatures, distinctness, draftSignature, scoreConcept, studioSignatures } from './score';
-import { commit, DraftError, insertDraft, requireDraft } from './store';
+import { commit, DraftError, getDraftVersion, insertDraft, requireDraft } from './store';
 import {
   CHARACTER_FIELDS,
   type CharacterField,
@@ -18,8 +20,10 @@ import {
   type DraftRow,
   type DraftState,
   emptyState,
+  type LookProfile,
   type LookStep,
   type OpportunityOption,
+  type ReviewState,
   STEPS,
   type StepKey,
   stepKey,
@@ -37,6 +41,48 @@ export interface Ctx {
   actor: Actor;
   /** The version the Owner's form was rendered from; refused if the draft has moved on. */
   expectVersion?: number;
+}
+
+// ───────────────────────────── Guards ─────────────────────────────
+
+const held = new AsyncLocalStorage<ReadonlySet<string>>();
+const queues = new Map<string, Promise<void>>();
+
+/**
+ * Runs `fn` with this process's lock on the draft: a second paid generation for the same draft (a double submit, a
+ * chat turn racing a button) waits for the first and then sees its version, instead of spending and being refused.
+ * Re-entrant: a step that drafts the next one inside the same call doesn't wait for itself.
+ */
+export async function withDraftLock<T>(draftId: string, fn: () => Promise<T>): Promise<T> {
+  const mine = held.getStore();
+  if (mine?.has(draftId)) return fn();
+  const prev = queues.get(draftId) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const tail = prev.then(() => gate);
+  queues.set(draftId, tail);
+  await prev;
+  try {
+    return await held.run(new Set([...(mine ?? []), draftId]), fn);
+  } finally {
+    release();
+    if (queues.get(draftId) === tail) queues.delete(draftId);
+  }
+}
+
+/** The Owner's form was rendered from an older version: refuse before any paid generation starts. */
+function checkVersion(d: DraftRow, expectVersion: number | undefined): void {
+  if (expectVersion !== undefined && expectVersion !== d.version) throw new DraftError('this draft changed since you opened it: reload and try again');
+}
+
+export const RESTORED_READ_ONLY = 'restored exactly from the archive: this draft is read-only (only the review runs here); edit the bible after launch';
+
+/** A draft restored from the archive mirrors the persona's documents exactly: nothing in it changes before launch. */
+export const isRestoredDraft = (d: Pick<DraftRow, 'persona_id'>): boolean => !!d.persona_id;
+
+function assertEditable(d: DraftRow): void {
+  assertActive(d);
+  if (isRestoredDraft(d)) throw new DraftError(RESTORED_READ_ONLY);
 }
 
 export const GENERATOR_SYSTEM = `You are the Studio Manager co-creating a new AI influencer persona with the Owner in the Persona Generator. You recommend, score and draft; the Owner decides.
@@ -209,6 +255,34 @@ function mergeCharacter(raw: unknown, fb: CharacterStep): CharacterStep {
   };
 }
 
+function mergeLook(raw: unknown, fb: LookProfile): LookProfile {
+  const g = (optionsOf(raw)[0] ?? (raw as Record<string, unknown>) ?? {}) as Record<string, unknown>;
+  const palette = Array.isArray(g.palette)
+    ? (g.palette as Array<Record<string, unknown>>)
+        .map((p) => ({ name: str(p?.name, '', 40), hex: typeof p?.hex === 'string' && /^#[0-9a-f]{6}$/i.test(p.hex) ? p.hex : '' }))
+        .filter((p) => p.name && p.hex)
+        .slice(0, 6)
+    : [];
+  return {
+    ...fb,
+    anchors: strs(g.anchors, fb.anchors, 4),
+    wardrobe: strs(g.wardrobe, fb.wardrobe, 4),
+    settings: strs(g.settings, fb.settings, 4),
+    palette: palette.length >= 2 ? palette : fb.palette,
+  };
+}
+
+function mergeVoiceBriefs(raw: unknown, fb: VoiceBrief[]): VoiceBrief[] {
+  const got = optionsOf(raw);
+  if (!got.length) return fb;
+  const tail = 'Synthetic voice, never a clone of a real person.';
+  return fb.map((b, i) => {
+    const g = got[i] ?? {};
+    const description = str(g.description, b.description, 600);
+    return { id: b.id, label: str(g.label, b.label, 30), description: description.includes('never a clone') ? description : `${description.replace(/\.?$/, '.')} ${tail}` };
+  });
+}
+
 function mergeContent(raw: unknown, fb: ContentPlanDraft): ContentPlanDraft {
   const g = (optionsOf(raw)[0] ?? {}) as Record<string, unknown>;
   return { ...fb, hookBank: strs(g.hookBank ?? g.hook_bank, fb.hookBank, 15) };
@@ -227,7 +301,9 @@ export async function scoreConcepts(services: StudioServices, d: DraftRow, conce
   return concepts.map((c) => {
     const tmp = { ...emptyState(d.state.seed), opportunity: { ...d.state.opportunity, chosen: opp }, concept: { ...d.state.concept, chosen: c } } as DraftState;
     const dist = distinctness(draftSignature(tmp, d.title), others);
-    return { ...c, scorecard: scoreConcept({ concept: c, opportunity: opp, distinct: dist.score }) };
+    // Options drafted together are scored against each other (a near-twin loses points); a lone mix or edit isn't.
+    const siblings = concepts.length > 1 ? concepts.filter((x) => x !== c) : [];
+    return { ...c, scorecard: scoreConcept({ concept: c, opportunity: opp, distinct: dist.score, siblings }) };
   });
 }
 
@@ -245,7 +321,12 @@ function advise(key: StepKey, state: DraftState): string | null {
       if (!top) return null;
       const bestHook = [...state.concept.options].flatMap((c) => c.hooks.map((h) => ({ c, h }))).sort((x, y) => x.h.length - y.h.length)[0];
       const other = ranked.find((x) => x.id !== top.id);
-      return `${top.id} leads at ${top.scorecard?.total ?? '?'}/100 (captivation ${top.scorecard?.captivation ?? '?'}/30).${bestHook ? ` Most quotable hook: ${bestHook.c.id}'s "${bestHook.h.replace(/[.!?]$/, '')}".` : ''}${other ? ` Mix them if you like, e.g. "combine ${other.id}'s look with ${top.id}'s mechanic".` : ''}`;
+      const tied = ranked.filter((x) => (x.scorecard?.total ?? 0) === (top.scorecard?.total ?? 0)).map((x) => x.id);
+      const lead =
+        tied.length > 1
+          ? `${tied.join(' and ')} tie at ${top.scorecard?.total ?? '?'}/100: the scorecard can't split them, so pick on the premise you like best.`
+          : `${top.id} leads at ${top.scorecard?.total ?? '?'}/100 (captivation ${top.scorecard?.captivation ?? '?'}/30${other?.scorecard ? `; next ${other.id} at ${other.scorecard.total}` : ''}).`;
+      return `${lead}${bestHook ? ` Most quotable hook: ${bestHook.c.id}'s "${bestHook.h.replace(/[.!?]$/, '')}".` : ''}${other ? ` Mix them if you like, e.g. "combine ${other.id}'s look with ${top.id}'s mechanic".` : ''}`;
     }
     case 'character':
       return 'Swap any field for an alternative, or tell me what to change ("make her older and drier").';
@@ -320,18 +401,51 @@ async function generate(services: StudioServices, d: DraftRow, key: StepKey, ins
     case 'look': {
       const concept = requireChosen(state.concept, 'a concept');
       const gen = state.look.generation + 1;
-      const look = await lookVariants(services, { studioId: d.studio_id, concept, character: state.character.chosen });
+      const steer = { instruction: instruction ?? null, generation: gen };
+      let profile: LookProfile | undefined;
+      let n: string | undefined;
+      if (instruction) {
+        // The Owner's steer rewrites the look profile (the model with a key; the library folds it in without one).
+        const fb = fakeLookProfile(concept, state.character.chosen, steer);
+        const r = await drafted(
+          services,
+          d,
+          key,
+          `Look profile: ${JSON.stringify({ anchors: fb.anchors, wardrobe: fb.wardrobe, palette: fb.palette, settings: fb.settings })}. Concept: ${concept.name}, ${concept.archetype}.${ask}\nRewrite the anchors (3), wardrobe (3), palette (4, each {name, hex}) and settings (3 or fewer) to follow the Owner's ask. Photoreal, one person, no real person's likeness.\nReturn {"options": [{"anchors": [...], "wardrobe": [...], "palette": [...], "settings": [...]}]}.`,
+          () => fb,
+          mergeLook,
+        );
+        profile = r.value;
+        n = r.note;
+      }
+      const look = await lookVariants(services, { studioId: d.studio_id, concept, character: state.character.chosen, steer, profile });
       state.look = { ...state.look, status: 'ready', generation: gen, options: [look], chosen: clone(look), chosenFrom: 'A', instruction: instruction ?? null };
       state.look.advice = advise(key, state);
-      return { state };
+      return { state, ...note(n) };
     }
     case 'voice': {
       const concept = requireChosen(state.concept, 'a concept');
       const gen = state.voice.generation + 1;
-      const previews = await voicePreviews(services, { studioId: d.studio_id, concept });
+      const steer = { instruction: instruction ?? null, generation: gen };
+      let briefs: VoiceBrief[] | undefined;
+      let n: string | undefined;
+      if (instruction) {
+        const fb = voiceBriefs(concept, steer);
+        const r = await drafted(
+          services,
+          d,
+          key,
+          `Voice briefs for ${concept.name} (${concept.archetype}; voice line: ${concept.voiceLine}): ${JSON.stringify(fb)}.${ask}\nRewrite the three voice-design descriptions (A follows the ask most closely; B and C are variations on it). Synthetic voices only: never a real person's voice.\nReturn {"options": [{"label": "...", "description": "..."}, ...]}.`,
+          () => fb,
+          mergeVoiceBriefs,
+        );
+        briefs = r.value;
+        n = r.note;
+      }
+      const previews = await voicePreviews(services, { studioId: d.studio_id, concept, steer, briefs });
       state.voice = { ...state.voice, status: 'ready', generation: gen, options: previews, chosen: null, chosenFrom: null, instruction: instruction ?? null };
       state.voice.advice = advise(key, state);
-      return { state };
+      return { state, ...note(n) };
     }
     case 'content': {
       const concept = requireChosen(state.concept, 'a concept');
@@ -390,17 +504,21 @@ export async function createDraft(services: StudioServices, input: { studioId: s
 }
 
 export async function regenerateStep(services: StudioServices, draftId: string, step: number, ctx: Ctx & { instruction?: string | null }): Promise<DraftRow> {
-  const key = stepKey(step);
-  const d = await requireDraft(services.db, draftId);
-  assertActive(d);
-  const { state, note } = await generate(services, d, key, ctx.instruction);
-  if (note) state[key].advice = `${state[key].advice ?? ''} ${note}`.trim();
-  if (key !== 'review') markDownstream(state, key);
-  const reviewed = await withReview(services, d, state);
-  return commit(services.db, draftId, { step, change: `${key}: ${state[key].generation > 1 ? 'regenerated' : 'drafted'}${ctx.instruction ? ` ("${ctx.instruction.slice(0, 80)}")` : ''}`, actor: ctx.actor, expectVersion: ctx.expectVersion ?? d.version }, async () => ({
-    ...reviewed,
-    currentStep: step,
-  }));
+  return withDraftLock(draftId, async () => {
+    const key = stepKey(step);
+    const d = await requireDraft(services.db, draftId);
+    if (key === 'review') assertActive(d);
+    else assertEditable(d);
+    checkVersion(d, ctx.expectVersion);
+    const { state, note } = await generate(services, d, key, ctx.instruction);
+    if (note) state[key].advice = `${state[key].advice ?? ''} ${note}`.trim();
+    if (key !== 'review') markDownstream(state, key);
+    const reviewed = await withReview(services, d, state);
+    return commit(services.db, draftId, { step, change: `${key}: ${state[key].generation > 1 ? 'regenerated' : 'drafted'}${ctx.instruction ? ` ("${ctx.instruction.slice(0, 80)}")` : ''}`, actor: ctx.actor, expectVersion: ctx.expectVersion ?? d.version }, async () => ({
+      ...reviewed,
+      currentStep: step,
+    }));
+  });
 }
 
 function assertActive(d: DraftRow): void {
@@ -409,74 +527,197 @@ function assertActive(d: DraftRow): void {
 
 /** Picks an option of a step (or confirms the drafted one on single-option steps), then drafts the next step. */
 export async function chooseOption(services: StudioServices, draftId: string, step: number, optionId: string, ctx: Ctx): Promise<DraftRow> {
+  return withDraftLock(draftId, async () => {
+    const key = stepKey(step);
+    if (key === 'review') throw new DraftError('the review has nothing to pick: approve the launch instead');
+    let d = await requireDraft(services.db, draftId);
+    assertEditable(d);
+    checkVersion(d, ctx.expectVersion);
+    const state = clone(d.state);
+    const s = state[key] as StepState<any, any>;
+    if (key === 'look') {
+      const look = (s.chosen ?? s.options[0]) as LookStep | undefined;
+      if (!look) throw new DraftError('no character sheets yet');
+      if (!look.variants.some((v) => v.id === optionId)) throw new DraftError(`no sheet ${optionId}`);
+      const review = await computeReview(services, d, state);
+      const check = await checkLook(services, { studioId: d.studio_id, look, variantId: optionId, textDistinct: { score: review.distinctness.score, nearest: review.distinctness.nearest[0]?.name ?? null } });
+      s.chosen = { ...clone(look), chosenVariant: optionId, check };
+      s.chosenFrom = optionId;
+    } else if (key === 'character' || key === 'content') {
+      if (!s.chosen) s.chosen = clone(key === 'character' ? (s.options[0] as CharacterStep).profile : s.options[0]);
+      s.chosenFrom = s.chosenFrom ?? 'A';
+    } else if (optionId === 'current') {
+      // Confirms what is already chosen (a mix or the Owner's edit): nothing to replace.
+      if (!s.chosen) throw new DraftError(`nothing chosen on ${key} yet`);
+    } else {
+      const opt = (s.options as Array<{ id: string }>).find((o) => o.id === optionId);
+      if (!opt) throw new DraftError(`no option ${optionId} on ${key}`);
+      const changed = s.chosenFrom !== optionId;
+      s.chosen = clone(opt);
+      s.chosenFrom = optionId;
+      if (changed) markDownstream(state, key);
+    }
+    s.status = 'done';
+    const nextKey = ORDER[ORDER.indexOf(key) + 1]!;
+    const reviewed = await withReview(services, d, state);
+    d = await commit(services.db, draftId, { step, change: `${key}: ${optionId === 'current' ? `confirmed ${s.chosenFrom ?? ''}`.trim() : `picked ${optionId}`}`, actor: ctx.actor, expectVersion: ctx.expectVersion ?? d.version }, async () => ({
+      ...reviewed,
+      currentStep: Math.max(step + 1, 1),
+      title: key === 'concept' ? (s.chosen as ConceptOption).name : key === 'character' ? (s.chosen as CharacterProfile).name : undefined,
+    }));
+    // Draft the next step when it is empty or out of date.
+    const next = d.state[nextKey] as StepState<unknown, unknown>;
+    if (nextKey === 'review' || next.status === 'empty' || next.status === 'stale') return regenerateStep(services, draftId, step + 1, { actor: ctx.actor });
+    return d;
+  });
+}
+
+/**
+ * "Keep as is" on a stale step: the Owner confirms that what was drafted before an earlier change still holds. The
+ * review blocks the launch until every stale step is regenerated or kept.
+ */
+export async function keepStep(services: StudioServices, draftId: string, step: number, ctx: Ctx): Promise<DraftRow> {
   const key = stepKey(step);
-  if (key === 'review') throw new DraftError('the review has nothing to pick: approve the launch instead');
-  let d = await requireDraft(services.db, draftId);
-  assertActive(d);
+  if (!(['character', 'look', 'voice', 'content'] as StepKey[]).includes(key)) throw new DraftError(`nothing to keep on ${key}`);
+  const d = await requireDraft(services.db, draftId);
+  assertEditable(d);
+  checkVersion(d, ctx.expectVersion);
   const state = clone(d.state);
-  const s = state[key] as StepState<any, any>;
-  if (key === 'look') {
-    const look = (s.chosen ?? s.options[0]) as LookStep | undefined;
-    if (!look) throw new DraftError('no character sheets yet');
-    if (!look.variants.some((v) => v.id === optionId)) throw new DraftError(`no sheet ${optionId}`);
-    const review = await computeReview(services, d, state);
-    const check = await checkLook(services, { studioId: d.studio_id, look, variantId: optionId, textDistinct: { score: review.distinctness.score, nearest: review.distinctness.nearest[0]?.name ?? null } });
-    s.chosen = { ...clone(look), chosenVariant: optionId, check };
-    s.chosenFrom = optionId;
-  } else if (key === 'character' || key === 'content') {
-    if (!s.chosen) s.chosen = clone(key === 'character' ? (s.options[0] as CharacterStep).profile : s.options[0]);
-    s.chosenFrom = s.chosenFrom ?? 'A';
-  } else if (optionId === 'current') {
-    // Confirms what is already chosen (a mix or the Owner's edit): nothing to replace.
-    if (!s.chosen) throw new DraftError(`nothing chosen on ${key} yet`);
-  } else {
-    const opt = (s.options as Array<{ id: string }>).find((o) => o.id === optionId);
-    if (!opt) throw new DraftError(`no option ${optionId} on ${key}`);
-    const changed = s.chosenFrom !== optionId;
-    s.chosen = clone(opt);
-    s.chosenFrom = optionId;
-    if (changed) markDownstream(state, key);
-  }
+  const s = state[key] as StepState<unknown, unknown>;
+  if (s.status !== 'stale') throw new DraftError(`${key} is not out of date`);
+  if (!s.chosen) throw new DraftError(key === 'voice' ? 'pick a voice first (or draft three more)' : `nothing chosen on ${key} to keep`);
   s.status = 'done';
-  const nextKey = ORDER[ORDER.indexOf(key) + 1]!;
   const reviewed = await withReview(services, d, state);
-  d = await commit(services.db, draftId, { step, change: `${key}: ${optionId === 'current' ? `confirmed ${s.chosenFrom ?? ''}`.trim() : `picked ${optionId}`}`, actor: ctx.actor, expectVersion: ctx.expectVersion ?? d.version }, async () => ({
-    ...reviewed,
-    currentStep: Math.max(step + 1, 1),
-    title: key === 'concept' ? (s.chosen as ConceptOption).name : key === 'character' ? (s.chosen as CharacterProfile).name : undefined,
-  }));
-  // Draft the next step when it is empty or out of date.
-  const next = d.state[nextKey] as StepState<unknown, unknown>;
-  if (nextKey === 'review' || next.status === 'empty' || next.status === 'stale') return regenerateStep(services, draftId, step + 1, { actor: ctx.actor });
-  return d;
+  return commit(services.db, draftId, { step, change: `${key}: kept as is`, actor: ctx.actor, expectVersion: ctx.expectVersion ?? d.version }, async () => reviewed);
+}
+
+/** The Owner's own idea as an option on step 1 (replacing an earlier one), ranked with the evidence like the others. */
+export async function addOwnerIdea(services: StudioServices, draftId: string, idea: string, ctx: Ctx): Promise<DraftRow> {
+  const text = idea.trim().slice(0, 600);
+  if (text.length < 4) throw new DraftError('describe your idea in a few words');
+  const d = await requireDraft(services.db, draftId);
+  assertEditable(d);
+  checkVersion(d, ctx.expectVersion);
+  const state = clone(d.state);
+  const mix = await studioMix(services.db, d.studio_id);
+  const opt = opportunityFor(nicheForText(text), mix, rng(`${d.id}:idea:${text}`), text.slice(0, 240), true);
+  let options = state.opportunity.options.filter((o) => !o.ownerIdea);
+  const used = new Set(options.map((o) => o.id));
+  let letter = ['A', 'B', 'C', 'D', 'E'].find((l) => !used.has(l));
+  if (!letter) {
+    // Five options already: the idea takes the place of the lowest-scored one that isn't picked.
+    const drop = [...options].filter((o) => o.id !== state.opportunity.chosen?.id).sort((a, b) => a.scores.total - b.scores.total)[0]!;
+    options = options.filter((o) => o !== drop);
+    letter = drop.id;
+  }
+  state.opportunity.options = [{ ...opt, id: letter }, ...options];
+  state.opportunity.status = state.opportunity.chosen ? state.opportunity.status : 'ready';
+  state.opportunity.advice = advise('opportunity', state);
+  state.seed = { ...state.seed, mode: 'owner_idea', idea: text };
+  return commit(services.db, draftId, { step: 1, change: `opportunity: added your idea as ${letter}`, actor: ctx.actor, expectVersion: ctx.expectVersion ?? d.version }, async () => ({ state, currentStep: 1 }));
+}
+
+/** The launch date (first posts) and timezone shown on step 7. */
+export async function setLaunchPlan(services: StudioServices, draftId: string, plan: { launchDate: string; timezone: string }, ctx: Ctx): Promise<DraftRow> {
+  const d = await requireDraft(services.db, draftId);
+  assertEditable(d);
+  checkVersion(d, ctx.expectVersion);
+  const date = plan.launchDate.trim();
+  const tz = plan.timezone.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) throw new DraftError('the launch date must look like 2026-11-02');
+  const today = services.now().toISOString().slice(0, 10);
+  if (date <= today) throw new DraftError('the launch date must be after today');
+  if (Date.parse(`${date}T00:00:00Z`) - services.now().getTime() > 366 * 86_400_000) throw new DraftError('the launch date must be within a year');
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(0);
+  } catch {
+    throw new DraftError(`unknown timezone ${tz} (use one like America/New_York or Europe/London)`);
+  }
+  const state = clone(d.state);
+  const base: ReviewState = state.review.chosen ?? (await computeReview(services, d, state));
+  state.review = { ...state.review, chosen: { ...base, launchDate: date, timezone: tz } };
+  state.seed = { ...state.seed, launchDate: date, timezone: tz };
+  const reviewed = await withReview(services, d, state);
+  return commit(services.db, draftId, { step: 7, change: `launch plan: first posts ${date} (${tz})`, actor: ctx.actor, expectVersion: ctx.expectVersion ?? d.version }, async () => reviewed);
+}
+
+/** Makes an earlier version the current one again (a new version, so nothing is lost). */
+export async function restoreVersion(services: StudioServices, draftId: string, version: number, ctx: Ctx): Promise<DraftRow> {
+  const d = await requireDraft(services.db, draftId);
+  assertEditable(d);
+  checkVersion(d, ctx.expectVersion);
+  if (!Number.isInteger(version) || version < 1 || version >= d.version) throw new DraftError(`no earlier version ${version}`);
+  const v = await getDraftVersion(services.db, draftId, version);
+  if (!v) throw new DraftError(`no version ${version}`);
+  const state = clone(v.state);
+  const reviewed = await withReview(services, d, state);
+  const title = state.character.chosen?.name ?? state.concept.chosen?.name ?? d.title;
+  return commit(services.db, draftId, { step: v.step, change: `restored v${version} (${v.change.slice(0, 80)})`, actor: ctx.actor, expectVersion: ctx.expectVersion ?? d.version }, async () => ({ ...reviewed, title }));
 }
 
 /** The Owner's own edit to a step's chosen value (form fields). */
 export async function editChosen(services: StudioServices, draftId: string, step: number, patch: Record<string, unknown>, ctx: Ctx): Promise<DraftRow> {
   const key = stepKey(step);
   const d = await requireDraft(services.db, draftId);
-  assertActive(d);
+  assertEditable(d);
+  checkVersion(d, ctx.expectVersion);
   const state = clone(d.state);
   const s = state[key] as StepState<any, any>;
   if (!s.chosen && key !== 'concept' && key !== 'opportunity') throw new DraftError(`nothing to edit on ${key} yet`);
-  const base = s.chosen ?? (s.options as Array<{ id: string }>).find((o) => o.id === patch.id) ?? s.options[0];
+  const base = (key === 'opportunity' && patch.id ? (s.options as Array<{ id: string }>).find((o) => o.id === patch.id) : null) ?? s.chosen ?? (s.options as Array<{ id: string }>).find((o) => o.id === patch.id) ?? s.options[0];
   if (!base) throw new DraftError(`nothing to edit on ${key} yet`);
-  const next = { ...clone(base), ...sanitizePatch(key, patch) };
+  const clean = sanitizePatch(key, patch);
+  if (!Object.keys(clean).length) throw new DraftError('nothing to change');
+  const next = applyPatch(key, clone(base), clean, state);
   if (key === 'concept') (next as ConceptOption).scorecard = scoreConcept({ concept: next as ConceptOption, opportunity: state.opportunity.chosen });
   s.chosen = next;
   s.chosenFrom = 'owner';
   s.status = 'done';
   markDownstream(state, key);
   const reviewed = await withReview(services, d, state);
-  return commit(services.db, draftId, { step, change: `${key}: edited (${Object.keys(patch).filter((k) => k !== 'id').join(', ')})`, actor: ctx.actor, expectVersion: ctx.expectVersion ?? d.version }, async () => reviewed);
+  const title = key === 'concept' || key === 'character' ? ((next as { name?: string }).name ?? d.title) : undefined;
+  return commit(services.db, draftId, { step, change: `${key}: edited (${Object.keys(clean).join(', ')})`, actor: ctx.actor, expectVersion: ctx.expectVersion ?? d.version }, async () => ({ ...reviewed, ...(title ? { title } : {}) }));
 }
 
-const PATCHABLE: Partial<Record<StepKey, Record<string, 'string' | 'number' | 'list'>>> = {
+type PatchKind = 'string' | 'number' | 'list' | 'price' | 'positions' | 'pairs' | 'palette' | 'series';
+
+const RUNGS = ['lead_magnet', 'entry', 'addon', 'core_bundle', 'upsell', 'membership'] as const;
+
+export const PATCHABLE: Partial<Record<StepKey, Record<string, PatchKind>>> = {
   opportunity: { angle: 'string', audience: 'string', subNiche: 'string' },
-  concept: { name: 'string', age: 'number', archetype: 'string', premise: 'string', contrast: 'string', mechanic: 'string', hooks: 'list', lookLine: 'string', voiceLine: 'string', signOff: 'string' },
-  character: { name: 'string', age: 'number', homeBase: 'string', handle: 'string', identity: 'string', lore: 'string', personality: 'list', worldview: 'list', catchphrases: 'list' },
-  content: { hookBank: 'list', ctaKeywords: 'list' },
+  concept: {
+    name: 'string',
+    age: 'number',
+    archetype: 'string',
+    premise: 'string',
+    contrast: 'string',
+    mechanic: 'string',
+    hooks: 'list',
+    lookLine: 'string',
+    voiceLine: 'string',
+    signOff: 'string',
+    firstProductName: 'string',
+    firstProductPrice: 'price',
+    firstProductFormat: 'string',
+  },
+  character: { name: 'string', age: 'number', homeBase: 'string', handle: 'string', identity: 'string', lore: 'string', personality: 'list', worldview: 'list', catchphrases: 'list', positions: 'positions' },
+  look: { anchors: 'list', wardrobe: 'list', settings: 'list', palette: 'palette' },
+  content: {
+    hookBank: 'list',
+    ctaKeywords: 'list',
+    pillars: 'pairs',
+    series: 'series',
+    briefName: 'string',
+    briefPromise: 'string',
+    briefFormat: 'string',
+    briefPrice: 'price',
+    briefKeyword: 'string',
+    briefSections: 'list',
+    ...Object.fromEntries(RUNGS.flatMap((r) => [[`ladder_${r}_name`, 'string'], [`ladder_${r}_price`, 'price']])),
+  },
 };
+
+const lines = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : String(v).split('\n')).map((x) => x.trim()).filter(Boolean);
 
 function sanitizePatch(key: StepKey, patch: Record<string, unknown>): Record<string, unknown> {
   const allowed = PATCHABLE[key] ?? {};
@@ -484,28 +725,130 @@ function sanitizePatch(key: StepKey, patch: Record<string, unknown>): Record<str
   for (const [k, kind] of Object.entries(allowed)) {
     const v = patch[k];
     if (v === undefined) continue;
-    if (kind === 'number') {
-      const n = Number(v);
-      if (!Number.isFinite(n) || n < 18 || n > 99) throw new DraftError(`${k} must be a number between 18 and 99`);
-      out[k] = Math.round(n);
-    } else if (kind === 'list') {
-      const list = (Array.isArray(v) ? v : String(v).split('\n')).map((x) => String(x).trim()).filter(Boolean).slice(0, 20);
-      out[k] = list.map((x) => x.slice(0, 240));
-    } else {
-      const t = String(v).trim();
-      if (!t) throw new DraftError(`${k} can't be empty`);
-      out[k] = t.slice(0, 1500);
+    switch (kind) {
+      case 'number': {
+        const n = Number(v);
+        if (!Number.isFinite(n) || n < 18 || n > 99) throw new DraftError(`${k} must be a number between 18 and 99`);
+        out[k] = Math.round(n);
+        break;
+      }
+      case 'price': {
+        const n = Number(String(v).replace(/[$,\s]/g, ''));
+        if (!Number.isFinite(n) || n < 0 || n > 999) throw new DraftError(`${k} must be a price in dollars, 0 to 999`);
+        out[k] = Math.round(n * 100);
+        break;
+      }
+      case 'list':
+        out[k] = lines(v).slice(0, 20).map((x) => x.slice(0, 240));
+        break;
+      case 'positions':
+      case 'pairs': {
+        const rows = lines(v).slice(0, 12).map((x) => {
+          const i = x.search(/[:—–]/);
+          return i > 0 ? [x.slice(0, i).trim(), x.slice(i + 1).trim()] : [x, ''];
+        });
+        if (kind === 'positions') {
+          if (rows.some(([, b]) => !b)) throw new DraftError('write each position as "debate: stance"');
+          out[k] = rows.map(([debate, stance]) => ({ debate: debate!.slice(0, 120), stance: stance!.slice(0, 240) }));
+        } else out[k] = rows.map(([name, why]) => ({ name: name!.slice(0, 80), why: why!.slice(0, 240) }));
+        break;
+      }
+      case 'palette': {
+        const rows = lines(v).slice(0, 6).map((x) => {
+          const m = /^(.*?)\s*(#[0-9a-f]{6})\s*$/i.exec(x);
+          if (!m) throw new DraftError(`write each colour as "Name #RRGGBB" (got "${x.slice(0, 40)}")`);
+          return { name: (m[1] || m[2]!).trim().slice(0, 40), hex: m[2]!.toUpperCase() };
+        });
+        if (rows.length < 2) throw new DraftError('a palette needs at least two colours');
+        out[k] = rows;
+        break;
+      }
+      case 'series': {
+        out[k] = lines(v)
+          .slice(0, 6)
+          .map((x) => {
+            const [name = '', format = 'talking', cadence = '1 a week', pillar = ''] = x.split('|').map((y) => y.trim());
+            if (!name) throw new DraftError('write each series as "name | format | cadence | pillar"');
+            return { name: name.slice(0, 80), format: format.slice(0, 40), cadence: cadence.slice(0, 40), pillar: pillar.slice(0, 80) };
+          });
+        break;
+      }
+      default: {
+        const t = String(v).trim();
+        if (!t) throw new DraftError(`${k} can't be empty`);
+        out[k] = t.slice(0, 1500);
+      }
     }
   }
   if (key === 'character' && typeof out.age === 'number') out.ageRange = `${(out.age as number) - 3}–${(out.age as number) + 3}`;
   return out;
 }
 
+/** Applies a sanitised patch to a step's value (the fields that live in nested objects are mapped here). */
+function applyPatch(key: StepKey, base: any, p: Record<string, unknown>, state: DraftState): any {
+  const take = (k: string) => {
+    const v = p[k];
+    delete p[k];
+    return v;
+  };
+  if (key === 'concept') {
+    const name = take('firstProductName') as string | undefined;
+    const price = take('firstProductPrice') as number | undefined;
+    const format = take('firstProductFormat') as string | undefined;
+    const next = { ...base, ...p } as ConceptOption;
+    if (name !== undefined || price !== undefined || format !== undefined) next.firstProduct = { ...base.firstProduct, ...(name !== undefined ? { name } : {}), ...(price !== undefined ? { priceCents: price } : {}), ...(format !== undefined ? { format } : {}) };
+    return next;
+  }
+  if (key === 'look') {
+    const look = base as LookStep;
+    const profile = { ...look.profile, ...p } as LookProfile;
+    const name = state.character.chosen?.name ?? state.concept.chosen?.name ?? '';
+    const age = state.character.chosen?.age ?? state.concept.chosen?.age ?? 60;
+    // The sheet prompts follow the edited profile (placeholders now; the real sheets on the next generation).
+    return { ...look, profile, variants: look.variants.map((v, i) => ({ ...v, prompt: sheetPrompt(name, age, profile, i) })) };
+  }
+  if (key === 'content') {
+    const c = base as ContentPlanDraft;
+    const brief = { ...c.firstProductBrief };
+    const got: Record<string, unknown> = {};
+    for (const [k, f] of [['briefName', 'name'], ['briefPromise', 'promise'], ['briefFormat', 'format'], ['briefPrice', 'priceCents'], ['briefKeyword', 'keyword'], ['briefSections', 'sections']] as const) {
+      const v = take(k);
+      if (v !== undefined) (brief as Record<string, unknown>)[f] = got[f] = v;
+    }
+    let ladder = c.ladder.map((r) => ({ ...r }));
+    const rung: Record<string, { name?: string; price?: number }> = {};
+    for (const r of RUNGS) {
+      const nm = take(`ladder_${r}_name`) as string | undefined;
+      const pr = take(`ladder_${r}_price`) as number | undefined;
+      if (nm === undefined && pr === undefined) continue;
+      rung[r] = { name: nm, price: pr };
+      const row = ladder.find((x) => x.rung === r);
+      if (row) {
+        if (nm !== undefined) row.name = nm;
+        if (pr !== undefined) row.priceCents = pr;
+      } else if (nm) ladder = [...ladder, { rung: r, name: nm, priceCents: pr ?? 0, when: 'Later' }];
+    }
+    // The first product brief is the entry rung: an edit to either one moves both (the brief wins if both changed).
+    const entry = ladder.find((x) => x.rung === 'entry');
+    if (entry) {
+      if (got.name !== undefined) entry.name = brief.name;
+      else if (rung.entry?.name !== undefined) brief.name = entry.name;
+      if (got.priceCents !== undefined) entry.priceCents = brief.priceCents;
+      else if (rung.entry?.price !== undefined) brief.priceCents = entry.priceCents;
+    }
+    const kw = (x: string) => x.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20);
+    const keywords = (p.ctaKeywords as string[] | undefined)?.map(kw).filter(Boolean);
+    return { ...c, ...p, ...(keywords ? { ctaKeywords: keywords } : {}), ladder, firstProductBrief: { ...brief, keyword: kw(brief.keyword) || c.firstProductBrief.keyword } };
+  }
+  return { ...base, ...p };
+}
+
 /** Swaps one character field for one of its alternatives. */
 export async function pickAlternative(services: StudioServices, draftId: string, field: CharacterField, index: number, ctx: Ctx): Promise<DraftRow> {
   if (!CHARACTER_FIELDS.includes(field)) throw new DraftError(`unknown field ${field}`);
   const d = await requireDraft(services.db, draftId);
-  assertActive(d);
+  assertEditable(d);
+  checkVersion(d, ctx.expectVersion);
   const state = clone(d.state);
   const opt = state.character.options[0];
   const alt = opt?.alternatives[field]?.[index];
@@ -524,7 +867,10 @@ export async function pickAlternative(services: StudioServices, draftId: string,
   state.character.chosenFrom = 'owner';
   markDownstream(state, 'character');
   const reviewed = await withReview(services, d, state);
-  return commit(services.db, draftId, { step: 3, change: `character: ${field} swapped`, actor: ctx.actor, expectVersion: ctx.expectVersion ?? d.version }, async () => reviewed);
+  return commit(services.db, draftId, { step: 3, change: `character: ${field} swapped`, actor: ctx.actor, expectVersion: ctx.expectVersion ?? d.version }, async () => ({
+    ...reviewed,
+    ...(field === 'name' ? { title: state.character.chosen?.name ?? d.title } : {}),
+  }));
 }
 
 export const CONCEPT_PARTS = ['name', 'premise', 'contrast', 'mechanic', 'hooks', 'look', 'voice', 'product', 'signOff'] as const;
@@ -533,7 +879,8 @@ export type ConceptPart = (typeof CONCEPT_PARTS)[number];
 /** Mixes concept parts from different options ("A's look with B's mechanic") into a chosen concept 'M'. */
 export async function mixConcepts(services: StudioServices, draftId: string, parts: Partial<Record<ConceptPart, string>>, ctx: Ctx & { base?: string }): Promise<DraftRow> {
   const d = await requireDraft(services.db, draftId);
-  assertActive(d);
+  assertEditable(d);
+  checkVersion(d, ctx.expectVersion);
   const state = clone(d.state);
   const opts = state.concept.options;
   const find = (id: string) => {
@@ -611,26 +958,43 @@ export async function goToStep(services: StudioServices, draftId: string, step: 
   }
   if (d.current_step === step && (d.state[key] as StepState<unknown, unknown>).status !== 'empty') return d;
   if ((d.state[key] as StepState<unknown, unknown>).status === 'empty' && d.status === 'active') return regenerateStep(services, draftId, step, ctx);
-  return commit(services.db, draftId, { step, change: `opened ${key}`, actor: ctx.actor }, async () => ({ state: d.state, currentStep: step }));
+  return commit(services.db, draftId, { step, change: `opened ${key}`, actor: ctx.actor }, async (cur) => ({ state: cur.state, currentStep: step }));
 }
 
+/**
+ * Archives a draft. A review draft of a persona that is still PROPOSED (restored from the archive, never launched) is
+ * archived together with its persona, so the persona never sits on the wall with no way back to its review.
+ */
 export async function archiveDraft(services: StudioServices, draftId: string, ctx: Ctx): Promise<DraftRow> {
   const d = await requireDraft(services.db, draftId);
   if (d.status !== 'active') throw new DraftError(`this draft is ${d.status}`);
-  return services.db.transaction(async (tx) => {
-    const row = await commit(tx, draftId, { step: 0, change: 'archived', actor: ctx.actor }, async () => ({ state: d.state, status: 'archived' }));
-    await tx.query('UPDATE persona_draft SET archived_at = now() WHERE id = $1', [draftId]);
-    return { ...row, archived_at: new Date() };
+  if (d.persona_id) {
+    const p = await services.db.maybeOne<{ state: string }>('SELECT state FROM persona WHERE id = $1', [d.persona_id]);
+    if (p?.state === 'PROPOSED') {
+      await archiveStudioPersona(services, { personaId: d.persona_id, actor: ctx.actor, reason: 'archived with its review draft' });
+      return requireDraft(services.db, draftId);
+    }
+  }
+  return commit(services.db, draftId, { step: 0, change: 'archived', actor: ctx.actor }, async (cur) => {
+    if (cur.status !== 'active') throw new DraftError(`this draft is ${cur.status}`);
+    return { state: cur.state, status: 'archived' };
   });
 }
 
+/** Restores an archived draft; one archived with its persona brings the persona back to its review with it. */
 export async function restoreDraft(services: StudioServices, draftId: string, ctx: Ctx): Promise<DraftRow> {
   const d = await requireDraft(services.db, draftId);
   if (d.status !== 'archived') throw new DraftError(`this draft is ${d.status}, not archived`);
-  return services.db.transaction(async (tx) => {
-    const row = await commit(tx, draftId, { step: 0, change: 'restored', actor: ctx.actor }, async () => ({ state: d.state, status: 'active' }));
-    await tx.query('UPDATE persona_draft SET archived_at = NULL WHERE id = $1', [draftId]);
-    return { ...row, archived_at: null };
+  if (d.persona_id) {
+    const p = await services.db.maybeOne<{ state: string }>('SELECT state FROM persona WHERE id = $1', [d.persona_id]);
+    if (p?.state === 'ARCHIVED') {
+      await restoreStudioPersona(services, { personaId: d.persona_id, actor: ctx.actor });
+      return requireDraft(services.db, draftId);
+    }
+  }
+  return commit(services.db, draftId, { step: 0, change: 'restored', actor: ctx.actor }, async (cur) => {
+    if (cur.status !== 'archived') throw new DraftError(`this draft is ${cur.status}, not archived`);
+    return { state: cur.state, status: 'active' };
   });
 }
 
@@ -689,6 +1053,24 @@ const TONES: Record<string, { trait: string; voice: string }> = {
   sassier: { trait: 'sassy', voice: 'sassier, more swagger' },
 };
 
+/** The option letter an instruction picks ("go with B", "pick option c"), or null ("use a warmer tone", "take a look"). */
+export function pickedLetter(text: string): string | null {
+  for (const m of text.matchAll(/\b(?:pick|choose|go with|select|use|take)\s+(?:(option|concept|sheet|voice|preview)\s+)?([A-Za-z])\b(?!['’]s)/gi)) {
+    const l = m[2]!;
+    if (/^[A-E]$/.test(l) || (m[1] && /^[a-e]$/.test(l))) return l.toUpperCase();
+  }
+  return null;
+}
+
+/** The age change an instruction asks for: +8/-8 (or "by N") after make her/him/them or she/he should be; else null. */
+export function ageShift(text: string): number | null {
+  const m =
+    /\b(?:make\s+(?:her|him|them|it)|(?:she|he|they)\s+(?:should\s+be|is|are|'s|'re))\s+(?:a\s+(?:bit|little|lot)\s+|much\s+|slightly\s+|even\s+|way\s+)?(older|younger)\b(?:\s+by\s+(\d{1,2}))?/i.exec(text) ??
+    /(?:^|[.!;]\s*)(?:a\s+(?:bit|little|lot)\s+|much\s+|slightly\s+)?(older|younger)\b(?:\s+by\s+(\d{1,2}))?/i.exec(text.trim());
+  if (!m) return null;
+  return (m[1]!.toLowerCase() === 'older' ? 1 : -1) * Number(m[2] ?? 8);
+}
+
 /**
  * The library's interpretation of an Owner instruction (no model): pick, mix, regenerate, rename, age, tone and
  * price. Returns null when it doesn't recognise the instruction.
@@ -713,11 +1095,12 @@ async function fakeRevise(services: StudioServices, d: DraftRow, step: number, t
     const row = await regenerateStep(services, d.id, step, { ...ctx, instruction: t });
     return { changed: true, draft: row, summary: `New ${stepKey(step)} options drafted (round ${row.state[stepKey(step)].generation}).` };
   }
-  // Pick: "go with B", "pick option C".
-  const pickM = /\b(?:pick|choose|go with|select|use|take)\s+(?:option\s+|concept\s+|sheet\s+|voice\s+)?([A-E])\b(?!['’]s)/i.exec(t);
-  if (pickM && stepKey(step) !== 'review') {
-    const row = await chooseOption(services, d.id, step, pickM[1]!.toUpperCase(), ctx);
-    return { changed: true, draft: row, summary: `Picked ${pickM[1]!.toUpperCase()} on ${stepKey(step)}; ${STEPS[Math.min(step, 6)]!.title.toLowerCase()} is drafted.` };
+  // Pick: "go with B", "pick option C". The letter must be a capital A–E (or follow "option"), so the article in
+  // "use a warmer tone" or "take a look" is never read as a pick.
+  const letter = pickedLetter(t);
+  if (letter && stepKey(step) !== 'review') {
+    const row = await chooseOption(services, d.id, step, letter, ctx);
+    return { changed: true, draft: row, summary: `Picked ${letter} on ${stepKey(step)}; ${STEPS[Math.min(step, 6)]!.title.toLowerCase()} is drafted.` };
   }
   const state = clone(d.state);
   const did: string[] = [];
@@ -728,12 +1111,13 @@ async function fakeRevise(services: StudioServices, d: DraftRow, step: number, t
     renameEverywhere(state, from, nameM[1]!);
     did.push(`renamed to ${nameM[1]}`);
   }
-  // Age: "make her older", "younger by 5", "make him 80".
-  const exact = /\b(?:make\s+(?:her|him|them)\s+|age\s+(?:to\s+)?|she(?:'s| is)\s+|he(?:'s| is)\s+)(\d{2})\b/i.exec(t);
-  const rel = /\b(older|younger)\b(?:\s+by\s+(\d{1,2}))?/i.exec(t);
+  // Age: "make her older", "she should be younger by 5", "make him 80". "Older"/"younger" alone ("an older sister in
+  // the lore") is not an age change.
+  const exact = /\b(?:make\s+(?:her|him|them)\s+|age\s+(?:to\s+)?|she(?:'s| is| should be)\s+|he(?:'s| is| should be)\s+)(\d{2})\b/i.exec(t);
+  const rel = ageShift(t);
   const cur = state.character.chosen?.age ?? state.concept.chosen?.age;
   if (cur !== undefined && (exact || rel)) {
-    const age = exact ? Number(exact[1]) : cur + (rel![1]!.toLowerCase() === 'older' ? 1 : -1) * Number(rel![2] ?? 8);
+    const age = exact ? Number(exact[1]) : cur + rel!;
     const clamped = Math.max(25, Math.min(95, age));
     reAge(state, clamped);
     did.push(`age ${cur} → ${clamped}`);
@@ -798,16 +1182,26 @@ async function liveRevise(services: StudioServices, d: DraftRow, step: number, t
   return { changed: true, draft: row, summary: str(out.summary, `Revised the ${target}.`, 300) };
 }
 
-/** Applies an Owner instruction to the draft. `changed: false` when nothing applied (the reply then suggests how). */
+/**
+ * Applies an Owner instruction to the draft. With a key the model reads it first (it rewrites the step's value); the
+ * library's parser is the no-key path, and the fallback for what the model can't map to a value (a pick, a mix, a
+ * regenerate). `changed: false` when nothing applied (the reply then suggests how).
+ */
 export async function reviseStep(services: StudioServices, draftId: string, step: number, instruction: string, ctx: Ctx): Promise<Revision> {
   const d = await requireDraft(services.db, draftId);
-  assertActive(d);
-  const fake = await fakeRevise(services, d, step, instruction, ctx);
-  if (fake) return fake;
+  assertEditable(d);
+  checkVersion(d, ctx.expectVersion);
   if (services.runtime.mode === 'live') {
-    const live = await liveRevise(services, d, step, instruction, ctx);
-    if (live) return live;
+    try {
+      const live = await liveRevise(services, d, step, instruction, ctx);
+      if (live) return live;
+    } catch (err) {
+      if (err instanceof BudgetExceededError || err instanceof DraftError) throw err;
+      // An unusable model answer: the library's parser below.
+    }
   }
+  const fake = await fakeRevise(services, await requireDraft(services.db, draftId), step, instruction, ctx);
+  if (fake) return fake;
   return { changed: false, draft: d, summary: 'I could not map that to a change. Try "pick B", "combine A\'s look with B\'s mechanic", "make her older", "call her …", "make it drier" or "regenerate".' };
 }
 

@@ -11,6 +11,7 @@ import {
   type OpportunityOption,
   type Scorecard,
   SCORECARD_WEIGHTS,
+  isRestoredDraft,
   STEPS,
   type StepState,
 } from '@ios/generator';
@@ -25,7 +26,7 @@ import { requireOwnerPage } from '@/lib/auth';
 import { relative, usd } from '@/lib/format';
 import { getServices } from '@/lib/services';
 import { studioContext, toChatMsg } from '@/lib/server';
-import { approveLaunch, archiveDraftAction, editStep, mix, pickOption, regenerate, restoreDraftAction, swapAlternative } from '../actions';
+import { addIdea, approveLaunch, archiveDraftAction, editStep, keepAsIs, mix, pickOption, regenerate, restoreDraftAction, restoreVersionAction, setLaunch, swapAlternative } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,8 +58,11 @@ function Hidden({ d, step }: { d: DraftRow; step: number }) {
   );
 }
 
+/** Whether the Owner can change this draft here (an active draft that wasn't restored exactly from the archive). */
+const editable = (d: DraftRow) => d.status === 'active' && !isRestoredDraft(d);
+
 function PickButton({ d, step, option, label, primary = true }: { d: DraftRow; step: number; option: string; label: string; primary?: boolean }) {
-  if (d.status !== 'active') return null;
+  if (!editable(d)) return null;
   return (
     <form action={pickOption}>
       <Hidden d={d} step={step} />
@@ -68,12 +72,24 @@ function PickButton({ d, step, option, label, primary = true }: { d: DraftRow; s
   );
 }
 
+const STEER_HINT: Record<number, string> = {
+  1: 'e.g. a younger audience, less crowded',
+  2: 'e.g. younger, funnier, a man',
+  3: 'e.g. warmer, a sharper lore',
+  4: 'e.g. make her wardrobe all red',
+  5: 'e.g. a deeper, gravelly voice',
+  6: 'e.g. more myth-busting hooks',
+};
+
 function Regenerate({ d, step, label = 'New options' }: { d: DraftRow; step: number; label?: string }) {
-  if (d.status !== 'active') return null;
+  // The review is computed, not drafted: it has nothing to steer, and a restored draft only recomputes it.
+  if (step === 7 ? d.status !== 'active' : !editable(d)) return null;
   return (
     <form action={regenerate} className="flex flex-wrap items-center gap-2">
       <Hidden d={d} step={step} />
-      <input name="instruction" maxLength={300} className="input h-9 min-w-0 flex-1 sm:w-72 sm:flex-none" placeholder="Steer it (optional): e.g. younger, funnier, a man" aria-label="Steer the new options" />
+      {step !== 7 ? (
+        <input name="instruction" maxLength={300} className="input h-9 min-w-0 flex-1 sm:w-72 sm:flex-none" placeholder={`Steer it (optional): ${STEER_HINT[step] ?? ''}`} aria-label="Steer the new options" />
+      ) : null}
       <SubmitButton className="btn btn-sm">{label}</SubmitButton>
     </form>
   );
@@ -118,9 +134,19 @@ function Advice({ text }: { text: string | null }) {
   );
 }
 
-function Stale({ s }: { s: StepState<unknown, unknown> }) {
+function Stale({ d, s, step }: { d: DraftRow; s: StepState<unknown, unknown>; step: number }) {
   if (s.status !== 'stale') return null;
-  return <p className="rounded-xl border border-warn/40 bg-warn-soft px-4 py-2.5 text-[13px] text-warn">An earlier step changed after this was drafted. Keep it, or draft new options.</p>;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-warn/40 bg-warn-soft px-4 py-2.5 text-[13px] text-warn">
+      <p>An earlier step changed after this was drafted. The launch waits until you keep it or draft new options.</p>
+      {editable(d) && s.chosen && step >= 3 ? (
+        <form action={keepAsIs}>
+          <Hidden d={d} step={step} />
+          <SubmitButton className="btn btn-sm">Keep as is</SubmitButton>
+        </form>
+      ) : null}
+    </div>
+  );
 }
 
 const FLAG_LABEL = { V: 'several reputable sources', L: 'credible secondary source', U: 'single or vendor source', S: 'studio data' } as const;
@@ -181,10 +207,36 @@ function OpportunityStep({ d }: { d: DraftRow }) {
                 <span>Buying moments: {o.buyingMoments.join(' · ')}</span>
                 {chosen ? <span className="pill bg-ok-soft text-ok">picked</span> : <PickButton d={d} step={1} option={o.id} label={`Pick ${o.id}`} />}
               </div>
+              {editable(d) ? (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-[12.5px] font-semibold">Edit {chosen ? 'the picked angle' : `${o.id}'s angle and pick it`}</summary>
+                  <form action={editStep} className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <Hidden d={d} step={1} />
+                    <input type="hidden" name="f_id" value={o.id} />
+                    <Field label="Angle" name="angle" value={(chosen ? s.chosen! : o).angle} wide area />
+                    <Field label="Audience" name="audience" value={(chosen ? s.chosen! : o).audience} wide />
+                    <Field label="Sub-niche" name="subNiche" value={(chosen ? s.chosen! : o).subNiche} wide />
+                    <div className="sm:col-span-2">
+                      <SubmitButton className="btn btn-sm btn-ink">Save{chosen ? '' : ` and pick ${o.id}`}</SubmitButton>
+                    </div>
+                  </form>
+                </details>
+              ) : null}
             </article>
           );
         })}
       </div>
+      {s.chosen && s.chosenFrom === 'owner' ? <PickButton d={d} step={1} option="current" label="Continue to concepts →" /> : null}
+      {editable(d) ? (
+        <form action={addIdea} className="card flex flex-wrap items-center gap-2 p-4">
+          <Hidden d={d} step={1} />
+          <label className="min-w-0 flex-1 text-[12.5px] text-muted">
+            Add my own idea as an option
+            <input name="idea" maxLength={600} required minLength={4} className="input mt-1 text-fg" placeholder="e.g. a retired ferry captain who teaches calm budgeting" />
+          </label>
+          <SubmitButton className="btn btn-sm self-end">Add my idea</SubmitButton>
+        </form>
+      ) : null}
       <Regenerate d={d} step={1} />
     </div>
   );
@@ -240,7 +292,7 @@ function ConceptCard({ d, c, chosen, pickable = true }: { d: DraftRow; c: Concep
           </div>
           <div>
             <dt className="eyebrow">Sign-off</dt>
-            <dd>&ldquo;{c.signOff}&rdquo;</dd>
+            <dd>{c.signOff ? <>&ldquo;{c.signOff}&rdquo;</> : <span className="text-muted">none yet</span>}</dd>
           </div>
           <div>
             <dt className="eyebrow">Look</dt>
@@ -271,7 +323,7 @@ function ConceptStep({ d }: { d: DraftRow }) {
   return (
     <div className="space-y-4">
       <Advice text={s.advice ?? null} />
-      <Stale s={s} />
+      <Stale d={d} s={s} step={2} />
       <div className="grid gap-3 lg:grid-cols-3">
         {s.options.map((c) => (
           <ConceptCard key={c.id} d={d} c={c} chosen={!custom && s.chosenFrom === c.id} />
@@ -283,7 +335,7 @@ function ConceptStep({ d }: { d: DraftRow }) {
           <ConceptCard d={d} c={chosen} chosen pickable={false} />
         </div>
       ) : null}
-      {d.status === 'active' && ids.length ? (
+      {editable(d) && ids.length ? (
         <details className="card p-4">
           <summary className="cursor-pointer text-[14px] font-semibold">Mix concepts</summary>
           <form action={mix} className="mt-3 space-y-3">
@@ -307,7 +359,7 @@ function ConceptStep({ d }: { d: DraftRow }) {
           </form>
         </details>
       ) : null}
-      {chosen && d.status === 'active' ? (
+      {chosen && editable(d) ? (
         <details className="card p-4">
           <summary className="cursor-pointer text-[14px] font-semibold">Edit the picked concept</summary>
           <form action={editStep} className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -316,10 +368,15 @@ function ConceptStep({ d }: { d: DraftRow }) {
             <Field label="Age" name="age" value={String(chosen.age)} />
             <Field label="Archetype" name="archetype" value={chosen.archetype} wide />
             <Field label="Premise" name="premise" value={chosen.premise} wide area />
+            <Field label="Contrast" name="contrast" value={chosen.contrast} wide area />
             <Field label="Signature mechanic" name="mechanic" value={chosen.mechanic} wide area />
             <Field label="Hooks (one per line)" name="hooks" value={chosen.hooks.join('\n')} wide area />
             <Field label="Look line" name="lookLine" value={chosen.lookLine} />
+            <Field label="Voice line" name="voiceLine" value={chosen.voiceLine} />
             <Field label="Sign-off" name="signOff" value={chosen.signOff} />
+            <Field label="First product" name="firstProductName" value={chosen.firstProduct.name} />
+            <Field label="First product price ($)" name="firstProductPrice" value={String(chosen.firstProduct.priceCents / 100)} />
+            <Field label="First product format" name="firstProductFormat" value={chosen.firstProduct.format} />
             <div className="sm:col-span-2">
               <SubmitButton className="btn btn-sm btn-ink">Save edits</SubmitButton>
             </div>
@@ -377,7 +434,7 @@ function CharacterStepView({ d }: { d: DraftRow }) {
   return (
     <div className="space-y-4">
       <Advice text={s.advice ?? null} />
-      <Stale s={s} />
+      <Stale d={d} s={s} step={3} />
       <div className="card divide-y divide-line">
         <div className="flex flex-wrap items-baseline gap-x-3 px-4 py-3">
           <h3 className="font-[family-name:var(--font-display)] text-[30px] leading-tight">{p.name}</h3>
@@ -390,7 +447,7 @@ function CharacterStepView({ d }: { d: DraftRow }) {
             <div className="eyebrow pt-0.5">{FIELD_LABEL[f]}</div>
             <div className="min-w-0 space-y-2 text-[13.5px]">
               <div>{show(p[f])}</div>
-              {(alts[f] ?? []).length && d.status === 'active' ? (
+              {(alts[f] ?? []).length && editable(d) ? (
                 <div className="space-y-1.5">
                   {(alts[f] ?? []).map((alt, i) => (
                     <form key={i} action={swapAlternative} className="flex items-start gap-2 rounded-lg bg-surface-2 px-3 py-2 text-[12.5px] text-muted">
@@ -406,7 +463,7 @@ function CharacterStepView({ d }: { d: DraftRow }) {
             </div>
           </div>
         ))}
-        {(alts.name ?? []).length && d.status === 'active' ? (
+        {(alts.name ?? []).length && editable(d) ? (
           <div className="flex flex-wrap items-center gap-2 px-4 py-3 text-[12.5px]">
             <span className="eyebrow">Other names</span>
             {(alts.name ?? []).map((n, i) => (
@@ -420,7 +477,7 @@ function CharacterStepView({ d }: { d: DraftRow }) {
           </div>
         ) : null}
       </div>
-      {d.status === 'active' ? (
+      {editable(d) ? (
         <details className="card p-4">
           <summary className="cursor-pointer text-[14px] font-semibold">Edit the character</summary>
           <form action={editStep} className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -431,6 +488,9 @@ function CharacterStepView({ d }: { d: DraftRow }) {
             <Field label="Home base" name="homeBase" value={p.homeBase} />
             <Field label="Identity" name="identity" value={p.identity} wide area />
             <Field label="Lore" name="lore" value={p.lore} wide area />
+            <Field label="Personality (one trait per line)" name="personality" value={p.personality.join('\n')} area />
+            <Field label="Worldview (one principle per line)" name="worldview" value={p.worldview.join('\n')} area />
+            <Field label="Positions (one per line: debate: stance)" name="positions" value={p.positions.map((x) => `${x.debate}: ${x.stance}`).join('\n')} wide area />
             <Field label="Catchphrases (one per line)" name="catchphrases" value={p.catchphrases.join('\n')} wide area />
             <div className="sm:col-span-2">
               <SubmitButton className="btn btn-sm btn-ink">Save edits</SubmitButton>
@@ -453,7 +513,7 @@ function LookStepView({ d }: { d: DraftRow }) {
   return (
     <div className="space-y-4">
       <Advice text={s.advice ?? null} />
-      <Stale s={s} />
+      <Stale d={d} s={s} step={4} />
       <div className="card grid gap-4 p-4 sm:grid-cols-2">
         <div className="space-y-3 text-[13px]">
           <div>
@@ -525,6 +585,21 @@ function LookStepView({ d }: { d: DraftRow }) {
           </div>
         </div>
       ) : null}
+      {editable(d) ? (
+        <details className="card p-4">
+          <summary className="cursor-pointer text-[14px] font-semibold">Edit the look</summary>
+          <form action={editStep} className="mt-3 grid gap-2 sm:grid-cols-2">
+            <Hidden d={d} step={4} />
+            <Field label="Anchors (one per line)" name="anchors" value={look.profile.anchors.join('\n')} area />
+            <Field label="Wardrobe (one per line)" name="wardrobe" value={look.profile.wardrobe.join('\n')} area />
+            <Field label="Palette (one per line: Name #RRGGBB)" name="palette" value={look.profile.palette.map((x) => `${x.name} ${x.hex}`).join('\n')} area />
+            <Field label="Settings (one per line, four or fewer)" name="settings" value={look.profile.settings.join('\n')} area />
+            <div className="sm:col-span-2">
+              <SubmitButton className="btn btn-sm btn-ink">Save the look</SubmitButton>
+            </div>
+          </form>
+        </details>
+      ) : null}
       <Regenerate d={d} step={4} label="New sheets" />
     </div>
   );
@@ -536,7 +611,7 @@ function VoiceStepView({ d }: { d: DraftRow }) {
   return (
     <div className="space-y-4">
       <Advice text={s.advice ?? null} />
-      <Stale s={s} />
+      <Stale d={d} s={s} step={5} />
       <div className="grid gap-3 md:grid-cols-3">
         {s.options.map((v) => {
           const picked = s.chosen?.id === v.id;
@@ -571,7 +646,7 @@ function ContentStepView({ d }: { d: DraftRow }) {
   return (
     <div className="space-y-4">
       <Advice text={s.advice ?? null} />
-      <Stale s={s} />
+      <Stale d={d} s={s} step={6} />
       <div className="grid gap-3 md:grid-cols-2">
         <div className="card p-4 text-[13px]">
           <div className="eyebrow">Pillars</div>
@@ -619,7 +694,7 @@ function ContentStepView({ d }: { d: DraftRow }) {
       <div className="card p-4 text-[13px]">
         <div className="eyebrow">Hook bank · {c.hookBank.length}</div>
         <ol className="mt-1.5 list-decimal columns-1 gap-6 space-y-0.5 pl-5 sm:columns-2">{c.hookBank.map((h) => <li key={h}>{h}</li>)}</ol>
-        {d.status === 'active' ? (
+        {editable(d) ? (
           <details className="mt-3">
             <summary className="cursor-pointer text-[13px] font-semibold">Edit hooks</summary>
             <form action={editStep} className="mt-2 space-y-2">
@@ -630,6 +705,31 @@ function ContentStepView({ d }: { d: DraftRow }) {
           </details>
         ) : null}
       </div>
+      {editable(d) ? (
+        <details className="card p-4">
+          <summary className="cursor-pointer text-[14px] font-semibold">Edit pillars, series, ladder and the first product</summary>
+          <form action={editStep} className="mt-3 grid gap-2 sm:grid-cols-2">
+            <Hidden d={d} step={6} />
+            <Field label="Pillars (one per line: name: why)" name="pillars" value={c.pillars.map((x) => `${x.name}: ${x.why}`).join('\n')} wide area />
+            <Field label="Series (one per line: name | format | cadence | pillar)" name="series" value={c.series.map((x) => [x.name, x.format, x.cadence, x.pillar].join(' | ')).join('\n')} wide area />
+            {c.ladder.map((r) => (
+              <div key={r.rung} className="grid grid-cols-[minmax(0,1fr)_96px] gap-2 sm:col-span-2">
+                <Field label={`${r.rung.replace('_', ' ')}: name`} name={`ladder_${r.rung}_name`} value={r.name} />
+                <Field label="Price ($)" name={`ladder_${r.rung}_price`} value={String(r.priceCents / 100)} />
+              </div>
+            ))}
+            <Field label="First product: name" name="briefName" value={c.firstProductBrief.name} />
+            <Field label="First product: price ($)" name="briefPrice" value={String(c.firstProductBrief.priceCents / 100)} />
+            <Field label="First product: promise" name="briefPromise" value={c.firstProductBrief.promise} wide area />
+            <Field label="First product: format" name="briefFormat" value={c.firstProductBrief.format} />
+            <Field label="First product: CTA keyword" name="briefKeyword" value={c.firstProductBrief.keyword} />
+            <Field label="First product: sections (one per line)" name="briefSections" value={c.firstProductBrief.sections.join('\n')} wide area />
+            <div className="sm:col-span-2">
+              <SubmitButton className="btn btn-sm btn-ink">Save the plan</SubmitButton>
+            </div>
+          </form>
+        </details>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PickButton d={d} step={6} option="A" label="Use this plan and review →" />
         <Regenerate d={d} step={6} label="Redraft" />
@@ -683,10 +783,24 @@ function ReviewStepView({ d }: { d: DraftRow }) {
             </li>
           ))}
         </ul>
-        {r.missing.length ? <p className="mt-2 font-medium text-warn">Still to choose: {r.missing.join(', ')}.</p> : null}
+        {r.missing.length ? <p className="mt-2 font-medium text-warn">Still to settle: {r.missing.join(', ')}.</p> : null}
         <p className="mt-3 text-muted">
           First posts from {r.launchDate} ({r.timezone}) · 10 a week for the first fortnight · the Field Brain build is queued at launch.
         </p>
+        {editable(d) ? (
+          <form action={setLaunch} className="mt-3 flex flex-wrap items-end gap-2">
+            <Hidden d={d} step={7} />
+            <label className="text-[12.5px] text-muted">
+              First posts on
+              <input type="date" name="launch_date" defaultValue={r.launchDate} required className="input mt-1 h-9 text-fg" />
+            </label>
+            <label className="min-w-0 flex-1 text-[12.5px] text-muted sm:flex-none">
+              Timezone
+              <input name="timezone" defaultValue={r.timezone} required className="input mt-1 h-9 text-fg sm:w-56" placeholder="America/New_York" />
+            </label>
+            <SubmitButton className="btn btn-sm">Save launch plan</SubmitButton>
+          </form>
+        ) : null}
       </div>
       {d.status === 'launched' ? (
         <p className="rounded-xl border border-ok/40 bg-ok-soft px-4 py-3 text-[13.5px] text-ok">
@@ -782,6 +896,12 @@ export default async function DraftPage({ params, searchParams }: Props) {
         </div>
       </div>
       <Flash error={sp.error} ok={sp.ok} />
+      {isRestoredDraft(d) && d.status === 'active' ? (
+        <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] text-muted">
+          <b className="text-fg">Restored exactly from the archive.</b> This draft mirrors {d.title}&rsquo;s documents, so it is read-only here: review it and approve the launch, then edit
+          the bible from the persona&rsquo;s page after launch.
+        </p>
+      ) : null}
 
       <nav aria-label="Steps" className="no-scrollbar -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
         {STEPS.map((s) => {
@@ -818,7 +938,15 @@ export default async function DraftPage({ params, searchParams }: Props) {
             view[step]
           )}
         </section>
-        <div className="min-w-0">
+        {/* On a phone the chat sits below the step: a sticky shortcut jumps to it. */}
+        <a
+          href="#studio-chat"
+          className="btn btn-ink fixed bottom-4 right-4 z-30 shadow-lift xl:hidden"
+          aria-label="Ask the Studio Manager (jump to the chat)"
+        >
+          Ask the Studio Manager
+        </a>
+        <div id="studio-chat" className="min-w-0 scroll-mt-20">
           <ChatPanel
             threadId={d.id}
             endpoint={`/api/generator/${d.id}/chat?step=${step}`}
@@ -834,10 +962,20 @@ export default async function DraftPage({ params, searchParams }: Props) {
             <summary className="cursor-pointer text-muted">Version history · {versions.length}</summary>
             <ol className="mt-2 space-y-1">
               {versions.slice(0, 30).map((v) => (
-                <li key={v.version} className="flex gap-2">
+                <li key={v.version} className="flex items-center gap-2">
                   <span className="w-8 shrink-0 tabular-nums text-muted">v{v.version}</span>
                   <span className="min-w-0 flex-1">{v.change}</span>
                   <span className="shrink-0 text-muted">{relative(new Date(v.created_at))}</span>
+                  {editable(d) && v.version < d.version && v.step > 0 ? (
+                    <form action={restoreVersionAction}>
+                      <Hidden d={d} step={step} />
+                      <input type="hidden" name="restore_version" value={v.version} />
+                      <input type="hidden" name="back_step" value={step} />
+                      <SubmitButton className="btn btn-sm h-7 px-2 text-[11.5px]" title={`Make v${v.version} current again (saved as a new version)`}>
+                        Restore
+                      </SubmitButton>
+                    </form>
+                  ) : null}
                 </li>
               ))}
             </ol>

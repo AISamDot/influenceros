@@ -2,6 +2,7 @@
 
 import { OWNER } from '@ios/core';
 import {
+  addOwnerIdea,
   archiveDraft,
   archiveStudioPersona,
   CHARACTER_FIELDS,
@@ -11,6 +12,8 @@ import {
   type ConceptPart,
   createDraft,
   editChosen,
+  ensureReviewDraft,
+  keepStep,
   launchDraft,
   mixConcepts,
   pickAlternative,
@@ -18,6 +21,8 @@ import {
   restoreDraft,
   restoreFromArchive,
   restoreStudioPersona,
+  restoreVersion,
+  setLaunchPlan,
 } from '@ios/generator';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -101,6 +106,55 @@ export async function editStep(form: FormData): Promise<void> {
     }
     await editChosen(await getServices(), id, step, patch, { actor: OWNER, expectVersion: versionOf(form) });
     return { to: draftPage(id, step), ok: 'Saved' };
+  });
+}
+
+/** "Keep as is" on a stale step: the Owner confirms what was drafted before an earlier change. */
+export async function keepAsIs(form: FormData): Promise<void> {
+  const id = draftIdOf(form);
+  const step = stepOf(form);
+  await run(draftPage(id, step), async () => {
+    await keepStep(await getServices(), id, step, { actor: OWNER, expectVersion: versionOf(form) });
+    return { to: draftPage(id, step), ok: 'Kept as is' };
+  });
+}
+
+/** The Owner's own idea as an option on step 1. */
+export async function addIdea(form: FormData): Promise<void> {
+  const id = draftIdOf(form);
+  await run(draftPage(id, 1), async () => {
+    await addOwnerIdea(await getServices(), id, str(form, 'idea'), { actor: OWNER, expectVersion: versionOf(form) });
+    return { to: draftPage(id, 1), ok: 'Your idea is on the list' };
+  });
+}
+
+/** Step 7: the first-post date and timezone. */
+export async function setLaunch(form: FormData): Promise<void> {
+  const id = draftIdOf(form);
+  await run(draftPage(id, 7), async () => {
+    await setLaunchPlan(await getServices(), id, { launchDate: str(form, 'launch_date'), timezone: str(form, 'timezone') }, { actor: OWNER, expectVersion: versionOf(form) });
+    return { to: draftPage(id, 7), ok: 'Launch plan saved' };
+  });
+}
+
+/** Version history: make an earlier version current again (as a new version). */
+export async function restoreVersionAction(form: FormData): Promise<void> {
+  const id = draftIdOf(form);
+  const back = draftPage(id, Number(str(form, 'back_step')) || undefined);
+  await run(back, async () => {
+    const v = Number(str(form, 'restore_version'));
+    const d = await restoreVersion(await getServices(), id, v, { actor: OWNER, expectVersion: versionOf(form) });
+    return { to: draftPage(id, Math.min(7, Math.max(1, d.current_step))), ok: `Version ${v} restored as v${d.version}` };
+  });
+}
+
+/** An Owner-only launch card: open (or create) its review draft, where the launch is decided. */
+export async function openLaunchReview(form: FormData): Promise<void> {
+  const personaId = str(form, 'persona_id');
+  await run('/approvals', async () => {
+    if (!UUID.test(personaId)) throw new Error('unknown persona');
+    const d = await ensureReviewDraft(await getServices(), { personaId, actor: OWNER });
+    return { to: draftPage(d.id, 7) };
   });
 }
 

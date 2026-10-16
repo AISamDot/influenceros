@@ -39,7 +39,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (decision !== 'approve' && decision !== 'reject') return fail(400, 'decision must be "approve" or "reject"');
   if (!UUID_RE.test(id)) return fail(404, `approval ${id} not found`);
   try {
-    const a = await decide(await getDb(), {
+    const db = await getDb();
+    // An Owner-only persona launch is approved in the Persona Generator's review (step 7), never by a bare approve.
+    if (decision === 'approve') {
+      const card = await db.maybeOne<{ kind: string; payload: Record<string, unknown> }>('SELECT kind, payload FROM approval WHERE id = $1', [id]);
+      if (card?.kind === 'persona_launch' && card.payload?.owner_only === true) return fail(409, 'approve this launch in the Persona Generator review (Approvals → Open the review)');
+    }
+    const a = await decide(db, {
       approvalId: id,
       decision,
       actor: OWNER,

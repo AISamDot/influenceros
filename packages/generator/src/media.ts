@@ -2,10 +2,10 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { StudioServices } from '@ios/agents';
-import { meteredProviders } from '@ios/core';
-import { mediaDeps } from '@ios/media';
-import { placeholderLook, sampleLine, sheetPrompt, voiceBriefs } from './fake';
-import type { CharacterProfile, ConceptOption, LookCheck, LookStep, VoicePreview } from './types';
+import { metered, meteredProviders } from '@ios/core';
+import { ELEVENLABS_DESIGN_USD, mediaDeps } from '@ios/media';
+import { placeholderLook, sampleLine, type Steer, sheetPrompt, type VoiceBrief, voiceBriefs } from './fake';
+import type { CharacterProfile, ConceptOption, LookCheck, LookProfile, LookStep, VoicePreview } from './types';
 
 /**
  * Look and voice for the generator. With a live Higgsfield adapter the character-sheet variants are real stills
@@ -19,8 +19,11 @@ const FACE_SAME = 0.6;
 
 export const higgsfieldLive = (services: StudioServices): boolean => !services.providers.imageVideo.name.startsWith('fake');
 
-export async function lookVariants(services: StudioServices, input: { studioId: string; concept: ConceptOption; character: CharacterProfile | null }): Promise<LookStep> {
-  const base = placeholderLook(input.concept, input.character);
+export async function lookVariants(
+  services: StudioServices,
+  input: { studioId: string; concept: ConceptOption; character: CharacterProfile | null; steer?: Steer; profile?: LookProfile },
+): Promise<LookStep> {
+  const base = placeholderLook(input.concept, input.character, input.steer ?? {}, input.profile);
   if (!higgsfieldLive(services)) return base;
   const hf = meteredProviders(services.db, services.providers, { studioId: input.studioId, agent: 'studio-manager', ref: { type: 'studio', id: input.studioId } }).imageVideo;
   const name = input.character?.name ?? input.concept.name;
@@ -103,13 +106,23 @@ export async function checkLook(
   };
 }
 
-export async function voicePreviews(services: StudioServices, input: { studioId: string; concept: ConceptOption }): Promise<VoicePreview[]> {
-  const voice = meteredProviders(services.db, services.providers, { studioId: input.studioId, agent: 'studio-manager', ref: { type: 'studio', id: input.studioId } }).voice;
+/**
+ * Three voice previews. Each is a Voice Design call plus a TTS sample; with ElevenLabs both are paid, so both go
+ * through the governor (design at the ElevenLabs estimate, like media/profile.ts; TTS through meteredProviders).
+ */
+export async function voicePreviews(services: StudioServices, input: { studioId: string; concept: ConceptOption; steer?: Steer; briefs?: VoiceBrief[] }): Promise<VoicePreview[]> {
+  const ctx = { studioId: input.studioId, personaId: null, agent: 'studio-manager', ref: { type: 'studio' as const, id: input.studioId } };
+  const raw = services.providers.voice;
+  const voice = meteredProviders(services.db, services.providers, ctx).voice;
   const text = sampleLine(input.concept).slice(0, 280);
   const fake = voice.name.startsWith('fake');
+  const design = (description: string) =>
+    raw.name === 'elevenlabs'
+      ? metered(services.db, ctx, { unit: 'media_usd', estimate: ELEVENLABS_DESIGN_USD, provider: raw.name, operation: 'voice_design' }, () => raw.designVoice({ description }), () => ELEVENLABS_DESIGN_USD)
+      : raw.designVoice({ description });
   const out: VoicePreview[] = [];
-  for (const b of voiceBriefs(input.concept)) {
-    const designed = await voice.designVoice({ description: b.description });
+  for (const b of input.briefs ?? voiceBriefs(input.concept, input.steer ?? {})) {
+    const designed = await design(b.description);
     const tts = await voice.tts({ voiceId: designed.voiceId, text });
     out.push({ id: b.id, label: b.label, description: b.description, voiceId: designed.voiceId, sampleText: text, url: tts.url, durationS: tts.durationS, provider: voice.name, fake });
   }

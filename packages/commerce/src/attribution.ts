@@ -148,7 +148,7 @@ export async function resolveShortLink(services: Pick<StudioServices, 'db' | 'no
     `SELECT sl.id, sl.slug, sl.target_path, sl.target_url, pe.slug AS persona_slug, pe.state FROM short_link sl JOIN persona pe ON pe.id = sl.persona_id WHERE sl.slug = $1`,
     [args.code],
   );
-  if (!sl || ['PROPOSED', 'KILLED', 'RETIRED'].includes(sl.state)) return null;
+  if (!sl || ['PROPOSED', 'ARCHIVED', 'KILLED', 'RETIRED'].includes(sl.state)) return null;
   if (args.hostSlug && args.hostSlug !== sl.persona_slug) return null;
   const now = services.now();
   await db.query(`UPDATE short_link SET clicks = clicks + 1, last_click_at = $2 WHERE id = $1`, [sl.id, now]);

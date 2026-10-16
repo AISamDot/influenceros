@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import { findRepoRoot } from '@ios/db';
-import { type LaunchPersona, loadLaunchPersonas, readManifest } from './launch';
+import { defaultPersonasDir, type LaunchDoc, type LaunchPersona, loadLaunchPersonas, readLaunchDoc, readManifest } from './launch';
 
 /**
  * The persona archive on disk (Owner decision, 16 Oct): `packages/knowledge/seed/archive/<YYYY-MM-DD>/<slug>/` holds
@@ -53,6 +53,8 @@ export interface ArchivedPersonaInfo {
   subNiche: string | null;
   bibleLabel: string | null;
   products: number;
+  /** The accent hue from the archive's manifest (portraits and the persona kit). */
+  hue: number;
   /** Product manuscripts kept with the persona (products/*.md). */
   productDocs: string[];
   dir: string;
@@ -85,6 +87,7 @@ export function listArchivedPersonas(root = archiveRootDir()): ArchivedPersonaIn
         subNiche: p.subNiche,
         bibleLabel: p.bibleLabel,
         products: p.products.length,
+        hue: p.hue,
         productDocs: existsSync(pdir) ? readdirSync(pdir).filter((f) => f.endsWith('.md')).sort() : [],
         dir: join(/*turbopackIgnore: true*/ dir, p.slug),
       });
@@ -97,4 +100,36 @@ export function listArchivedPersonas(root = archiveRootDir()): ArchivedPersonaIn
 export function archiveNote(label: string, root = archiveRootDir()): Record<string, unknown> | null {
   const file = join(/*turbopackIgnore: true*/ root, label, 'archive.json');
   return existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>) : null;
+}
+
+/** The product manuscripts kept with an archived persona (absolute paths of `products/*.md`), newest archive first. */
+export function archivedManuscripts(slug: string, from?: string): string[] {
+  const dirs = from ? [archiveDir(from)] : archiveLabels().map((l) => join(/*turbopackIgnore: true*/ archiveRootDir(), l));
+  for (const dir of dirs) {
+    const pdir = join(/*turbopackIgnore: true*/ dir, slug, 'products');
+    if (existsSync(pdir)) return readdirSync(pdir).filter((f) => f.endsWith('.md')).sort().map((f) => join(/*turbopackIgnore: true*/ pdir, f));
+  }
+  return [];
+}
+
+/**
+ * One of a persona's source documents wherever it lives: the live persona folder (`dir`, default seed/personas or
+ * IOS_PERSONAS_DIR) first, then the archive (newest label first). A persona restored from the archive reads its look
+ * prompts, content plan and Field Brain seed from there. `archive: false` for a persona that never came from files
+ * (a Persona Generator launch), so a shared slug can't pick up another character's documents. '' when none has it.
+ */
+export function readPersonaDoc(slug: string, doc: LaunchDoc, dir = defaultPersonasDir(), opts: { archive?: boolean } = {}): string {
+  const live = readLaunchDoc(slug, doc, dir);
+  if (live || opts.archive === false) return live;
+  let root: string;
+  try {
+    root = archiveRootDir();
+  } catch {
+    return '';
+  }
+  for (const label of archiveLabels(root)) {
+    const text = readLaunchDoc(slug, doc, join(/*turbopackIgnore: true*/ root, label));
+    if (text) return text;
+  }
+  return '';
 }

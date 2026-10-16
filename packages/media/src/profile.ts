@@ -3,7 +3,7 @@ import { loadPersonaKit, type StudioServices } from '@ios/agents';
 import { loadPersonaContext, type PersonaContext } from '@ios/content';
 import { BudgetExceededError, notify } from '@ios/core';
 import { json } from '@ios/db';
-import { readLaunchDoc } from '@ios/core/seed';
+import { readPersonaDoc } from '@ios/core/seed';
 import { ELEVENLABS_DESIGN_USD, GEN_RESOLUTION, mediaModels } from './config';
 import type { MediaDeps } from './deps';
 import { extFor, materialize, storeAsset } from './files';
@@ -66,11 +66,25 @@ export function parseLookPrompts(doc: string): string[] {
   return out;
 }
 
-/** Look prompts for Soul ID training: the launch doc's prompts, else a character sheet built from the bible's look. */
+/** Whether a bible was written by the Persona Generator (no source documents on disk). */
+export const fromGenerator = (bible: Record<string, unknown> | null | undefined): boolean =>
+  String((bible?.source_document as { file?: unknown } | undefined)?.file ?? '').startsWith('generator/');
+
+/**
+ * Look prompts for Soul ID training: the launch doc's prompts; else the Persona Generator's character-sheet prompt
+ * (the sheet the Owner picked) plus a portrait; else a character sheet built from the bible's look.
+ */
 export function lookPromptsFor(ctx: PersonaContext, doc: string): string[] {
   const fromDoc = parseLookPrompts(doc);
   if (fromDoc.length) return fromDoc.slice(0, 3);
   const { look, persona } = ctx;
+  const sheet = ((ctx.bible?.look as Record<string, unknown> | undefined)?.character_sheet as { prompt?: unknown } | null | undefined)?.prompt;
+  if (typeof sheet === 'string' && sheet.trim().length >= 40) {
+    return [
+      sheet.trim().slice(0, 3500),
+      `Photorealistic portrait of ${persona.name}, ${look.framing || 'chest-up'}, in ${look.settings[0] ?? 'a bright home office'}, wearing ${look.outfits[0] ?? 'smart casual clothes'}, looking at the camera, natural expression, ${look.stylisation || 'soft natural light'}. One person only, no text, no logos.`,
+    ];
+  }
   const outfit = look.outfits[0] ?? 'smart casual clothes';
   return [
     `Photorealistic character reference sheet, three panels on a seamless white studio background, the same person in all three panels: front view, three-quarter view, head-and-shoulders close-up. ${persona.name}, an AI creator for ${persona.niche}. ${look.stylisation || 'Photoreal, soft natural light'}. Wearing ${outfit}. One person only, fully clothed, no logos, no readable text.`,
@@ -129,7 +143,9 @@ export async function ensureProfile(
   }
   if (opts.soul && row.soul_status !== 'ready') {
     const c = await context();
-    const prompts = lookPromptsFor(c, readLaunchDoc(c.persona.slug, 'lookPrompts'));
+    // The look prompts doc wherever it lives (seed folder, else the archive a restored persona came from); a
+    // Persona Generator persona has none and uses its character-sheet prompt.
+    const prompts = lookPromptsFor(c, readPersonaDoc(c.persona.slug, 'lookPrompts', undefined, { archive: !fromGenerator(c.bible) }));
     const models = mediaModels();
     const hf = services.providers.imageVideo;
     let soul: { soulId: string };

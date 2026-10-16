@@ -6,8 +6,8 @@ import type { Db } from '@ios/db';
  * emails use. Everything here is public: it never returns studio data, other personas, costs or Owner-only URLs.
  */
 
-/** States whose site is hidden. */
-export const HIDDEN_STATES: readonly string[] = ['PROPOSED', 'KILLED', 'RETIRED'];
+/** States whose site is hidden (an archived persona's site goes dark until it is restored). */
+export const HIDDEN_STATES: readonly string[] = ['PROPOSED', 'ARCHIVED', 'KILLED', 'RETIRED'];
 
 /** Ladder order (lower first): the thank-you upsell offers the next live rung. */
 export const LADDER: readonly string[] = ['lead_magnet', 'entry', 'addon', 'core_bundle', 'upsell', 'product_2_3', 'marketplace', 'course', 'membership'];

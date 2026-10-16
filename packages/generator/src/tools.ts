@@ -71,6 +71,31 @@ function tool<I, O>(d: Omit<ToolDef<I, O>, 'inputSchema' | 'parse'> & { spec: Sp
 
 const actorOf = (ctx: ToolContext): Actor => ctx.actor;
 
+// ── Owner intents (registry gate for untrusted runs): a verb plus a draft object, never a bare common verb. ──
+// Option letters are capitals only (no `i` flag), so "use a warmer tone" or "take a look" never reads as a pick.
+
+/** "Word" → "[Ww]ord": case-insensitive first letter without making the whole pattern (and its letters) insensitive. */
+const ci = (w: string) => w.replace(/[a-z]/i, (c) => `[${c.toUpperCase()}${c.toLowerCase()}]`).replace(/ /g, '\\s+');
+const any = (ws: readonly string[]) => `(?:${ws.map(ci).join('|')})`;
+const PARTS = 'look|mechanic|hooks?|premise|contrast|name|voice|product|first\\s+product|sign-?off';
+
+/** "pick B", "go with option C", "use sheet A". */
+export const PICK_INTENT = new RegExp(`\\b${any(['pick', 'choose', 'go with', 'select', 'use', 'take'])}\\s+(?:${any(['option', 'concept', 'sheet', 'voice', 'preview'])}\\s+)?[A-E]\\b(?!['’]s)`);
+/** "combine A's look with B's mechanic", "take C's hooks". */
+export const MIX_INTENT = new RegExp(`\\b${any(['combine', 'mix', 'merge', 'blend', 'swap', 'take', 'use'])}\\b.*\\b[A-E]['’]s\\s+(?:${PARTS})\\b`);
+/** "regenerate", "new options", "try again". */
+export const REGENERATE_INTENT = new RegExp(`\\b${any(['regenerate', 'redo', 'new options', 'try again', 'more options', 'fresh options', 'fresh ideas', 'fresh concepts', 'different options', 'three more', 'new sheets'])}\\b`);
+const REVISE_VERBS = ['make', 'change', 'rename', 'call', 'name', 'revise', 'edit', 'set', 'swap', 'replace', 'drop', 'remove', 'add', 'give', 'turn', 'switch', 'shorten', 'raise', 'lower', 'price', 'use', 'try'];
+const DRAFT_OBJECTS = [
+  'her', 'him', 'them', 'name', 'age', 'older', 'younger', 'look', 'wardrobe', 'palette', 'anchors?', 'mechanic', 'premise', 'contrast', 'hooks?', 'voice', 'tone',
+  'price', 'product', 'option', 'concept', 'character', 'persona', 'catchphrases?', 'sign-?off', 'lore', 'personality', 'worldview', 'positions?', 'pillars?', 'series', 'ladder', 'handle',
+  'drier', 'warmer', 'funnier', 'sharper', 'softer', 'calmer', 'bolder', 'sassier',
+];
+/** "make her older", "call him Otto", "change the mechanic", "set the price to $19". */
+export const EDIT_INTENT = new RegExp(`\\b${any(REVISE_VERBS)}\\b.*\\b${any(DRAFT_OBJECTS)}\\b`);
+/** Everything generator.revise_step does: an edit, a pick, a mix or a regenerate. */
+export const REVISE_INTENT = new RegExp([EDIT_INTENT, PICK_INTENT, MIX_INTENT, REGENERATE_INTENT].map((r) => `(?:${r.source})`).join('|'));
+
 async function draftInStudio(ctx: ToolContext, id: string): Promise<DraftRow> {
   const d = await getDraft(ctx.services.db, id);
   if (!d || d.studio_id !== ctx.studioId) throw new ToolInputError(`draft ${id} is not in this studio`);
@@ -139,11 +164,15 @@ export const reviseStepTool = tool<{ draft_id: string; step: number; instruction
   scope: 'studio',
   callers: ['studio-manager'],
   mutates: true,
-  ownerIntent: /\b(?:make|change|combine|mix|merge|swap|use|pick|choose|go\s+with|select|rename|call|name|revise|regenerate|redo|edit|set|add|drop|remove|replace|try|give|take|turn|switch|shorten|raise|lower|price)\b/i,
+  ownerIntent: REVISE_INTENT,
   spec: { draft_id: DRAFT_ID, step: STEP, instruction: { type: 'string', maxLength: 1000 } },
   run: async (ctx, i) => {
     await draftInStudio(ctx, i.draft_id);
-    const r = await reviseStep(ctx.services, i.draft_id, i.step, i.instruction, { actor: actorOf(ctx) });
+    // In a run that carries the Owner's own message, that message is the instruction: the model picks the step, but it
+    // can't put words in the Owner's mouth.
+    const owner = ctx.trust?.ownerText?.trim();
+    const instruction = owner ? owner.slice(0, 1000) : i.instruction;
+    const r = await reviseStep(ctx.services, i.draft_id, i.step, instruction, { actor: actorOf(ctx) });
     return { changed: r.changed, summary: r.summary, version: r.draft.version, score: r.draft.scores.total ?? null };
   },
 });
@@ -154,7 +183,7 @@ export const pickOptionTool = tool<{ draft_id: string; step: number; option: str
   scope: 'studio',
   callers: ['studio-manager'],
   mutates: true,
-  ownerIntent: /\b(?:pick|choose|go\s+with|select|use|take)\b/i,
+  ownerIntent: PICK_INTENT,
   spec: { draft_id: DRAFT_ID, step: STEP, option: { type: 'string', enum: ['A', 'B', 'C', 'D', 'E'] } },
   run: async (ctx, i) => {
     await draftInStudio(ctx, i.draft_id);
@@ -169,7 +198,7 @@ export const regenerateStepTool = tool<{ draft_id: string; step: number; instruc
   scope: 'studio',
   callers: ['studio-manager'],
   mutates: true,
-  ownerIntent: /\b(?:regenerate|redo|new\s+options|try\s+again|more\s+options|fresh|different\s+options)\b/i,
+  ownerIntent: REGENERATE_INTENT,
   spec: { draft_id: DRAFT_ID, step: STEP, instruction: { type: 'string', optional: true, maxLength: 1000 } },
   run: async (ctx, i) => {
     await draftInStudio(ctx, i.draft_id);
@@ -184,7 +213,7 @@ export const mixConceptsTool = tool<{ draft_id: string; parts: Record<string, st
   scope: 'studio',
   callers: ['studio-manager'],
   mutates: true,
-  ownerIntent: /\b(?:combine|mix|merge|take|use|swap|blend)\b/i,
+  ownerIntent: MIX_INTENT,
   spec: { draft_id: DRAFT_ID, parts: { type: 'object' }, base: { type: 'string', optional: true, enum: ['A', 'B', 'C', 'D', 'E'] } },
   run: async (ctx, i) => {
     await draftInStudio(ctx, i.draft_id);

@@ -2,7 +2,7 @@ import { type RunTrust, runAgent, STUDIO_RULES_BLOCK, type StudioServices, type 
 import { BudgetExceededError, STUDIO_MANAGER } from '@ios/core';
 import { GENERATOR_SYSTEM } from './steps';
 import { addDraftMessage, DraftError, listDraftMessages, requireDraft } from './store';
-import { CHAT_TOOLS, draftSummary } from './tools';
+import { CHAT_TOOLS, draftSummary, REVISE_INTENT } from './tools';
 import { type DraftMessage, type DraftRow, STEPS, stepKey } from './types';
 
 /**
@@ -16,7 +16,8 @@ import { type DraftMessage, type DraftRow, STEPS, stepKey } from './types';
 export const MAX_CHAT_CHARS = 4000;
 
 const QUESTION = /\?\s*$|^\s*(?:what|how|why|which|who|should|would|could|is|are|do|does|can)\b/i;
-const INTENT = /\b(?:make|change|combine|mix|merge|swap|use|pick|choose|go\s+with|select|rename|call|name|revise|regenerate|redo|edit|set|try|take|turn|switch|older|younger|drier|warmer|funnier|sharper|softer|calmer|bolder|sassier|price|new\s+options|try\s+again)\b/i;
+/** The same intent the registry gates generator.revise_step on, so the chat never tries a change the gate refuses. */
+const INTENT = REVISE_INTENT;
 
 /** One to three precise next moves for the step, from the draft's own numbers. */
 export function suggestionsFor(d: DraftRow, step: number): string[] {
@@ -80,7 +81,7 @@ export function suggestionsFor(d: DraftRow, step: number): string[] {
         const weakest = dims.sort((a, b) => a.ratio - b.ratio)[0]!;
         out.push(`Scorecard ${r.scorecard.total}/100; weakest: ${weakest.k} (${r.scorecard.notes[weakest.k] ?? ''}).`);
         out.push(`Distinctness ${r.distinctness.score}/100${r.distinctness.nearest[0] ? `; nearest ${r.distinctness.nearest[0].name} (${r.distinctness.nearest[0].source})` : ''}.`);
-        out.push(r.ready ? 'Ready: approve the launch when you are happy.' : `Not ready: ${[...r.missing.map((m) => `${m} missing`), ...r.risks.filter((x) => x.startsWith('Line:') || x.startsWith('Too close'))].map((x) => x.replace(/\.$/, '')).join('; ')}.`);
+        out.push(r.ready ? 'Ready: approve the launch when you are happy.' : `Not ready: ${[...r.missing.map((m) => (m.includes('(') ? m : `${m} missing`)), ...r.risks.filter((x) => x.startsWith('Line:') || x.startsWith('Too close'))].map((x) => x.replace(/\.$/, '')).join('; ')}.`);
       }
       break;
     }

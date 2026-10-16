@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { enqueueOnceFor, type StudioServices } from '@ios/agents';
 import { type Actor, actorRef, addMessage, ApprovalError, type ApprovalRow, decide, ensureThreads, findThread, notify, payloadHash, type PostFormat, type PostPurpose } from '@ios/core';
-import { BIBLE_SECTIONS, type FieldBrainSeed, importLaunchPersona, type LaunchPersona, type LaunchProduct, type LaunchSlot, zonedTimeToUtc } from '@ios/core/seed';
-import { json } from '@ios/db';
+import { BIBLE_SECTIONS, type FieldBrainSeed, importLaunchPersona, type LaunchPersona, type LaunchProduct, type LaunchSlot, listArchivedPersonas, zonedTimeToUtc } from '@ios/core/seed';
+import { type Db, json } from '@ios/db';
 import { archetypeFor } from './fake';
 import { firstName, nicheByKey, slugify } from './library';
 import { nicheOf } from './steps';
@@ -195,11 +195,19 @@ export function draftToLaunchPersona(d: DraftRow, state: DraftState, review: Rev
   };
 }
 
-async function uniqueSlug(services: StudioServices, studioId: string, name: string): Promise<string> {
+async function uniqueSlug(db: Db, studioId: string, name: string): Promise<string> {
   const base = slugify(firstName(name)) || 'persona';
+  // Archived personas keep their slugs (their documents live under them): a new persona never takes one.
+  let archived = new Set<string>();
+  try {
+    archived = new Set(listArchivedPersonas().map((p) => p.slug));
+  } catch {
+    /* no archive on disk */
+  }
   for (let i = 1; i < 50; i++) {
     const slug = i === 1 ? base : `${base}-${i}`;
-    if (!(await services.db.maybeOne('SELECT 1 FROM persona WHERE studio_id = $1 AND slug = $2', [studioId, slug]))) return slug;
+    if (archived.has(slug)) continue;
+    if (!(await db.maybeOne('SELECT 1 FROM persona WHERE studio_id = $1 AND slug = $2', [studioId, slug]))) return slug;
   }
   throw new DraftError('could not find a free slug');
 }
@@ -213,7 +221,11 @@ export interface LaunchResult {
   draft: DraftRow;
 }
 
-/** The Owner approves the launch. Agents and the system are refused here, by the tool registry and by the database. */
+/**
+ * The Owner approves the launch. Agents and the system are refused here, by the tool registry and by the database.
+ * Atomic: the draft row is locked for the whole launch (import, approval, Field Brain build, the draft's own commit),
+ * so a double submit or a retry waits and then finds the draft launched, and a failure part-way leaves nothing behind.
+ */
 export async function launchDraft(services: StudioServices, draftId: string, ctx: { actor: Actor; expectVersion?: number }): Promise<LaunchResult> {
   if (ctx.actor.type !== 'owner') throw new ApprovalError('only the Owner approves a persona launch (agents draft and recommend)');
   const { db } = services;
@@ -222,52 +234,60 @@ export async function launchDraft(services: StudioServices, draftId: string, ctx
   if (ctx.expectVersion !== undefined && ctx.expectVersion !== d.version) throw new DraftError('this draft changed since you opened it: reload and check it again');
   const review = await computeReview(services, d, d.state);
   if (!review.ready) {
-    const why = [...review.missing.map((m) => `${m} not chosen`), ...review.risks.filter((r) => r.startsWith('Line:') || r.startsWith('Too close'))];
+    const why = [...review.missing.map((m) => (m.includes('(') ? m : `${m} not chosen`)), ...review.risks.filter((r) => r.startsWith('Line:') || r.startsWith('Too close'))];
     throw new DraftError(`not ready to launch: ${why.join('; ')}`);
   }
   const now = services.now();
-  let personaId = d.persona_id;
-  let slots = 0;
-  let nodes = 0;
-  let niche: string;
-  if (personaId) {
-    // Restored from the archive: the persona is already PROPOSED with its documents; approve its launch card.
-    const p = await db.one<{ state: string; niche: string }>('SELECT state, niche FROM persona WHERE id = $1', [personaId]);
-    if (p.state !== 'PROPOSED') throw new DraftError(`the persona is ${p.state}, not waiting for a launch`);
-    niche = p.niche;
-  } else {
-    const ch = d.state.character.chosen!;
-    const slug = await uniqueSlug(services, d.studio_id, ch.name);
-    const lp = draftToLaunchPersona(d, d.state, review, slug);
-    niche = lp.niche;
-    const res = await importLaunchPersona(db, d.studio_id, lp, {
-      now,
-      source: 'generator',
-      createdBy: 'agent:studio-manager',
-      approvedBy: actorRef(ctx.actor),
-      summary: `Co-created in the Persona Generator: ${lp.niche} (${lp.subNiche}). Scorecard ${review.scorecard.total}/100, distinctness ${review.distinctness.score}/100. First posts ${lp.launchDate}.`,
-    });
-    personaId = res.personaId;
-    slots = res.slots;
-    nodes = res.nodes;
-    const look = d.state.look.chosen!;
-    const variant = look.variants.find((v) => v.id === look.chosenVariant);
-    if (variant?.provider === 'higgsfield') await db.query('UPDATE persona SET portrait_url = $2 WHERE id = $1', [personaId, variant.url]);
-    const voice = d.state.voice.chosen;
-    if (voice && !voice.fake) {
-      await db.query(
-        `INSERT INTO media_profile (persona_id, voice_provider, voice_id) VALUES ($1, $2, $3) ON CONFLICT (persona_id) DO UPDATE SET voice_provider = EXCLUDED.voice_provider, voice_id = EXCLUDED.voice_id`,
-        [personaId, voice.provider, voice.voiceId],
-      );
+  const done = await db.transaction(async (tx) => {
+    const cur = await tx.maybeOne<DraftRow>('SELECT * FROM persona_draft WHERE id = $1 FOR UPDATE', [draftId]);
+    if (!cur) throw new DraftError('draft not found');
+    if (cur.status !== 'active') throw new DraftError(`this draft is ${cur.status}`);
+    if (cur.version !== d.version) throw new DraftError('this draft changed while the launch was being checked: reload and check it again');
+    let personaId = cur.persona_id;
+    let slots = 0;
+    let nodes = 0;
+    let niche: string;
+    if (personaId) {
+      // Restored from the archive: the persona is already PROPOSED with its documents; approve its launch card.
+      const p = await tx.one<{ state: string; niche: string }>('SELECT state, niche FROM persona WHERE id = $1 FOR UPDATE', [personaId]);
+      if (p.state !== 'PROPOSED') throw new DraftError(`the persona is ${p.state}, not waiting for a launch`);
+      niche = p.niche;
+    } else {
+      const ch = cur.state.character.chosen!;
+      const slug = await uniqueSlug(tx, cur.studio_id, ch.name);
+      const lp = draftToLaunchPersona(cur, cur.state, review, slug);
+      niche = lp.niche;
+      const res = await importLaunchPersona(tx, cur.studio_id, lp, {
+        now,
+        source: 'generator',
+        createdBy: 'agent:studio-manager',
+        approvedBy: actorRef(ctx.actor),
+        summary: `Co-created in the Persona Generator: ${lp.niche} (${lp.subNiche}). Scorecard ${review.scorecard.total}/100, distinctness ${review.distinctness.score}/100. First posts ${lp.launchDate}.`,
+      });
+      personaId = res.personaId;
+      slots = res.slots;
+      nodes = res.nodes;
+      const look = cur.state.look.chosen!;
+      const variant = look.variants.find((v) => v.id === look.chosenVariant);
+      if (variant?.provider === 'higgsfield') await tx.query('UPDATE persona SET portrait_url = $2 WHERE id = $1', [personaId, variant.url]);
+      const voice = cur.state.voice.chosen;
+      if (voice && !voice.fake) {
+        await tx.query(
+          `INSERT INTO media_profile (persona_id, voice_provider, voice_id) VALUES ($1, $2, $3) ON CONFLICT (persona_id) DO UPDATE SET voice_provider = EXCLUDED.voice_provider, voice_id = EXCLUDED.voice_id`,
+          [personaId, voice.provider, voice.voiceId],
+        );
+      }
     }
-  }
-  const card = await db.maybeOne<ApprovalRow>(`SELECT * FROM approval WHERE persona_id = $1 AND kind = 'persona_launch' AND status = 'pending'`, [personaId]);
-  if (!card) throw new DraftError('no pending launch card for this persona');
-  const approval = await decide(db, { approvalId: card.id, decision: 'approve', actor: ctx.actor, payloadHash: payloadHash(card.payload), note: `Approved in the Persona Generator (draft v${d.version})` });
-  const job = await enqueueOnceFor(db, { kind: 'knowledge.build', key: `build:${d.studio_id}:${niche.toLowerCase()}`, payload: { studioId: d.studio_id, niche: niche.toLowerCase() }, studioId: d.studio_id, priority: 130 });
-  const persona = await db.one<{ id: string; slug: string; name: string; state: string }>('SELECT id, slug, name, state FROM persona WHERE id = $1', [personaId]);
-  const draft = await commit(db, draftId, { step: 7, change: `launched ${persona.name} (${persona.state})`, actor: ctx.actor }, async () => ({ state: d.state, status: 'launched', personaId }));
-  await db.query('UPDATE persona_draft SET launched_by = $2, launched_at = now() WHERE id = $1', [draftId, actorRef(ctx.actor)]);
+    const card = await tx.maybeOne<ApprovalRow>(`SELECT * FROM approval WHERE persona_id = $1 AND kind = 'persona_launch' AND status = 'pending'`, [personaId]);
+    if (!card) throw new DraftError('no pending launch card for this persona');
+    const approval = await decide(tx, { approvalId: card.id, decision: 'approve', actor: ctx.actor, payloadHash: payloadHash(card.payload), note: `Approved in the Persona Generator (draft v${cur.version})` });
+    const job = await enqueueOnceFor(tx, { kind: 'knowledge.build', key: `build:${cur.studio_id}:${niche.toLowerCase()}`, payload: { studioId: cur.studio_id, niche: niche.toLowerCase() }, studioId: cur.studio_id, priority: 130 });
+    const persona = await tx.one<{ id: string; slug: string; name: string; state: string }>('SELECT id, slug, name, state FROM persona WHERE id = $1', [personaId]);
+    const draft = await commit(tx, draftId, { step: 7, change: `launched ${persona.name} (${persona.state})`, actor: ctx.actor, expectVersion: cur.version }, async (row) => ({ state: row.state, status: 'launched', personaId }));
+    await tx.query('UPDATE persona_draft SET launched_by = $2, launched_at = now() WHERE id = $1', [draftId, actorRef(ctx.actor)]);
+    return { personaId: personaId!, slots, nodes, niche, approval, job, persona, draft: { ...draft, launched_by: actorRef(ctx.actor), launched_at: now } };
+  });
+  const { personaId, slots, nodes, niche, approval, job, persona, draft } = done;
   await ensureThreads(db, d.studio_id);
   const thread = await findThread(db, d.studio_id, 'studio');
   await addMessage(db, {

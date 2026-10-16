@@ -55,8 +55,9 @@ export interface CommitInput {
 }
 
 /**
- * Applies `mutate` to the draft under a row lock and writes the next version snapshot. `mutate` returns the new
- * state plus optional row fields; it may throw to refuse.
+ * Applies `mutate` to the draft under a row lock and writes the next version snapshot. `mutate` gets the locked row
+ * (build the new state from it, not from an earlier read) and returns the new state plus optional row fields; it may
+ * throw to refuse. `archived_at` follows the status: set when a draft is archived, cleared when it leaves the archive.
  */
 export async function commit(
   db: Db,
@@ -74,7 +75,8 @@ export async function commit(
     const version = d.version + 1;
     const row = await tx.one<DraftRow>(
       `UPDATE persona_draft SET state = $2::jsonb, version = $3, current_step = $4, title = $5, scores = $6::jsonb,
-                                status = $7, persona_id = $8, updated_at = now()
+                                status = $7, persona_id = $8, updated_at = now(),
+                                archived_at = CASE WHEN $7 = 'archived' THEN COALESCE(archived_at, now()) ELSE NULL END
         WHERE id = $1 RETURNING *`,
       [d.id, json(next.state), version, next.currentStep ?? d.current_step, (next.title ?? d.title).slice(0, 120), json(next.scores ?? d.scores), next.status ?? d.status, next.personaId === undefined ? d.persona_id : next.personaId],
     );
@@ -88,6 +90,11 @@ export async function commit(
 
 export async function draftVersions(db: Db, draftId: string): Promise<Array<{ version: number; step: number; change: string; actor: string; created_at: Date; scores: Partial<Scorecard> }>> {
   return db.query(`SELECT version, step, change, actor, created_at, scores FROM persona_draft_version WHERE draft_id = $1 ORDER BY version DESC`, [draftId]);
+}
+
+/** One stored version snapshot (the state as it was after that change). */
+export async function getDraftVersion(db: Db, draftId: string, version: number): Promise<{ version: number; step: number; change: string; state: DraftState } | null> {
+  return db.maybeOne(`SELECT version, step, change, state FROM persona_draft_version WHERE draft_id = $1 AND version = $2`, [draftId, version]);
 }
 
 export async function addDraftMessage(db: Db, m: { draftId: string; step: number; role: DraftMessage['role']; author: string; body: string; meta?: Record<string, unknown> }): Promise<DraftMessage> {

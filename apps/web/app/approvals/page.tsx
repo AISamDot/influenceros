@@ -8,6 +8,7 @@ import { IconCheck, IconClock, IconFlag, IconX } from '@/components/icons';
 import { relative } from '@/lib/format';
 import { studioContext } from '@/lib/server';
 import { requireOwnerPage } from '@/lib/auth';
+import { openLaunchReview } from '../generator/actions';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Approvals' };
@@ -28,13 +29,24 @@ const KIND_LABEL: Record<string, string> = {
   persona_archive: 'Archive persona',
 };
 
-/** A launch only the Owner approves (generator-created or restored): decided in the Persona Generator's review step. */
-function LaunchReview({ a, draftId }: { a: Row; draftId: string }) {
+/**
+ * A launch only the Owner approves (generator-created, restored, or imported): always decided in the Persona
+ * Generator's review step, never from a generic Approve. With no review draft yet (an imported persona, or a review
+ * draft that was archived), the button opens one.
+ */
+function LaunchReview({ a, draftId }: { a: Row; draftId: string | null }) {
   return (
     <div className="flex flex-wrap gap-2">
-      <Link href={`/generator/${draftId}?step=7`} className="btn btn-ink">
-        Review and approve in the Generator →
-      </Link>
+      {draftId ? (
+        <Link href={`/generator/${draftId}?step=7`} className="btn btn-ink">
+          Review and approve in the Generator →
+        </Link>
+      ) : (
+        <form action={openLaunchReview}>
+          <input type="hidden" name="persona_id" value={a.persona_id ?? ''} />
+          <SubmitButton className="btn btn-ink">Open the review in the Generator →</SubmitButton>
+        </form>
+      )}
       <form action={`/api/approvals/${a.id}`} method="post">
         <input type="hidden" name="decision" value="reject" />
         <SubmitButton className="btn">
@@ -290,8 +302,8 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
             </div>
             {a.kind === 'qc_override' ? (
               <QcOverrideDecide a={a} />
-            ) : a.kind === 'persona_launch' && a.persona_id && launchDrafts.has(a.persona_id) ? (
-              <LaunchReview a={a} draftId={launchDrafts.get(a.persona_id)!} />
+            ) : a.kind === 'persona_launch' && a.persona_id && (launchDrafts.has(a.persona_id) || a.payload.owner_only === true) ? (
+              <LaunchReview a={a} draftId={launchDrafts.get(a.persona_id) ?? null} />
             ) : (
               <Decide a={a} />
             )}

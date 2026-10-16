@@ -1,5 +1,5 @@
 import type { Caller, KnowledgeHit, ToolDef } from '@ios/agents';
-import { LAUNCH_FILES, readLaunchDoc } from '@ios/core/seed';
+import { LAUNCH_FILES, readPersonaDoc } from '@ios/core/seed';
 import { fieldBrainStatus } from './field-brain';
 import { reactionQueue } from './news';
 import { personasSourceDir } from './personas';
@@ -130,8 +130,13 @@ export const personaDocTool: ToolDef<{ persona_id: string; doc: keyof typeof DOC
     return { persona_id: reqStr(r, 'persona_id', 40), doc: doc as keyof typeof DOCS };
   },
   async run(ctx, input) {
-    const p = await ctx.services.db.one<{ slug: string }>('SELECT slug FROM persona WHERE id = $1', [input.persona_id]);
-    const text = readLaunchDoc(p.slug, DOCS[input.doc], personasSourceDir());
+    const p = await ctx.services.db.one<{ slug: string; file: string | null }>(
+      `SELECT p.slug, (SELECT b.content->'source_document'->>'file' FROM persona_bible b WHERE b.persona_id = p.id ORDER BY b.version DESC LIMIT 1) AS file
+         FROM persona p WHERE p.id = $1`,
+      [input.persona_id],
+    );
+    // The source folder first, then the archive a restored persona came from; never for a Persona Generator persona.
+    const text = readPersonaDoc(p.slug, DOCS[input.doc], personasSourceDir(), { archive: !(p.file ?? '').startsWith('generator/') });
     return { slug: p.slug, doc: input.doc, found: text.length > 0, text: trimText(text, 120_000) };
   },
 };

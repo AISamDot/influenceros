@@ -54,7 +54,7 @@ export async function siteImage(
 ): Promise<{ redirect: string } | { file: DeliveredFile } | null> {
   const { db } = services;
   const persona = await db.maybeOne<{ id: string; state: string; portrait_url: string | null }>(`SELECT id, state, portrait_url FROM persona WHERE slug = $1`, [args.slug]);
-  if (!persona || ['PROPOSED', 'KILLED', 'RETIRED'].includes(persona.state)) return null;
+  if (!persona || ['PROPOSED', 'ARCHIVED', 'KILLED', 'RETIRED'].includes(persona.state)) return null;
   let url: string | null = persona.portrait_url;
   if (args.kind === 'cover') {
     const p = await db.maybeOne<{ cover_url: string | null }>(

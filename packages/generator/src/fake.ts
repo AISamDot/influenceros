@@ -1,11 +1,13 @@
 import { portraitUri } from '@ios/core';
 import {
   type Archetype,
+  type ArchetypeFamily,
   ARCHETYPES,
   archetypeByKey,
+  familyOf,
   fill,
   firstName,
-  NAMES,
+  namePool,
   type NicheDef,
   NICHES,
   nicheByKey,
@@ -13,6 +15,7 @@ import {
   pick,
   rng,
   slugify,
+  withArticle,
 } from './library';
 import { scoreConcept } from './score';
 import type {
@@ -93,7 +96,67 @@ export function fakeOpportunities(input: { draftId: string; generation: number; 
 
 // ───────────────────────────── Concepts ─────────────────────────────
 
-export function buildConcept(n: NicheDef, a: Archetype, name: string, id: string, r: () => number, opp?: OpportunityOption | null): ConceptOption {
+/** The shape of the signature mechanic: a verdict, a repeated ritual, an episodic series, or a dated challenge. */
+export type ConceptShape = 'rating' | 'ritual' | 'series' | 'challenge';
+export const CONCEPT_SHAPES: readonly ConceptShape[] = ['rating', 'ritual', 'series', 'challenge'];
+
+const SHAPE_VERB: Record<ConceptShape, string> = { rating: 'rating', ritual: 'fixing', series: 'telling stories about', challenge: 'coaching' };
+
+const SHAPE_HOOKS: Record<ConceptShape, string[]> = {
+  rating: ['Rating your {object}: {verdictA} or {verdictB}?', '{first} rates the comments. Brace yourself.', 'Verdict: {verdictB}. Here is the one fix.'],
+  ritual: ['{ritual}, week one. Do it with me.', 'Same time, same rules. Your turn.', '{first} does {pos} own {object} first.'],
+  series: ['{ritual}, episode one.', 'Your {object}, told as a story.', 'Part two: what happened next.'],
+  challenge: ['Day 1 of 30. One small task.', '30 days, one {object}, no excuses.', 'Sunday check-in: who made it?'],
+};
+
+const cap1 = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+function premiseFor(a: Archetype, n: NicheDef, name: string, age: number): string {
+  const pron = a.pronoun === 'she' ? 'She' : 'He';
+  const pos = a.pronoun === 'she' ? 'her' : 'his';
+  switch (familyOf(a)) {
+    case 'peer':
+      return `${name}, ${age}, ${withArticle(a.role)} for ${a.years} years. ${pron} learned more about ${n.subNiche} from ${a.unit} than from any course, and ${a.pronoun} says so.`;
+    case 'era':
+      return `${name}, ${withArticle(a.role)}, somehow posting from 2026 (a clearly fictional time-slip). ${pron} holds modern ${n.subNiche} up against ${pos} ${a.unit} and says what changed.`;
+    default:
+      return `${name}, ${age}, ${withArticle(a.role)} for ${a.years} years. ${n.trigger} Unretired. Now ${a.pronoun} brings the ${a.role}'s rules to ${n.subNiche}.`;
+  }
+}
+
+function mechanicFor(shape: ConceptShape, a: Archetype, n: NicheDef): string {
+  const pos = a.pronoun === 'she' ? 'her' : 'his';
+  switch (shape) {
+    case 'rating':
+      return `${a.ritual}: ${a.pronoun} rates a viewer's ${n.object}, "${a.verdicts[0]}" or "${a.verdicts[1]}", with the one fix that changes the call.`;
+    case 'ritual':
+      return `${a.ritual}: the same short ritual every week; ${a.pronoun} works through ${pos} own ${n.object} on camera, one rule at a time, and viewers do theirs alongside.`;
+    case 'series':
+      return `${a.ritual}: a numbered story series; each episode retells one viewer's ${n.object} as a tale from ${pos} ${a.unit}, ending on the rule ${a.pronoun} would use.`;
+    case 'challenge':
+      return `${a.ritual}: a 30-day challenge run live; one small task a day for the viewer's ${n.object}, a check-in every Sunday, and "${a.verdicts[0]}" for everyone who finishes.`;
+  }
+}
+
+function productFor(shape: ConceptShape, a: Archetype, n: NicheDef): ConceptOption['firstProduct'] {
+  const P = n.products;
+  switch (shape) {
+    case 'challenge':
+      return { name: P.entry[0], priceCents: P.entry[1], format: 'PDF 30-day tracker (A4 + US Letter)' };
+    case 'rating':
+      return { name: `The ${a.ritual} Scorecard`, priceCents: 900, format: 'PDF scorecard and checklist' };
+    case 'ritual':
+      return { name: `The ${a.ritual} Workbook`, priceCents: 1200, format: 'PDF workbook (A4 + US Letter)' };
+    case 'series':
+      return { name: P.upsell[0], priceCents: P.upsell[1], format: 'PDF workbook (A4 + US Letter)' };
+  }
+}
+
+/**
+ * One concept from a niche and an archetype. `shape` sets the mechanic, the hooks and the first product; `slot` (0–2)
+ * takes a different share of the niche's own hooks, so three concepts never share a hook.
+ */
+export function buildConcept(n: NicheDef, a: Archetype, name: string, id: string, r: () => number, opp?: OpportunityOption | null, shape: ConceptShape = 'rating', slot = 0): ConceptOption {
   const age = a.age + Math.round((r() - 0.5) * 6);
   const vars = {
     retort: a.retort,
@@ -104,21 +167,27 @@ export function buildConcept(n: NicheDef, a: Archetype, name: string, id: string
     object: n.object,
     first: firstName(name),
     ritual: a.ritual,
+    pos: a.pronoun === 'she' ? 'her' : 'his',
   };
-  const myths = pick(n.myths, n.myths.length, r);
-  const hookTpls = pick(n.hooks, 5, r);
-  const hooks = hookTpls.map((t, i) => fill(t, { ...vars, myth: myths[i % myths.length]! }));
+  // The niche's hooks, minus the rating template (the rating shape has its own), split three ways.
+  const nicheHooks = n.hooks.filter((h) => !h.includes('{verdictA}'));
+  const mine = [nicheHooks[slot % 3], nicheHooks[(slot % 3) + 3]].filter((h): h is string => !!h);
+  const myth = n.myths[slot % n.myths.length]!;
+  const tpls = [...SHAPE_HOOKS[shape], ...mine];
+  if (tpls.length < 5) tpls.push(`"${myth}"? {retort}`);
+  const hooks = [...new Set(tpls.slice(0, 5).map((t) => fill(t, { ...vars, myth })))];
+  const role = a.role;
   const concept: ConceptOption = {
     id,
     name,
     pronoun: a.pronoun,
     age,
-    archetype: `${age}, ${a.role} for ${a.years} years`,
-    premise: `${name}, ${age}, ${a.role} for ${a.years} years. ${n.trigger} Unretired. Now ${a.pronoun} brings the ${a.role}'s rules to ${n.subNiche}.`,
-    contrast: `${a.authority.charAt(0).toUpperCase()}${a.authority.slice(1)}, in a niche full of ${n.noise}. The premise is the hook: why is a ${a.role} rating my ${n.object}?`,
-    mechanic: `${a.ritual}: ${a.pronoun} rates a viewer's ${n.object}, "${a.verdicts[0]}" or "${a.verdicts[1]}", with the one fix that changes the call.`,
+    archetype: `${age}, ${role} for ${a.years} years`,
+    premise: premiseFor(a, n, name, age),
+    contrast: `${cap1(a.authority)}, in a niche full of ${n.noise}. The premise is the hook: why is ${withArticle(role)} ${SHAPE_VERB[shape]} my ${n.object}?`,
+    mechanic: mechanicFor(shape, a, n),
     hooks,
-    firstProduct: { name: n.products.entry[0], priceCents: n.products.entry[1], format: 'PDF workbook (A4 + US Letter)' },
+    firstProduct: productFor(shape, a, n),
     lookLine: `${a.anchors[0]}, ${a.wardrobe[0]}, ${a.anchors[1]}`,
     voiceLine: a.voice,
     signOff: a.signOff,
@@ -128,18 +197,50 @@ export function buildConcept(n: NicheDef, a: Archetype, name: string, id: string
   return concept;
 }
 
-/** Step 2: three distinct concepts (different archetypes, names and mechanics) for the chosen opportunity. */
+/** Whether the audience line reads as mostly women or mostly men ("Women 22–38 …"). */
+function audienceLean(audience: string): 'she' | 'he' | null {
+  const t = audience.toLowerCase();
+  const women = /\bwomen\b/.test(t);
+  const men = /\bmen\b/.test(t);
+  if (women && !men) return 'she';
+  if (men && !women) return 'he';
+  return null;
+}
+
+/**
+ * Step 2: three distinct concepts for the chosen opportunity: one archetype from each family (an elder, a peer, a
+ * character from another era), three different mechanic shapes, first products and price points, no shared hooks,
+ * and both pronouns unless the audience leans one way (then two of the three match it).
+ */
 export function fakeConcepts(input: { draftId: string; generation: number; opportunity: OpportunityOption; avoidNames?: readonly string[] }): ConceptOption[] {
   const n = nicheByKey(input.opportunity.niche) ?? nicheForText(`${input.opportunity.niche} ${input.opportunity.angle}`);
   const r = rng(`${input.draftId}:concept:${input.generation}:${n.key}`);
-  const archetypes = pick(ARCHETYPES, 3, r);
+  const families: ArchetypeFamily[] = pick(['elder', 'peer', 'era'] as const, 3, r);
+  const byFamily = (f: ArchetypeFamily) => ARCHETYPES.filter((a) => familyOf(a) === f);
+  const archetypes = families.map((f) => pick(byFamily(f), 1, r)[0]!);
+  const lean = audienceLean(`${input.opportunity.audience} ${n.audience}`);
+  const want = lean ?? null;
+  const swapTo = (i: number, pronoun: 'she' | 'he') => {
+    const alt = byFamily(families[i]!).filter((a) => a.pronoun === pronoun);
+    if (alt.length) archetypes[i] = pick(alt, 1, r)[0]!;
+  };
+  if (want) {
+    for (let i = 0; i < 3 && archetypes.filter((a) => a.pronoun === want).length < 2; i++) if (archetypes[i]!.pronoun !== want) swapTo(i, want);
+  } else if (new Set(archetypes.map((a) => a.pronoun)).size === 1) {
+    swapTo(2, archetypes[0]!.pronoun === 'she' ? 'he' : 'she');
+  }
+  const shapes = pick(CONCEPT_SHAPES, 3, r);
   const used = new Set((input.avoidNames ?? []).map((x) => x.toLowerCase()));
-  return archetypes.map((a, i) => {
-    const pool = NAMES[a.pronoun].filter((x) => !used.has(x.toLowerCase()));
-    const name = pool[Math.floor(r() * pool.length)] ?? NAMES[a.pronoun][0]!;
+  const concepts = archetypes.map((a, i) => {
+    const all = namePool(familyOf(a), a.pronoun);
+    const pool = all.filter((x) => !used.has(x.toLowerCase()) && !used.has(firstName(x).toLowerCase()));
+    const name = pool[Math.floor(r() * pool.length)] ?? all[0]!;
     used.add(name.toLowerCase());
-    return buildConcept(n, a, name, LETTERS[i]!, r, input.opportunity);
+    used.add(firstName(name).toLowerCase());
+    return buildConcept(n, a, name, LETTERS[i]!, r, input.opportunity, shapes[i]!, i);
   });
+  // Scored against each other, so near-identical options lose points and the ranking means something.
+  return concepts.map((c) => ({ ...c, scorecard: scoreConcept({ concept: c, opportunity: input.opportunity, siblings: concepts.filter((x) => x.id !== c.id) }) }));
 }
 
 /**
@@ -188,20 +289,20 @@ export function fakeCharacter(input: { draftId: string; generation: number; conc
     ageRange: `${c.age - 3}–${c.age + 3}`,
     homeBase: a.homeBases[0] ?? 'a small town',
     handle: `${slugify(first).replace(/-/g, '')}${ritualWord}`.slice(0, 24),
-    identity: `${c.name}, ${c.age}, a ${a.role} for ${a.years} years: a clearly fictional AI character, labelled as AI on every platform. ${a.pronoun === 'she' ? 'She' : 'He'} talks ${n.subNiche} the way ${a.pronoun} ran ${a.unit}. Never claims a degree, licence or credential.`,
+    identity: `${c.name}, ${c.age}, ${withArticle(a.role)} for ${a.years} years: a clearly fictional AI character, labelled as AI on every platform. ${a.pronoun === 'she' ? 'She' : 'He'} talks ${n.subNiche} the way ${a.pronoun} ran ${a.unit}. Never claims a degree, licence or credential.`,
     personality: [...a.personality],
     worldview: n.worldview.slice(0, 5),
     lore: `${a.lore} ${n.trigger} That is why ${a.pronoun} came online.`,
     positions: n.positions.map((p) => ({ ...p })),
     catchphrases: [a.signOff, a.retort].slice(0, 2),
   };
-  const altNames = pick(NAMES[c.pronoun].filter((x) => x !== c.name), 2, r);
+  const altNames = pick(namePool(familyOf(a), c.pronoun).filter((x) => x !== c.name), 2, r);
   const alternatives: CharacterStep['alternatives'] = {
     name: altNames,
     homeBase: [a.homeBases[1] ?? 'a seaside town', 'a city flat above a shop'],
     identity: [
       `${c.name}, ${c.age}: ${a.authority}. Openly an AI character. Brings the ${a.role}'s habits to ${n.subNiche}; never claims credentials.`,
-      `${first}, ${c.age}, retired ${a.role}, now the internet's ${n.object} inspector (AI character, labelled).`,
+      `${first}, ${c.age}, ${familyOf(a) === 'elder' ? 'retired' : familyOf(a) === 'era' ? 'time-slipped' : 'off-duty'} ${a.role}, now the internet's ${n.object} inspector (AI character, labelled).`,
     ],
     personality: [a.personalityAlt, [...a.personality.slice(0, 2), ...a.personalityAlt.slice(0, 2)]],
     worldview: [pick(n.worldview, 5, r), [...n.worldview.slice(1, 5), 'Kindness is not the same as agreeing']],
@@ -217,17 +318,43 @@ export function fakeCharacter(input: { draftId: string; generation: number; conc
 
 // ───────────────────────────── Look ─────────────────────────────
 
-export function fakeLookProfile(concept: ConceptOption, character: CharacterProfile | null): LookProfile {
+/** The Owner's steer for a (re)generation: the instruction typed in "Steer it" and the step's generation number. */
+export interface Steer {
+  instruction?: string | null;
+  generation?: number;
+}
+
+const COLOURS: Record<string, string> = {
+  red: '#B3262E', crimson: '#9D0208', burgundy: '#6D1A36', pink: '#E56B9F', orange: '#E8590C', yellow: '#E9C46A', gold: '#C9A227',
+  green: '#2D6A4F', teal: '#2A9D8F', blue: '#1F4E99', navy: '#1F3A5F', purple: '#6B2D5C', lilac: '#B8A1D9', brown: '#6F4E37',
+  cream: '#F2E8D5', white: '#F4F1EA', grey: '#8D99AE', gray: '#8D99AE', black: '#14141A',
+};
+
+const rotate = <T>(xs: readonly T[], k: number): T[] => (xs.length ? [...xs.slice(k % xs.length), ...xs.slice(0, k % xs.length)] : []);
+
+/** The look profile; a regenerate rotates the wardrobe and settings and shifts the hue, and the Owner's steer is folded in. */
+export function fakeLookProfile(concept: ConceptOption, character: CharacterProfile | null, steer: Steer = {}): LookProfile {
   const a = archetypeFor(concept);
-  return {
+  const g = Math.max(0, (steer.generation ?? 1) - 1);
+  const ask = steer.instruction?.trim().slice(0, 200) ?? '';
+  const profile: LookProfile = {
     anchors: a.anchors.slice(0, 3),
-    wardrobe: [...a.wardrobe],
+    wardrobe: rotate(a.wardrobe, g),
     palette: a.palette.map((p) => ({ ...p })),
-    settings: a.settings.slice(0, 3),
+    settings: rotate(a.settings, g).slice(0, 3),
     stylisation: 'Photoreal with deliberate imperfection (soft skin texture, real wrinkles, natural light); never glossy',
     framing: `Chest-up, front-facing, eye level; one speaker; ${character?.age ?? concept.age} years old, looks it`,
-    hue: a.hue,
+    hue: (a.hue + g * 17) % 360,
   };
+  if (ask) {
+    const colour = Object.keys(COLOURS).find((c) => new RegExp(`\\b${c}\\b`, 'i').test(ask));
+    if (colour) {
+      profile.palette = [{ name: `Owner ${colour}`, hex: COLOURS[colour]! }, ...profile.palette.filter((p) => p.hex !== COLOURS[colour]).slice(0, 3)];
+      if (/\b(?:wardrobe|clothes|outfits?|wear(?:s|ing)?|dress(?:es|ed)?|suits?|jackets?)\b/i.test(ask)) profile.wardrobe = profile.wardrobe.map((w) => `${w}, all in ${colour}`);
+    }
+    profile.stylisation = `${profile.stylisation}. Owner's steer: ${ask}`;
+  }
+  return profile;
 }
 
 /** The prompt for one character-sheet variant (never asks to pass as a real person). */
@@ -237,15 +364,16 @@ export function sheetPrompt(name: string, age: number, look: LookProfile, i: num
   return `Character sheet of ${name}, a fictional ${age}-year-old AI character: front, three-quarter and profile views plus two expressions. ${look.anchors.join(', ')}. Wearing ${wardrobe}. Background: ${setting}. ${look.stylisation}. Palette ${look.palette.map((p) => p.name).join(', ')}. One person only, no text, no logos, no celebrity likeness.`;
 }
 
-export function placeholderLook(concept: ConceptOption, character: CharacterProfile | null): LookStep {
-  const profile = fakeLookProfile(concept, character);
+export function placeholderLook(concept: ConceptOption, character: CharacterProfile | null, steer: Steer = {}, profileIn?: LookProfile): LookStep {
+  const profile = profileIn ?? fakeLookProfile(concept, character, steer);
   const name = character?.name ?? concept.name;
   const age = character?.age ?? concept.age;
+  const g = Math.max(0, (steer.generation ?? 1) - 1);
   const variants = [0, 1, 2].map((i) => ({
     id: LETTERS[i]!,
     label: `Sheet ${LETTERS[i]}: ${profile.wardrobe[i % profile.wardrobe.length]}`,
     prompt: sheetPrompt(name, age, profile, i),
-    url: portraitUri(name, (profile.hue + i * 24) % 360, { variant: i, label: profile.wardrobe[i % profile.wardrobe.length] }),
+    url: portraitUri(name, (profile.hue + i * 24) % 360, { variant: i + g * 3, label: profile.wardrobe[i % profile.wardrobe.length] }),
     provider: 'placeholder' as const,
   }));
   return { profile, variants, chosenVariant: null, check: null };
@@ -258,13 +386,28 @@ const labelOf = (alt: string) => {
   return w.charAt(0).toUpperCase() + w.slice(1);
 };
 
-export function voiceBriefs(concept: ConceptOption): Array<{ id: string; label: string; description: string }> {
+const VOICE_TWISTS = ['', 'a touch slower', 'a little brighter', 'closer to the mic', 'a shade lower', 'more breath between lines'];
+
+export interface VoiceBrief {
+  id: string;
+  label: string;
+  description: string;
+}
+
+/** Three voice briefs: the concept's voice line and two variations; a regenerate varies them, the Owner's steer is folded in. */
+export function voiceBriefs(concept: ConceptOption, steer: Steer = {}): VoiceBrief[] {
   const a = archetypeFor(concept);
+  const g = Math.max(0, (steer.generation ?? 1) - 1);
+  const ask = steer.instruction?.trim().slice(0, 200) ?? '';
   const who = `${concept.pronoun === 'she' ? 'woman' : 'man'} in ${concept.pronoun === 'she' ? 'her' : 'his'} ${Math.floor(concept.age / 10) * 10}s`;
+  const alts = g % 2 ? [a.voiceAlts[1], a.voiceAlts[0]] : [a.voiceAlts[0], a.voiceAlts[1]];
+  const twist = (i: number) => VOICE_TWISTS[(g * 3 + i) % VOICE_TWISTS.length]!;
+  const line = (base: string, i: number) => [base, twist(i), ask ? `steered: ${ask}` : ''].filter(Boolean).join('; ');
+  const tail = 'Synthetic voice, never a clone of a real person.';
   return [
-    { id: 'A', label: 'Signature', description: `A ${who}: ${concept.voiceLine || a.voice}. Synthetic voice, never a clone of a real person.` },
-    { id: 'B', label: labelOf(a.voiceAlts[0]), description: `A ${who}: ${a.voiceAlts[0]}. Synthetic voice, never a clone of a real person.` },
-    { id: 'C', label: labelOf(a.voiceAlts[1]), description: `A ${who}: ${a.voiceAlts[1]}. Synthetic voice, never a clone of a real person.` },
+    { id: 'A', label: ask ? 'Steered' : 'Signature', description: `A ${who}: ${line(concept.voiceLine || a.voice, 0)}. ${tail}` },
+    { id: 'B', label: labelOf(alts[0]), description: `A ${who}: ${line(alts[0], 1)}. ${tail}` },
+    { id: 'C', label: labelOf(alts[1]), description: `A ${who}: ${line(alts[1], 2)}. ${tail}` },
   ];
 }
 
@@ -287,7 +430,7 @@ export function fakeContent(input: { draftId: string; generation: number; concep
       ...extra,
       ...mythHooks,
       `${first}'s rule for ${n.subNiche.split(' and ')[0]}.`,
-      `Why a ${a.role} has opinions about your ${n.object}.`,
+      `Why ${withArticle(a.role)} has opinions about your ${n.object}.`,
       `${a.ritual}, episode one.`,
       `Send me your ${n.object}. I'll rate it.`,
     ]),
