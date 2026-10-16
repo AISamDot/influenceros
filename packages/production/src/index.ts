@@ -1,16 +1,27 @@
-import { basicPromptCompiler, type JobHandlerMap, type ProviderEnv, type PromptCompiler, type ScheduledTask, type ServiceFactory, type ToolDef } from '@ios/agents';
+import type { JobHandlerMap, ProviderEnv, ScheduledTask, ToolDef } from '@ios/agents';
 import type { Providers } from '@ios/providers';
+import { tools as productionTools } from './tools';
 
 /**
- * @ios/production (IOS-5 stream K: production playbook (prompt compiler, character sheet, BOPA look pack, location lock, camera styles, niche filter, hook templates)).
- * Contract stub: stream K replaces these bodies and keeps the names and signatures. See docs/IOS-5-CONTRACTS.md.
+ * @ios/production (IOS-5 stream K): the production playbook (PRD §3.12 notes, §3.15 items 1–8, FR-4.3c's format
+ * library). The prompt compiler (five image blocks, five video blocks, grounding, accent, 2.5–3 wps, no captions),
+ * the 5-view character sheet + detail strip + identity stack + core refs, the BOPA look pack, the location lock and
+ * consistency chain, the realism camera styles, the niche filter and the hook templates. Pure prompts and the
+ * stream's tables live here; @ios/media runs the generations (it imports this package, never the reverse).
+ * See docs/IOS-5-CONTRACTS.md.
  */
+export * from './camera';
+export * from './compiler';
+export * from './location';
+export * from './niche';
+export * from './read';
+export * from './sheet';
+export * from './store';
+export { PRODUCTION_JOB } from './tools';
 
-/** The PromptCompiler @ios/wiring puts on StudioServices (docs/IOS-5-CONTRACTS.md §5). Stub: the @ios/agents default. */
-export const createPromptCompiler: ServiceFactory<PromptCompiler> = (base) => basicPromptCompiler(base);
-
-// StudioModule exports, composed by @ios/wiring.
-export const tools: ReadonlyArray<ToolDef<any, any>> = [];
+// StudioModule exports, composed by @ios/wiring. The generation jobs (`look.build`, `production.lock_locations`) are
+// registered by @ios/media, which owns the Higgsfield spend.
+export const tools: ReadonlyArray<ToolDef<any, any>> = productionTools;
 export const jobs: JobHandlerMap = {};
 export const schedules: readonly ScheduledTask[] = [];
 export function liveProviders(_env: ProviderEnv): Partial<Providers> {

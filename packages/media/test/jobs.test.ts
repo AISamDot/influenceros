@@ -55,7 +55,7 @@ describe('re-render, sweep and schedules', () => {
   it('schedules only enqueue: weekly cost probe, daily persona prep (Soul ID, voice, look pack)', async () => {
     const f = await mediaFixture();
     const byName = Object.fromEntries(schedules.map((s) => [s.name, s]));
-    expect(Object.keys(byName).sort()).toEqual(['media.cost_probe', 'media.prepare_personas', 'media.sweep']);
+    expect(Object.keys(byName).sort()).toEqual(['media.cost_probe', 'media.prepare_personas', 'media.sweep', 'production.prepare']);
     expect(byName['media.cost_probe']!.due(NOW, new Date(NOW.getTime() - 86_400_000))).toBe(false);
     expect(await byName['media.cost_probe']!.run(f.services, NOW)).toEqual({ enqueued: true });
     expect(await byName['media.cost_probe']!.run(f.services, NOW)).toEqual({ enqueued: false });

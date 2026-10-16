@@ -16,6 +16,7 @@
     "@ios/core": "workspace:*",
     "@ios/db": "workspace:*",
     "@ios/media": "workspace:*",
+    "@ios/production": "workspace:*",
     "@ios/providers": "workspace:*"
   }
 }

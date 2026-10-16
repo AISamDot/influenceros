@@ -40,7 +40,8 @@ export function gradeFromKit(kit: Pick<PersonaKit, 'colors'>): ColorGrade {
   return { brightness: 0.01, contrast: 1.06, saturation: warmBg ? 1.04 : 1.0, gamma: 1, rm: shift(r), gm: shift(g), bm: shift(b), accent: kit.colors.accent };
 }
 
-export type TextStyle = 'caption' | 'headline' | 'cta';
+/** (IOS-5) 'sticker': a viewer comment on a white sticker (reply posts); 'note': the centred text of a note card. */
+export type TextStyle = 'caption' | 'headline' | 'cta' | 'sticker' | 'note';
 
 /** A burned-in text block at a fixed place on the frame. */
 export interface TextBox {
@@ -76,6 +77,11 @@ export interface VideoComposition {
   readonly segments: readonly Segment[];
   readonly audio: { readonly file: string } | null;
   readonly texts: readonly TextBox[];
+  /**
+   * (IOS-5) Picture-in-picture: a second track (the persona's talking clips) scaled into `box` over the main track
+   * (screen slides or a News Desk card). Segments are timed on the same timeline.
+   */
+  readonly pip?: { readonly segments: readonly Segment[]; readonly box: { readonly x: number; readonly y: number; readonly w: number; readonly h: number } } | null;
   readonly grade: ColorGrade;
   readonly sharpen: boolean;
   /** 'single' at render; Q4's re-normalise fix runs the two-pass `normalizeAudio`. */
@@ -89,7 +95,10 @@ export interface CardSpec {
   readonly height: number;
   readonly background: string | null;
   readonly colors: { readonly bg: string; readonly ink: string; readonly accent: string };
-  readonly layout: 'static' | 'cover' | 'slide' | 'cta';
+  /** (IOS-5) 'note' text card, 'meme' (band above a photo), 'news' (News Desk card), 'screen' (slide backdrop), 'photo' (photo-dump still). */
+  readonly layout: 'static' | 'cover' | 'slide' | 'cta' | 'note' | 'meme' | 'news' | 'screen' | 'photo';
+  /** (IOS-5) A label the layout draws (the News Desk banner). Never a real outlet's name. */
+  readonly banner?: string;
   readonly title: string;
   readonly body?: string;
   readonly footer?: string;
@@ -152,7 +161,7 @@ const CHAR_W = 0.56;
 
 /** Box for a text block: centred horizontally inside the safe zone, wrapped to the safe width. */
 export function textBox(text: string, style: TextStyle, frame: { width: number; height: number }, scale = 1): TextBox['box'] & { fontSize: number } {
-  const base = style === 'caption' ? 62 : style === 'headline' ? 74 : 58;
+  const base = style === 'caption' ? 62 : style === 'headline' ? 74 : style === 'sticker' ? 46 : style === 'note' ? 64 : 58;
   const fontSize = Math.round(base * scale * (frame.width / EXPORT.video.width));
   const sx = (frame.width / EXPORT.video.width) * SAFE_ZONE.left;
   const safeW = frame.width - sx - (frame.width / EXPORT.video.width) * SAFE_ZONE.right;
@@ -162,8 +171,10 @@ export function textBox(text: string, style: TextStyle, frame: { width: number; 
   const h = Math.ceil(lines * fontSize * 1.25 + fontSize * 0.6);
   const scaleY = frame.height / EXPORT.video.height;
   const y =
-    style === 'headline'
+    style === 'headline' || style === 'sticker'
       ? Math.round(SAFE_ZONE.top * scaleY + 30 * scaleY)
+      : style === 'note'
+        ? Math.round(frame.height * 0.45 - h / 2)
       : style === 'cta'
         ? Math.round(frame.height - SAFE_ZONE.bottom * scaleY - h - 20 * scaleY)
         : Math.round(frame.height * 0.6 - h / 2);
@@ -253,10 +264,13 @@ export function splitSpeech(text: string, durationS: number, maxS: number): Arra
     out.push({ text: g.join(' '), startS: round2(t), endS: round2(Math.min(durationS, t + d)) });
     t += d;
   }
-  // A single long sentence can still exceed the cap: cut evenly by time instead.
+  // A single long sentence can still exceed the cap: cut evenly by time instead, each part carrying its share of the
+  // words (every talking prompt states its line, accent and pace).
   if (out.some((p) => p.endS - p.startS > maxS + 0.01)) {
     const d = durationS / parts;
-    return Array.from({ length: parts }, (_, i) => ({ text: i === 0 ? text : '', startS: round2(i * d), endS: round2(Math.min(durationS, (i + 1) * d)) }));
+    const all = text.split(/\s+/).filter(Boolean);
+    const per = Math.ceil(all.length / parts);
+    return Array.from({ length: parts }, (_, i) => ({ text: all.slice(i * per, (i + 1) * per).join(' '), startS: round2(i * d), endS: round2(Math.min(durationS, (i + 1) * d)) }));
   }
   return out;
 }

@@ -202,7 +202,11 @@ First-person story hooks are welcome ("My date stood me up tonight.", "Day 12 of
 Self-score each 0–100 for stopping the scroll with this audience.`,
     cached: args.ctx.cached,
     skills: ['hook-lab'],
-    prompt: `Idea: ${args.title}\nPillar: ${args.pillar ?? 'n/a'}\nFormat: ${args.format}\nPurpose: ${args.purpose}${
+    prompt: `Idea: ${args.title}\nPillar: ${args.pillar ?? 'n/a'}\nFormat: ${args.format}\nPurpose: ${args.purpose}
+Hook templates that work for this format (patterns for inspiration; never copy a line): ${templatesFor(args.format)
+      .slice(0, 5)
+      .map((t) => `${t.name} ("${t.pattern}")`)
+      .join('; ')}${
       args.recent?.length ? `\nRecent hooks to avoid repeating:\n- ${args.recent.slice(0, 10).join('\n- ')}` : ''
     }`,
     maxTokens: 3000,
@@ -214,4 +218,65 @@ Self-score each 0–100 for stopping the scroll with this audience.`,
   const hooks = res.output.hooks.map((h) => scoreHook(h, ctx, args.recent, args.recentTypes));
   const { shipped, variants } = selectHooks(hooks);
   return { hooks: [...hooks].sort((a, b) => b.score - a.score), shipped, variants, runId: res.runId };
+}
+
+// ───────────────────────────── Hook-template library (IOS-5 stream K; PRD §3.15.6–7) ─────────────────────────────
+
+/**
+ * A hook pattern from the production playbook (seeded from the Licbe AI Media resources as inspiration, never copied
+ * lines). `{slots}` are filled from the idea; the hook-lab shows the patterns to the Scriptwriter, the Persona
+ * Generator's niche filter asks whether a niche can feed them, and `hook_template` (migration 0019) mirrors them.
+ */
+export interface HookTemplate {
+  readonly id: string;
+  readonly name: string;
+  readonly type: HookType;
+  readonly pattern: string;
+  readonly example: string;
+  readonly formats: readonly PostFormat[];
+}
+
+export const HOOK_TEMPLATES: readonly HookTemplate[] = [
+  { id: 'three_mistakes', name: '3 mistakes', type: 'mistake', pattern: '3 mistakes {audience} make with {topic}', example: '3 mistakes everyone makes with their first budget', formats: ['talking', 'carousel', 'activity_text'] },
+  { id: 'do_this_instead', name: 'Do this instead', type: 'mistake', pattern: 'Stop {bad habit}. Do this instead.', example: "Stop saving what's left. Do this instead.", formats: ['talking', 'activity_text', 'static'] },
+  { id: 'myth_vs_fact', name: 'Myth vs fact', type: 'myth_bust', pattern: 'Myth: {belief}. Fact: {truth}.', example: 'Myth: you need a big salary to save. Fact: you need a system.', formats: ['carousel', 'talking', 'text_note'] },
+  { id: 'ranking', name: 'Ranking', type: 'number', pattern: 'Ranking {n} {things} from worst to best', example: 'Ranking 5 ways to save from worst to best', formats: ['talking', 'carousel', 'facecam_screen'] },
+  { id: 'story_hook', name: 'Story hook', type: 'story', pattern: 'The day {small moment} changed how I {verb}', example: 'The day my card got declined changed how I shop', formats: ['voiceover', 'talking', 'photo_dump'] },
+  { id: 'pov', name: 'POV', type: 'pov', pattern: 'POV: you finally {win}', example: 'POV: you finally stopped dreading payday', formats: ['activity_text', 'meme', 'static'] },
+  { id: 'quiz', name: 'Quiz', type: 'question', pattern: 'Can you guess {question}?', example: 'Can you guess where most of your money goes?', formats: ['carousel', 'talking', 'reply_comment'] },
+  { id: 'beginner_guide', name: 'Beginner guide', type: 'how_to', pattern: "The beginner's guide to {topic} in {n} steps", example: "The beginner's guide to saving in 3 steps", formats: ['carousel', 'facecam_screen', 'talking'] },
+  { id: 'reaction', name: 'Reaction', type: 'contrarian', pattern: 'My honest reaction to {thing everyone is sharing}', example: 'My honest reaction to the "no-spend" trend', formats: ['news_greenscreen', 'reply_comment', 'talking'] },
+  { id: 'triple_hook', name: 'Triple hook', type: 'curiosity_gap', pattern: "{demo 1}. {demo 2}. {demo 3}. Here's how.", example: "Coffee: £2. Lunch: £8. Taxi: £14. Here's the fix.", formats: ['activity_text', 'talking'] },
+  { id: 'reply_to_comment', name: 'Reply to a comment', type: 'callout', pattern: "Someone asked {question}. Here's my answer.", example: "Someone asked how to start with no savings. Here's my answer.", formats: ['reply_comment', 'talking'] },
+  { id: 'relatable', name: 'Relatable', type: 'pov', pattern: 'Me pretending {situation} is fine', example: "Me pretending my bank app isn't open on purpose", formats: ['meme', 'text_note', 'static'] },
+];
+
+/** The templates that suit a format (its own first, then the rest of the library). */
+export function templatesFor(format: PostFormat): HookTemplate[] {
+  const own = HOOK_TEMPLATES.filter((t) => t.formats.includes(format));
+  return [...own, ...HOOK_TEMPLATES.filter((t) => !own.includes(t))];
+}
+
+/** Fills a template's `{slots}` for a topic (deterministic; the model writes the real hook). */
+export function fillTemplate(t: HookTemplate, topic: string, o: { audience?: string; n?: number } = {}): string {
+  const tp = lowerFirst(topic.replace(/[.!?]+$/, '').trim()) || 'this';
+  const fills: Record<string, string> = {
+    topic: tp,
+    audience: o.audience || 'most people',
+    n: String(o.n ?? 3),
+    things: `${tp} habits`,
+    'bad habit': `doing ${tp} the hard way`,
+    belief: `${tp} is complicated`,
+    truth: 'it takes one small system',
+    'small moment': `I got ${tp} wrong`,
+    verb: 'do it now',
+    win: `get ${tp}`,
+    question: `what most people get wrong about ${tp}`,
+    'thing everyone is sharing': `the ${tp} advice everyone is sharing`,
+    'demo 1': 'Step one',
+    'demo 2': 'step two',
+    'demo 3': 'done',
+    situation: tp,
+  };
+  return upperFirst(t.pattern.replace(/\{([^}]+)\}/g, (_m, k: string) => fills[k] ?? k));
 }

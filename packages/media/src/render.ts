@@ -1,7 +1,21 @@
 import { join } from 'node:path';
-import { enqueueOnceFor, loadPersonaKit, type MediaRenderPayload, PUBLISH_PREPARE_JOB, type PublishPreparePayload, type QcCheck, type RenderedMedia, type StudioServices } from '@ios/agents';
-import { loadPersonaContext, type PersonaContext, saveQcReport, voiceCheck } from '@ios/content';
-import { BudgetExceededError, DeferJob, notify, type PostFormat, propose } from '@ios/core';
+import {
+  type CameraStyle,
+  CLIP_MAX_S,
+  type CompiledPrompt,
+  enqueueOnceFor,
+  type Grounding,
+  loadPersonaKit,
+  type MediaRenderPayload,
+  PUBLISH_PREPARE_JOB,
+  type PublishPreparePayload,
+  type QcCheck,
+  type RenderedMedia,
+  type StudioServices,
+} from '@ios/agents';
+import { anonymiseHandle, gateRules, loadPersonaContext, newsDeskHeadline, type PersonaContext, sanitizeOverlay, saveQcReport, voiceCheck } from '@ios/content';
+import { BudgetExceededError, DeferJob, notify, type PostFormat, propose, TEXT_LOOP_FORMATS } from '@ios/core';
+import { cameraStylesFor, chainFrame, checkVideoPrompt, locationLocks, pickCamera, recentCameras, recordFrame, recordSlotProduction, setFrameStatus } from '@ios/production';
 import { json } from '@ios/db';
 import {
   ACTIVITY_LOOP_S,
@@ -11,11 +25,16 @@ import {
   ELEVENLABS_USD_PER_CHAR,
   EXPORT,
   FAL_AVATAR_USD_PER_S,
+  FORMAT_SPEC,
+  formatFrame,
   GEN_RESOLUTION,
   higgsfieldTtsCredits,
   MAX_MEDIA_FIX_LOOPS,
   mediaModels,
-  TALK_CLIP_MAX_S,
+  NEWS_DESK_LABEL,
+  PIP_BOX,
+  RENDER_CLIP_MAX_S,
+  TALKING_SHAPED,
 } from './config';
 import { type MediaDeps, mediaDeps, talkingProvider } from './deps';
 import { extFor, localOf, materialize, storeAsset, workDir } from './files';
@@ -33,7 +52,17 @@ import { captionCues, type CardSpec, placeText, round2, type Segment, splitSpeec
  * pays for the same generation twice. A governor refusal defers the job 6 h; the slot shows what it waits for.
  */
 
-export const SPOKEN_FORMATS: readonly PostFormat[] = ['talking', 'voiceover'];
+/** Formats with a voice track (IOS-5 adds the talking-shaped library formats). */
+export const SPOKEN_FORMATS: readonly PostFormat[] = ['talking', 'voiceover', 'facecam_screen', 'reply_comment', 'news_greenscreen'];
+/** Photo-dump shots: who/what each still shows and the camera style it is shot in (casual camera roll). */
+const DUMP_SHOTS: ReadonlyArray<{ shot: string; soul: boolean; camera: CameraStyle }> = [
+  { shot: 'an unposed moment from the week', soul: true, camera: 'selfie' },
+  { shot: 'a mirror shot on the way out', soul: true, camera: 'mirror' },
+  { shot: 'a small detail from the day: a coffee, a desk, the view', soul: false, camera: 'handheld' },
+  { shot: 'a candid moment, laughing at something off camera', soul: true, camera: 'propped_phone' },
+  { shot: 'an over-the-shoulder look at what she is doing', soul: true, camera: 'over_shoulder' },
+  { shot: 'a quiet corner of the place at golden hour', soul: false, camera: 'handheld' },
+];
 const MEDIA_STATUSES = ['media_queued', 'voice', 'q2', 'rendering', 'render', 'q3', 'q4', 'qc'];
 const DONE_STATUSES = ['final_gate', 'scheduled', 'live'];
 
@@ -45,6 +74,27 @@ interface GenItem {
   assetId: string;
   credits: number;
   usd: number;
+  /** (IOS-5) The compiled prompt, its camera style and the references it carried. */
+  prompt?: string;
+  camera?: string | null;
+  refs?: number;
+  /** production_frame row (persona stills: the consistency chain). */
+  frameId?: string | null;
+}
+
+interface PlanItem {
+  key: string;
+  op: 'still' | 'clip' | 'talk';
+  from?: string;
+  durationS?: number;
+  aspect?: '9:16' | '4:5' | '1:1';
+  shot?: string;
+  talkIndex?: number;
+  useSoul?: boolean;
+  /** (IOS-5) An earlier still in this post the still is chained from (same place, same light). */
+  chainFrom?: string;
+  /** (IOS-5) A per-shot camera style (photo dumps vary it); else the slot's. */
+  camera?: CameraStyle;
 }
 
 interface RenderState {
@@ -52,9 +102,24 @@ interface RenderState {
   gen?: Record<string, GenItem>;
   talk?: Array<{ ref: string; text: string; startS: number; endS: number }>;
   q3ReportId?: string;
-  final?: { kind: 'video' | 'image' | 'carousel'; assetIds: string[]; keys: string[]; texts: TextBox[]; slideTexts?: TextBox[][]; durationS: number | null; segments: Array<{ ref?: string; startS: number; durationS: number }> };
+  final?: {
+    kind: 'video' | 'image' | 'carousel';
+    assetIds: string[];
+    keys: string[];
+    texts: TextBox[];
+    slideTexts?: TextBox[][];
+    durationS: number | null;
+    segments: Array<{ ref?: string; startS: number; durationS: number }>;
+    /** (IOS-5) The persona box (facecam / green-screen) and the text a card layout draws (the News Desk label). */
+    pip?: { x: number; y: number; w: number; h: number } | null;
+    chrome?: string[];
+  };
   textScale?: number;
   version?: number;
+  /** (IOS-5) What production chose for this slot (also in calendar_slot.meta.production). */
+  production?: { camera: CameraStyle; location: string | null; wardrobe: string | null; locked: boolean; chain: string[]; chainFrame: { id: string; url: string } | null };
+  /** (IOS-5) The reply sticker's comment and the News Desk headline, fixed on first use so retries match. */
+  overlay?: { comment?: string; commentSource?: string; headline?: string };
 }
 
 interface RenderRow {
@@ -97,8 +162,8 @@ const failing = (checks: readonly QcCheck[]) =>
 export async function renderSlot(services: StudioServices, payload: MediaRenderPayload, opts: { heartbeat?: () => Promise<boolean>; deps?: MediaDeps } = {}): Promise<RenderOutcome> {
   const { db } = services;
   const slotId = payload.slotId;
-  const slot = await db.maybeOne<{ id: string; persona_id: string; status: string; title: string; script_id: string | null; block_reason: string | null }>(
-    'SELECT id, persona_id, status, title, script_id, block_reason FROM calendar_slot WHERE id = $1',
+  const slot = await db.maybeOne<{ id: string; persona_id: string; status: string; title: string; script_id: string | null; block_reason: string | null; slot_at: Date; meta: Record<string, unknown> | null }>(
+    'SELECT id, persona_id, status, title, script_id, block_reason, slot_at, meta FROM calendar_slot WHERE id = $1',
     [slotId],
   );
   if (!slot) return { slotId, status: 'unchanged', reason: 'slot not found' };
@@ -138,7 +203,7 @@ export async function renderSlot(services: StudioServices, payload: MediaRenderP
       [slotId, payload.scriptId, payload.format],
     );
   }
-  const r = new Render(services, deps, payload, scope, mr, slot.title, opts.heartbeat);
+  const r = new Render(services, deps, payload, scope, mr, slot.title, opts.heartbeat, { at: slot.slot_at, meta: slot.meta ?? {} });
   try {
     const out = await r.run();
     await db.query('UPDATE media_render SET waiting = NULL WHERE slot_id = $1', [slotId]);
@@ -213,6 +278,7 @@ class Render {
     readonly row: RenderRow,
     readonly title: string,
     readonly heartbeat?: () => Promise<boolean>,
+    readonly slot: { at: Date; meta: Record<string, unknown> } = { at: new Date(0), meta: {} },
   ) {
     this.state = row.state ?? {};
     this.row.loops = row.loops ?? {};
@@ -347,35 +413,55 @@ class Render {
   // ───────────────────────────── generations ─────────────────────────────
 
   /** What this format needs from Higgsfield (keys in state.gen). */
-  private plan(): Array<{ key: string; op: 'still' | 'clip' | 'talk'; from?: string; durationS?: number; aspect?: '9:16' | '4:5'; shot?: string; talkIndex?: number; useSoul?: boolean }> {
+  private plan(): PlanItem[] {
     const f = this.p.format;
-    if (f === 'talking') {
+    if (TALKING_SHAPED.includes(f)) {
       const parts = this.talkParts();
-      return [
-        { key: 'still:look', op: 'still', useSoul: true, shot: 'talking' },
+      const items: PlanItem[] = [
+        { key: 'still:look', op: 'still', useSoul: true, shot: f === 'talking' || f === 'reply_comment' ? 'talking' : 'talking_plain' },
         ...parts.map((_, i) => ({ key: `talk:${i}`, op: 'talk' as const, from: 'still:look', talkIndex: i })),
-        { key: 'still:broll', op: 'still', useSoul: false, shot: 'cutaway detail' },
-        { key: 'clip:broll', op: 'clip', from: 'still:broll', durationS: CLIP_SECONDS },
       ];
+      // Full-frame talking reels cut to a B-roll detail once; facecam and green-screen keep the persona in a box.
+      if (f === 'talking' || f === 'reply_comment') items.push({ key: 'still:broll', op: 'still', useSoul: false, shot: 'cutaway detail' }, { key: 'clip:broll', op: 'clip', from: 'still:broll', durationS: CLIP_SECONDS });
+      return items;
     }
-    if (f === 'activity_text') return [{ key: 'still:0', op: 'still', useSoul: true, shot: 'activity' }, { key: 'clip:0', op: 'clip', from: 'still:0', durationS: 10 }];
+    if (TEXT_LOOP_FORMATS.includes(f)) return [{ key: 'still:0', op: 'still', useSoul: true, shot: 'activity' }, { key: 'clip:0', op: 'clip', from: 'still:0', durationS: CLIP_MAX_S }];
     if (f === 'voiceover') {
       const each = this.state.voice!.durationS / 3;
-      const d = each <= CLIP_SECONDS ? CLIP_SECONDS : 10;
+      const d = each <= CLIP_SECONDS ? CLIP_SECONDS : CLIP_MAX_S;
       const shots = ['wide establishing shot', 'close-up of hands and objects', 'medium shot'];
       return shots.flatMap((shot, i) => [
-        { key: `still:${i}`, op: 'still' as const, useSoul: i !== 1, shot },
+        // The third shot is chained from the first: same place, same light, same outfit.
+        { key: `still:${i}`, op: 'still' as const, useSoul: i !== 1, shot, ...(i === 2 ? { chainFrom: 'still:0' } : {}) },
         { key: `clip:${i}`, op: 'clip' as const, from: `still:${i}`, durationS: d },
       ]);
     }
     if (f === 'static') return [{ key: 'still:0', op: 'still', useSoul: true, shot: 'hero' }];
+    if (f === 'meme') return [{ key: 'still:0', op: 'still', useSoul: true, shot: 'reaction', aspect: '4:5' }];
+    // A note card is typeset: nothing to generate.
+    if (f === 'text_note') return [];
+    if (f === 'photo_dump') {
+      return Array.from({ length: this.dumpCaptions().length }, (_, i) => {
+        const d = DUMP_SHOTS[i % DUMP_SHOTS.length]!;
+        const first = DUMP_SHOTS.findIndex((x) => x.soul);
+        return { key: `still:${i}`, op: 'still' as const, useSoul: d.soul, shot: d.shot, aspect: '4:5' as const, camera: d.camera, ...(d.soul && i > first ? { chainFrom: `still:${first}` } : {}) };
+      });
+    }
     return [{ key: 'still:cover', op: 'still', useSoul: false, aspect: '4:5', shot: 'cover' }];
+  }
+
+  /** Photo-dump captions (the payload's on-screen lines: the hook, then one per photo), 5–10 of them. */
+  private dumpCaptions(): string[] {
+    const lines = (this.p.onScreenText.length ? this.p.onScreenText : (this.p.carousel ?? []).map((c) => c.title)).map((x) => x.trim()).filter(Boolean);
+    const out = lines.slice(0, 10);
+    while (out.length < 5) out.push(out.length ? '' : this.title);
+    return out;
   }
 
   private talkParts() {
     if (!this.state.talk) {
       const d = this.state.voice!.durationS;
-      this.state.talk = splitSpeech(this.p.voiceover!, d, TALK_CLIP_MAX_S).map((x, i) => ({ ref: `talk:${i}`, ...x }));
+      this.state.talk = splitSpeech(this.p.voiceover!, d, RENDER_CLIP_MAX_S).map((x, i) => ({ ref: `talk:${i}`, ...x }));
     }
     return this.state.talk;
   }
@@ -384,52 +470,143 @@ class Render {
     return this.plan().every((i) => this.state.gen?.[i.key]);
   }
 
-  private prompt(shot: string, useSoul: boolean, ctx: PersonaContext): string {
+  /** What a still shows, in plain words (the compiler adds identity, wardrobe, place, camera and light). */
+  private scene(item: PlanItem, ctx: PersonaContext): string {
     const brief = this.p.visualBrief
       .replace(/[^.]*\bAI label\b[^.]*\.?/gi, '')
+      .replace(/[^.]*\b(?:no logos|no on-image text)[^.]*\.?/gi, '')
       .trim()
-      .slice(0, 600);
-    const setting = ctx.look.settings[(this.p.slotId.charCodeAt(0) + shot.length) % Math.max(1, ctx.look.settings.length)] ?? 'a bright, tidy room';
-    const outfit = ctx.look.outfits[this.p.slotId.charCodeAt(1) % Math.max(1, ctx.look.outfits.length)] ?? 'smart casual clothes';
-    const style = ctx.look.stylisation || 'photoreal, soft natural light';
-    if (shot === 'talking') return `${ctx.persona.name} in ${setting}, wearing ${outfit}, ${ctx.look.framing || 'chest-up'}, looking at the camera, relaxed and about to speak. ${style}. One person only, no text, no logos.`;
-    if (shot === 'cover') return `${brief}. Clean editorial flat-lay or scene for a ${ctx.persona.niche} carousel cover, generous empty space at the top for a headline, ${style}. No text, no logos.`;
-    const who = useSoul ? `${ctx.persona.name} in ${setting}, wearing ${outfit}` : `${setting}, no people`;
-    return `${shot}: ${brief}. ${who}. ${style}. Props in the scene from the first frame. No readable text, no logos, no watermarks.`;
+      .slice(0, 300);
+    switch (item.shot) {
+      case 'talking':
+        return `${ctx.look.framing || 'chest-up'}, looking at the camera, relaxed and about to speak`;
+      case 'talking_plain':
+        return 'head and shoulders against a plain wall, looking at the camera, relaxed and about to speak';
+      case 'cover':
+        return `${brief}. A clean scene for a ${ctx.persona.niche} carousel cover, generous empty space at the top, no people`;
+      case 'cutaway detail':
+        return `a cutaway detail for: ${brief}. Props in the scene, no people`;
+      case 'reaction':
+        return `an expressive, relatable reaction, looking straight at the camera, about: ${this.title}`;
+      default:
+        return `${item.shot}: ${brief}.${item.useSoul ? ' Props in the scene from the first frame' : ' No people'}`;
+    }
+  }
+
+  /** The persona's local moment when the post goes out (stream J); null without a World Bible. */
+  private groundingCache: Grounding | null | undefined;
+  private async grounding(): Promise<Grounding | null> {
+    if (this.groundingCache === undefined) this.groundingCache = await this.services.world.grounding(this.p.personaId, this.slot.at).catch(() => null);
+    return this.groundingCache ?? null;
+  }
+
+  /** Mood descriptors from the persona's inspiration board: text only, never an image reference. */
+  private moodCache: string[] | undefined;
+  private async mood(): Promise<string[]> {
+    if (!this.moodCache) this.moodCache = (await this.services.world.moodBoard({ personaId: this.p.personaId }).catch(() => ({ descriptors: [] as string[] }))).descriptors.slice(0, 6);
+    return this.moodCache;
+  }
+
+  /**
+   * The slot's production choices, made once and recorded (calendar_slot.meta.production): the camera style from the
+   * persona's rotation, the place (a locked location when there is one), the outfit, and the newest approved frame at
+   * that place to chain from.
+   */
+  private async production(): Promise<NonNullable<RenderState['production']>> {
+    if (this.state.production) return this.state.production;
+    const { db } = this.services;
+    const ctx = await this.context();
+    const seed = this.p.slotId;
+    const camera = pickCamera(cameraStylesFor(ctx.bible, this.p.personaId), { format: this.p.format, recent: await recentCameras(db, this.p.personaId), seed });
+    const locked = (await locationLocks(db, this.p.personaId)).filter((l) => l.status === 'locked');
+    const places = locked.length ? locked.map((l) => l.place) : ctx.look.settings;
+    const h = [...seed].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+    const location = places.length ? places[h % places.length]! : null;
+    const wardrobe = ctx.look.outfits.length ? ctx.look.outfits[seed.charCodeAt(1) % ctx.look.outfits.length]! : null;
+    const prev = await chainFrame(db, this.p.personaId, location, { excludeSlotId: this.p.slotId });
+    this.state.production = { camera, location, wardrobe, locked: locked.some((l) => l.place === location), chain: [], chainFrame: prev ? { id: prev.id, url: prev.url } : null };
+    await this.recordProduction();
+    return this.state.production;
+  }
+
+  private async recordProduction() {
+    const p = this.state.production!;
+    await recordSlotProduction(this.services.db, this.p.slotId, { camera: p.camera, location: p.location, chain: { from: [...new Set(p.chain)], locked: p.locked }, format: this.p.format, at: this.services.now().toISOString() });
   }
 
   private async generate() {
     await setSlot(this.services, this.p.slotId, 'rendering');
     await this.save('generate');
-    this.profile = await ensureProfile(this.services, this.deps, this.scope, { soul: this.p.format !== 'carousel', voice: this.spoken });
+    this.profile = await ensureProfile(this.services, this.deps, this.scope, { soul: this.p.format !== 'carousel' && this.p.format !== 'text_note', voice: this.spoken });
     const ctx = await this.context();
+    const prod = await this.production();
+    const grounding = await this.grounding();
+    const mood = await this.mood();
     const models = mediaModels();
     const hf = this.services.providers.imageVideo;
     const gen = (this.state.gen ??= {});
-    for (const item of this.plan()) {
+    const plan = this.plan();
+    for (const item of plan) {
       if (gen[item.key]) continue;
       await this.beat();
       const n = (this.state.version = (this.state.version ?? 0) + 1);
       if (item.op === 'still') {
         const useSoul = !!item.useSoul && !!this.profile!.soulId;
         const model = useSoul ? models.soul : models.still;
+        const camera = item.camera ?? prod.camera;
+        // Every still goes through the compiler: five blocks, grounding, the locked place, the camera style.
+        const compiled = await this.services.prompts.image({
+          personaId: this.p.personaId,
+          scene: this.scene(item, ctx),
+          wardrobe: item.useSoul ? prod.wardrobe : null,
+          location: prod.location,
+          camera,
+          grounding,
+          aspect: item.aspect ?? '9:16',
+          mood,
+        });
+        // The consistency chain: a still chained inside the post, else the newest approved frame at this place. Never a
+        // rejected frame (QC rejections retire the frame and redo every still chained from it).
+        const within = item.chainFrom ? gen[item.chainFrom] : undefined;
+        const chained = item.useSoul ? (within ? { id: within.frameId ?? null, url: within.url } : prod.chainFrame) : null;
+        const refs = [...new Set([...compiled.references, ...(chained ? [chained.url] : [])])];
         const r = await hfSpend(this.services, this.scope, { operation: 'still', model }, () =>
-          hf.generateStill({ soulId: useSoul ? this.profile!.soulId! : undefined, prompt: this.prompt(item.shot!, useSoul, ctx), aspect: item.aspect ?? '9:16', model, resolution: GEN_RESOLUTION }),
-        );
-        gen[item.key] = await this.keep(item.key, r.url, 'image', null, r.credits, 0, hf.name, n);
-      } else if (item.op === 'clip') {
-        const src = gen[item.from!]!;
-        const r = await hfSpend(this.services, this.scope, { operation: 'image_to_video', model: models.activity, durationS: item.durationS }, () =>
-          hf.imageToVideo({
-            imageUrl: src.url,
-            prompt: `Subtle, natural motion: ${this.p.visualBrief.slice(0, 300)}. Slow camera push-in. Keep the face, outfit and light exactly as in the start frame.`,
-            durationS: item.durationS!,
-            model: models.activity,
+          hf.generateStill({
+            soulId: useSoul ? this.profile!.soulId! : undefined,
+            prompt: compiled.text,
+            aspect: item.aspect ?? '9:16',
+            model,
             resolution: GEN_RESOLUTION,
-            aspect: '9:16',
+            ...(refs.length ? { referenceImageUrls: refs } : {}),
           }),
         );
-        gen[item.key] = await this.keep(item.key, r.url, 'video', r.durationS ?? item.durationS!, r.credits, 0, hf.name, n);
+        const kept = await this.keep(item.key, r.url, 'image', null, r.credits, 0, hf.name, n, compiled);
+        kept.camera = camera;
+        kept.refs = refs.length;
+        if (item.useSoul) {
+          kept.frameId = await recordFrame(this.services.db, { personaId: this.p.personaId, slotId: this.p.slotId, genKey: item.key, location: prod.location, camera, url: r.url, assetKey: kept.key, chainedFrom: chained?.id ?? null });
+          if (chained) prod.chain.push(chained.url);
+        }
+        gen[item.key] = kept;
+      } else if (item.op === 'clip') {
+        const src = gen[item.from!]!;
+        const srcItem = plan.find((x) => x.key === item.from);
+        const durationS = Math.min(item.durationS!, CLIP_MAX_S);
+        const compiled = await this.services.prompts.video({
+          personaId: this.p.personaId,
+          startFrameUrl: src.url,
+          startFrame: srcItem ? this.scene(srcItem, ctx) : 'the start frame',
+          action: `Subtle, natural motion that loops cleanly, matching: ${this.p.visualBrief.slice(0, 200)}`,
+          line: null,
+          camera: (src.camera as CameraStyle | undefined) ?? prod.camera,
+          durationS,
+          grounding,
+          location: prod.location,
+        });
+        const r = await hfSpend(this.services, this.scope, { operation: 'image_to_video', model: models.activity, durationS }, () =>
+          hf.imageToVideo({ imageUrl: src.url, prompt: compiled.text, durationS, model: models.activity, resolution: GEN_RESOLUTION, aspect: '9:16' }),
+        );
+        gen[item.key] = await this.keep(item.key, r.url, 'video', r.durationS ?? durationS, r.credits, 0, hf.name, n, compiled);
       } else {
         const part = this.talkParts()[item.talkIndex!]!;
         const voiceFile = await localOf(this.services, this.state.voice!.key);
@@ -438,19 +615,43 @@ class Render {
         const { url: audioUrl } = await hf.upload({ filePath: cut, contentType: 'audio/mpeg' });
         const talking = talkingProvider(this.services);
         const durationS = round2(part.endS - part.startS);
-        const req = { imageUrl: gen[item.from!]!.url, audioUrl, durationS, resolution: GEN_RESOLUTION, prompt: 'Talking to the camera, natural head movement and blinks, mouth matches the audio.' };
+        // The verbatim line, the accent and the pace go into the talking prompt (no timecodes, no captions).
+        const compiled = await this.services.prompts.video({
+          personaId: this.p.personaId,
+          startFrameUrl: gen[item.from!]!.url,
+          startFrame: 'the persona as in the start frame, about to speak',
+          action: 'Talking to the camera, natural head movement and blinks, mouth matches the audio.',
+          line: part.text || null,
+          camera: (gen[item.from!]!.camera as CameraStyle | undefined) ?? prod.camera,
+          durationS,
+          grounding,
+          location: prod.location,
+        });
+        const req = { imageUrl: gen[item.from!]!.url, audioUrl, durationS, resolution: GEN_RESOLUTION, prompt: compiled.text };
         const r =
           talking.name === 'higgsfield-seedance'
             ? await hfSpend(this.services, this.scope, { operation: 'talking_with_audio', model: models.talking, durationS }, () => talking.render(req))
             : await usdSpend(this.services, this.scope, { operation: 'talking', provider: talking.name, estimate: durationS * FAL_AVATAR_USD_PER_S * 1.2 }, () => talking.render(req));
-        gen[item.key] = await this.keep(item.key, r.url, 'video', r.durationS, r.credits, r.costUsd, talking.name, n);
+        gen[item.key] = await this.keep(item.key, r.url, 'video', r.durationS, r.credits, r.costUsd, talking.name, n, compiled, part.text);
       }
       delete this.state.final;
       await this.save();
     }
+    await this.recordProduction();
   }
 
-  private async keep(key: string, url: string, kind: 'image' | 'video', durationS: number | null, credits: number, usd: number, provider: string, n: number): Promise<GenItem> {
+  private async keep(
+    key: string,
+    url: string,
+    kind: 'image' | 'video',
+    durationS: number | null,
+    credits: number,
+    usd: number,
+    provider: string,
+    n: number,
+    compiled?: CompiledPrompt,
+    line?: string,
+  ): Promise<GenItem> {
     const ext = kind === 'video' ? '.mp4' : '.png';
     const safe = key.replace(/[^a-z0-9]+/gi, '-');
     const file = await materialize(this.services, this.deps.toolkit, url, join(this.dir, `${safe}-${n}${ext}`), { kind, durationS: durationS ?? undefined });
@@ -466,9 +667,19 @@ class Render {
       credits,
       usd,
       tools: [provider],
-      meta: { gen_key: key, duration_s: durationS, ...this.fakeMeta },
+      meta: {
+        gen_key: key,
+        duration_s: durationS,
+        ...(compiled
+          ? {
+              prompt: { text: compiled.text.slice(0, 4000), camera: compiled.camera, references: compiled.references.length, settings: compiled.settings, notes: compiled.notes },
+              ...(kind === 'video' ? { prompt_checks: checkVideoPrompt(compiled, { line }).filter((c) => !c.pass).map((c) => c.check) } : {}),
+            }
+          : {}),
+        ...this.fakeMeta,
+      },
     });
-    return { key: a.key, url, kind, durationS, assetId: a.id, credits, usd };
+    return { key: a.key, url, kind, durationS, assetId: a.id, credits, usd, ...(compiled ? { prompt: compiled.text.slice(0, 2000), camera: compiled.camera } : {}) };
   }
 
   // ───────────────────────────── Q3 ─────────────────────────────
@@ -478,7 +689,7 @@ class Render {
    * persona (Soul ID stills and the clips made from them). No-people cutaways and carousel covers are skipped.
    */
   private q3Targets(): Array<{ ref: string; kind: 'image' | 'video'; freezes: boolean }> {
-    if (this.p.format === 'talking') return this.talkParts().map((t) => ({ ref: t.ref, kind: 'video' as const, freezes: true }));
+    if (TALKING_SHAPED.includes(this.p.format)) return this.talkParts().map((t) => ({ ref: t.ref, kind: 'video' as const, freezes: true }));
     if (!this.profile?.soulId) return [];
     const plan = this.plan();
     const soul = new Set(plan.filter((i) => i.op === 'still' && i.useSoul).map((i) => i.key));
@@ -532,12 +743,16 @@ class Render {
     }
     if (this.loop('q3') >= MAX_MEDIA_FIX_LOOPS) throw new Blocked(`Q3 avatar failed after ${MAX_MEDIA_FIX_LOOPS} regenerations: ${failing(res.checks)}`, reportId);
     this.row.loops.q3 = this.loop('q3') + 1;
-    // A redone still also redoes the clips made from it.
+    // A redone still also redoes the clips made from it and every still chained from it (never chain from a rejected
+    // frame); the rejected frames leave the consistency chain.
     const plan = this.plan();
-    for (const ref of res.redo) {
-      delete this.state.gen![ref];
-      for (const i of plan) if (i.from === ref) delete this.state.gen![i.key];
+    const redo = new Set(res.redo);
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const i of plan) if (!redo.has(i.key) && ((i.from && redo.has(i.from)) || (i.chainFrom && redo.has(i.chainFrom)))) (redo.add(i.key), (grew = true));
     }
+    await setFrameStatus(this.services.db, this.p.slotId, 'rejected', [...redo].filter((k) => k.startsWith('still:')));
+    for (const ref of redo) delete this.state.gen![ref];
     await this.save();
   }
 
@@ -550,18 +765,36 @@ class Render {
     const grade = this.profile!.grade;
     const n = (this.state.version = (this.state.version ?? 0) + 1);
     const scale = this.state.textScale ?? 1;
-    const gen = this.state.gen!;
+    const gen = this.state.gen ?? {};
     const tools = [this.services.providers.imageVideo.name, this.deps.toolkit.name];
     const kw = this.p.ctaKeyword.toUpperCase();
     const f = this.p.format;
+    const kind = FORMAT_SPEC[f].kind;
 
-    if (f === 'static' || f === 'carousel') {
-      const frame = f === 'carousel' ? EXPORT.carousel : EXPORT.video;
+    if (kind !== 'video') {
+      const frame = formatFrame(f);
+      const multi = kind === 'carousel';
       const specs: CardSpec[] = [];
       if (f === 'static') {
         const title = (this.p.onScreenText[0] ?? this.p.caption.split(/[.!?\n]/)[0] ?? this.title).trim();
         const texts = [placeText(title, 'headline', 0, 0, frame, scale), placeText(`Comment ${kw}`, 'cta', 0, 0, frame, scale)];
         specs.push({ ...frame, background: await localOf(this.services, gen['still:0']!.key), colors: kit.colors, layout: 'static', title, footer: `Comment ${kw}`, grade, sharpen: true, texts });
+      } else if (f === 'text_note') {
+        // A typeset note card: the note centred on a paper card, the keyword CTA under it.
+        const note = (this.p.onScreenText[0] ?? this.p.caption.split(/\n/)[0] ?? this.title).trim();
+        const texts = [placeText(note, 'note', 0, 0, frame, scale), placeText(`Comment ${kw}`, 'cta', 0, 0, frame, scale)];
+        specs.push({ ...frame, background: null, colors: kit.colors, layout: 'note', title: note, footer: `Comment ${kw}`, grade, sharpen: false, texts });
+      } else if (f === 'meme') {
+        // The relatable line in a white band above the persona's reaction photo.
+        const line = (this.p.onScreenText[0] ?? this.title).trim();
+        specs.push({ ...frame, background: await localOf(this.services, gen['still:0']!.key), colors: kit.colors, layout: 'meme', title: line, grade, sharpen: true, texts: [placeText(line, 'headline', 0, 0, frame, scale)] });
+      } else if (f === 'photo_dump') {
+        // Casual camera-roll stills: only the first carries the hook line; the caption carries the rest.
+        const captions = this.dumpCaptions();
+        for (const [i, c] of captions.entries()) {
+          const texts = i === 0 && c ? [placeText(c, 'caption', 0, 0, frame, scale)] : [];
+          specs.push({ ...frame, background: await localOf(this.services, gen[`still:${i}`]!.key), colors: kit.colors, layout: 'photo', title: c, index: i + 1, total: captions.length, grade, sharpen: true, texts });
+        }
       } else {
         const slides = (this.p.carousel ?? []).slice(0, CAROUSEL_SLIDES.max);
         const cover = await localOf(this.services, gen['still:cover']!.key);
@@ -580,11 +813,11 @@ class Render {
           personaId: this.p.personaId,
           scriptId: this.p.scriptId,
           slotId: this.p.slotId,
-          key: f === 'carousel' ? `${this.key}/final-v${n}/slide-${i + 1}.jpg` : `${this.key}/final-v${n}.jpg`,
+          key: multi ? `${this.key}/final-v${n}/slide-${i + 1}.jpg` : `${this.key}/final-v${n}.jpg`,
           file: out,
           contentType: 'image/jpeg',
-          type: f === 'carousel' ? 'carousel' : 'image',
-          role: f === 'carousel' ? 'slide' : 'final',
+          type: multi ? 'carousel' : 'image',
+          role: multi ? 'slide' : 'final',
           provider: this.deps.toolkit.name,
           credits: i === 0 ? Object.values(gen).reduce((s, g) => s + g.credits, 0) : 0,
           tools,
@@ -594,7 +827,7 @@ class Render {
         keys.push(a.key);
         await this.beat();
       }
-      this.state.final = { kind: f === 'carousel' ? 'carousel' : 'image', assetIds, keys, texts: specs.flatMap((s) => [...s.texts]), slideTexts: specs.map((s) => [...s.texts]), durationS: null, segments: [] };
+      this.state.final = { kind: multi ? 'carousel' : 'image', assetIds, keys, texts: specs.flatMap((s) => [...s.texts]), slideTexts: specs.map((s) => [...s.texts]), durationS: null, segments: [] };
       await this.save(undefined, { finalAssetId: assetIds[0] });
       return;
     }
@@ -604,7 +837,9 @@ class Render {
     let durationS: number;
     let texts: TextBox[] = [];
     let audio: VideoComposition['audio'] = null;
-    if (f === 'activity_text') {
+    let pip: VideoComposition['pip'] = null;
+    let chrome: string[] = [];
+    if (TEXT_LOOP_FORMATS.includes(f)) {
       durationS = ACTIVITY_LOOP_S;
       segments.push({ file: await localOf(this.services, gen['clip:0']!.key), kind: 'video', startS: 0, durationS, ref: 'clip:0' });
       const lines = this.p.onScreenText.length ? this.p.onScreenText : [this.title];
@@ -614,40 +849,47 @@ class Render {
       const v = this.state.voice!;
       durationS = round2(v.durationS + 0.3);
       audio = { file: await localOf(this.services, v.key) };
-      if (f === 'talking') {
+      const cta = placeText(`Comment ${kw}`, 'cta', round2(Math.max(0, durationS - 3)), durationS, EXPORT.video, scale);
+      if (f === 'talking' || f === 'reply_comment') {
         const parts = this.talkParts();
         const cut = { file: await localOf(this.services, gen['clip:broll']!.key), ref: 'clip:broll' };
         const boundary = parts.length > 1 ? parts[1]!.startS : round2(v.durationS * 0.45);
         const [a, b] = [Math.max(0.8, boundary - 1.2), Math.min(durationS - 0.8, boundary + 1.2)];
-        // The clip whose audio covers time t (each talking clip starts where its audio chunk starts).
-        const clipAt = (t: number) => {
-          let i = 0;
-          parts.forEach((x, k) => {
-            if (x.startS <= t + 0.01) i = k;
-          });
-          return i;
-        };
         // talking clip(s) before the cutaway, the cutaway, then the rest.
-        const pushTalk = (from: number, to: number) => {
-          let t = from;
-          while (t < to - 0.01) {
-            const i = clipAt(t);
-            const part = parts[i]!;
-            let end = i === parts.length - 1 ? to : Math.min(to, parts[i + 1]!.startS);
-            if (end <= t + 0.005) end = to;
-            segments.push({ file: '', kind: 'video', startS: round2(t), durationS: round2(end - t), offsetS: round2(t - part.startS), ref: part.ref });
-            t = end;
-          }
-        };
-        pushTalk(0, a);
+        segments.push(...(await this.talkSegments(0, a)));
         segments.push({ file: cut.file, kind: 'video', startS: round2(a), durationS: round2(b - a), offsetS: 0, ref: cut.ref });
-        pushTalk(b, durationS);
-        for (const [i, s] of segments.entries()) if (!s.file) segments[i] = { ...s, file: await localOf(this.services, gen[s.ref!]!.key) };
+        segments.push(...(await this.talkSegments(b, durationS)));
+        texts = [...captionCues(this.p.voiceover!, v.durationS, { scale }), cta];
+        if (f === 'reply_comment') {
+          // The viewer's comment as a sticker, the handle anonymised (never a real account name on screen).
+          const comment = await this.comment();
+          texts.unshift(placeText(`${anonymiseHandle()} asked: "${comment}"`, 'sticker', 0, durationS, EXPORT.video, scale));
+        }
+      } else if (f === 'facecam_screen' || f === 'news_greenscreen') {
+        // The persona in a box over a generated backdrop: slides for facecam, our own News Desk card for green-screen.
+        const layout = f === 'facecam_screen' ? 'screen' : 'news';
+        const card: CardSpec = { ...EXPORT.video, background: null, colors: kit.colors, layout, title: layout, ...(layout === 'news' ? { banner: NEWS_DESK_LABEL } : {}), grade, sharpen: false, texts: [] };
+        const backdrop = join(this.dir, `backdrop-${n}.jpg`);
+        await this.deps.toolkit.renderCard(card, backdrop);
+        segments.push({ file: backdrop, kind: 'image', startS: 0, durationS, motion: 'none', ref: 'backdrop' });
+        pip = { segments: await this.talkSegments(0, durationS), box: { ...PIP_BOX[f] } };
+        const lift = (t: TextBox): TextBox => ({ ...t, box: { ...t.box, y: placeText(t.text, 'headline', 0, 0, EXPORT.video, scale).box.y } });
+        if (f === 'facecam_screen') {
+          // One slide line at a time (hook, steps), the CTA last, all in the top of the frame above the persona box.
+          const lines = (this.p.onScreenText.length ? this.p.onScreenText : [this.title]).filter((l) => !l.toUpperCase().includes(kw));
+          const span = Math.max(1, durationS - 3);
+          const each = span / Math.max(1, lines.length);
+          texts = [...lines.map((l, i) => placeText(l, 'headline', round2(i * each), round2(i === lines.length - 1 ? span : (i + 1) * each), EXPORT.video, scale)), lift(cta)];
+        } else {
+          const headline = await this.headline();
+          texts = [placeText(headline, 'headline', 0, round2(Math.max(0.5, durationS - 3)), EXPORT.video, scale), lift(cta)];
+          chrome = [NEWS_DESK_LABEL];
+        }
       } else {
         const each = round2(durationS / 3);
         for (let i = 0; i < 3; i++) segments.push({ file: await localOf(this.services, gen[`clip:${i}`]!.key), kind: 'video', startS: round2(i * each), durationS: i === 2 ? round2(durationS - 2 * each) : each, ref: `clip:${i}` });
+        texts = [...captionCues(this.p.voiceover!, v.durationS, { scale }), cta];
       }
-      texts = [...captionCues(this.p.voiceover!, v.durationS, { scale }), placeText(`Comment ${kw}`, 'cta', round2(Math.max(0, durationS - 3)), durationS, EXPORT.video, scale)];
     }
     const comp: VideoComposition = {
       ...EXPORT.video,
@@ -655,6 +897,7 @@ class Render {
       segments,
       audio,
       texts,
+      pip,
       grade,
       sharpen: true,
       loudnorm: audio ? 'single' : 'none',
@@ -675,10 +918,89 @@ class Render {
       credits: Object.values(gen).reduce((s, g) => s + g.credits, 0),
       usd: Object.values(gen).reduce((s, g) => s + g.usd, 0),
       tools: [...tools, ...(this.spoken ? [this.services.providers.voice.name] : [])],
-      meta: { width: info.width, height: info.height, fps: info.fps, duration_s: info.durationS, format: f, grade, captions: texts.length, version: n, voice_asset_id: this.state.voice?.assetId ?? null, ...this.fakeMeta },
+      meta: { width: info.width, height: info.height, fps: info.fps, duration_s: info.durationS, format: f, grade, captions: texts.length, version: n, voice_asset_id: this.state.voice?.assetId ?? null, ...(pip ? { pip: pip.box } : {}), ...this.fakeMeta },
     });
-    this.state.final = { kind: 'video', assetIds: [a.id], keys: [a.key], texts, durationS: info.durationS, segments: segments.map((s) => ({ ref: s.ref, startS: s.startS, durationS: s.durationS })) };
+    const timeline = [...segments, ...(pip?.segments ?? [])];
+    this.state.final = {
+      kind: 'video',
+      assetIds: [a.id],
+      keys: [a.key],
+      texts,
+      durationS: info.durationS,
+      segments: timeline.map((s) => ({ ref: s.ref, startS: s.startS, durationS: s.durationS })),
+      ...(pip ? { pip: pip.box } : f === 'facecam_screen' || f === 'news_greenscreen' ? { pip: null } : {}),
+      ...(chrome.length ? { chrome } : {}),
+    };
     await this.save(undefined, { finalAssetId: a.id });
+  }
+
+  /** Talking-clip segments covering [from, to) on the timeline (each clip starts where its audio chunk starts). */
+  private async talkSegments(from: number, to: number): Promise<Segment[]> {
+    const parts = this.talkParts();
+    const gen = this.state.gen!;
+    const clipAt = (t: number) => {
+      let i = 0;
+      parts.forEach((x, k) => {
+        if (x.startS <= t + 0.01) i = k;
+      });
+      return i;
+    };
+    const out: Segment[] = [];
+    let t = from;
+    while (t < to - 0.01) {
+      const i = clipAt(t);
+      const part = parts[i]!;
+      let end = i === parts.length - 1 ? to : Math.min(to, parts[i + 1]!.startS);
+      if (end <= t + 0.005) end = to;
+      out.push({ file: await localOf(this.services, gen[part.ref]!.key), kind: 'video', startS: round2(t), durationS: round2(end - t), offsetS: round2(t - part.startS), ref: part.ref });
+      t = end;
+    }
+    return out;
+  }
+
+  /**
+   * The comment a reply answers (shown on a sticker): the slot's booked comment, else the persona's newest viewer
+   * question, else the quoted question in the slot title, else the hook. Viewer text is untrusted: it is sanitised
+   * (links, @mentions, e-mails and numbers removed), must pass the Gate's rules, and the handle is never shown.
+   */
+  private async comment(): Promise<string> {
+    if (this.state.overlay?.comment) return this.state.overlay.comment;
+    const booked = (this.slot.meta.comment ?? {}) as { text?: unknown };
+    const row = await this.services.db.maybeOne<{ text: string }>(
+      `SELECT text FROM comment WHERE persona_id = $1 AND status <> 'ignored'
+          AND COALESCE(classification, '') NOT IN ('spam', 'crisis', 'abuse', 'hate', 'harassment')
+        ORDER BY (classification = 'question') DESC NULLS LAST, created_at DESC LIMIT 1`,
+      [this.p.personaId],
+    );
+    const quoted = /["“]([^"”]{8,})["”]/.exec(this.title)?.[1] ?? null;
+    const candidates: Array<[string, unknown]> = [
+      ['slot', booked.text],
+      ['comments', row?.text],
+      ['title', quoted],
+      ['hook', this.p.onScreenText[0] ?? this.title],
+    ];
+    let comment = '';
+    let source = 'hook';
+    for (const [src, raw] of candidates) {
+      const text = typeof raw === 'string' ? sanitizeOverlay(raw) : '';
+      if (!text) continue;
+      if (gateRules({ text, kind: 'script' }).some((c) => c.verdict === 'red')) continue;
+      comment = text;
+      source = src;
+      break;
+    }
+    this.state.overlay = { ...(this.state.overlay ?? {}), comment: comment || 'Where do I even start?', commentSource: source };
+    return this.state.overlay.comment!;
+  }
+
+  /** The News Desk headline: the slot's booked headline, else the script's, in our own words with no outlet named. */
+  private async headline(): Promise<string> {
+    if (this.state.overlay?.headline) return this.state.overlay.headline;
+    const booked = (this.slot.meta.news ?? {}) as { headline?: unknown };
+    const raw = typeof booked.headline === 'string' && booked.headline.trim() ? booked.headline : (this.p.onScreenText[0] ?? this.title);
+    const headline = newsDeskHeadline(sanitizeOverlay(raw, 140) || this.title);
+    this.state.overlay = { ...(this.state.overlay ?? {}), headline };
+    return headline;
   }
 
   // ───────────────────────────── Q4 ─────────────────────────────
@@ -734,6 +1056,8 @@ class Render {
       ctaKeyword: this.p.ctaKeyword,
       caption: this.p.caption,
       hashtags: this.p.hashtags,
+      ...(fin.pip !== undefined ? { pip: fin.pip } : {}),
+      ...(fin.chrome ? { chromeText: fin.chrome } : {}),
     });
     const reportId = await saveQcReport(this.services, {
       personaId: this.p.personaId,
@@ -756,6 +1080,8 @@ class Render {
         fixes: res.fixes,
         toolkit: toolkit.name,
         ocr_provider: ocr.name,
+        production: this.state.production ? { camera: this.state.production.camera, location: this.state.production.location, chained: this.state.production.chain.length } : null,
+        ...(this.state.overlay ? { overlay: this.state.overlay } : {}),
       },
     });
     if (!res.pass) {
@@ -784,7 +1110,8 @@ class Render {
       return this.run();
     }
 
-    // Passed: cover on the board, hand over to distribution once.
+    // Passed: the post's persona stills join the consistency chain; cover on the board, hand over to distribution once.
+    await setFrameStatus(this.services.db, this.p.slotId, 'approved');
     const h = await this.handover(fin, main, coverAt, cover, reportId);
     // The slot moves to final_gate before publish.prepare exists: a fast prepare (another worker) sets 'scheduled', and
     // must never be overwritten back to final_gate.
@@ -843,7 +1170,7 @@ class Render {
     return ids.map((id) => {
       const r = rows.find((x) => x.id === id)!;
       const m = r.render_meta;
-      const frame = this.p.format === 'carousel' && kind === 'image' && m.layout ? EXPORT.carousel : EXPORT.video;
+      const frame = kind === 'image' && m.layout ? formatFrame(this.p.format) : EXPORT.video;
       return {
         assetId: id,
         kind,

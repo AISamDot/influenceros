@@ -38,6 +38,8 @@ export interface FakeManifest {
   readonly segments?: ReadonlyArray<{ startS: number; durationS: number; face: FakeFace | null; ref?: string }>;
   /** OCR reads this instead of the burned-in text (a caption render defect). */
   readonly ocrOverride?: string | null;
+  /** (IOS-5) The picture-in-picture box, when the render has one. */
+  readonly pip?: { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
 }
 
 export type FakeRenderOverride = Partial<{
@@ -112,11 +114,13 @@ export class FakeToolkit implements MediaToolkit {
   }
 
   async renderVideo(comp: VideoComposition, out: string) {
-    this.calls.push({ method: 'renderVideo', args: { segments: comp.segments.length, texts: comp.texts.length, durationS: comp.durationS, grade: comp.grade, sharpen: comp.sharpen } });
+    this.calls.push({ method: 'renderVideo', args: { segments: comp.segments.length, pip: comp.pip?.segments.length ?? 0, texts: comp.texts.length, durationS: comp.durationS, grade: comp.grade, sharpen: comp.sharpen } });
     const freezes: Interval[] = [];
     const blacks: Interval[] = [];
     const segments: NonNullable<FakeManifest['segments']>[number][] = [];
-    for (const s of comp.segments) {
+    // (IOS-5) Picture-in-picture segments run on the same timeline; the persona's face on screen comes from them.
+    const pipRefs = new Set((comp.pip?.segments ?? []).map((s) => s));
+    for (const s of [...comp.segments, ...(comp.pip?.segments ?? [])]) {
       const src = readManifest(s.file);
       const off = s.offsetS ?? 0;
       const map = (iv: Interval): Interval | null => {
@@ -132,7 +136,7 @@ export class FakeToolkit implements MediaToolkit {
         const m = map(f);
         if (m) blacks.push(m);
       }
-      segments.push({ startS: s.startS, durationS: s.durationS, face: src.face ?? null, ref: s.ref });
+      if (pipRefs.has(s) || !comp.pip?.segments.length) segments.push({ startS: s.startS, durationS: s.durationS, face: src.face ?? null, ref: s.ref });
     }
     const audio = comp.audio ? readManifest(comp.audio.file) : null;
     const o = this.opts.renders?.shift() ?? {};
@@ -154,13 +158,14 @@ export class FakeToolkit implements MediaToolkit {
       texts: comp.texts,
       segments,
       ocrOverride: o.ocrText ?? null,
+      ...(comp.pip ? { pip: comp.pip.box } : {}),
     };
     await write(out, m);
     return infoOf(m);
   }
 
   async renderCard(spec: CardSpec, out: string) {
-    this.calls.push({ method: 'renderCard', args: { layout: spec.layout, title: spec.title } });
+    this.calls.push({ method: 'renderCard', args: { layout: spec.layout, title: spec.title, banner: spec.banner ?? null, background: !!spec.background } });
     const o = this.opts.renders?.shift() ?? {};
     const m: FakeManifest = {
       ios_fake: 1,

@@ -1,16 +1,17 @@
 // `pnpm media <command>`: stream E's media pipeline from the terminal (docs/IOS-34-CONTRACTS.md).
 //   status                 which media providers are live, the FFmpeg build, the Higgsfield CLI and Apple Vision
-//   sample <format>        one real post (talking | activity_text | voiceover | static | carousel) on a scratch database,
+//   sample <format>        one real post (any format, the IOS-5 library included) on a scratch database,
 //                          with the Higgsfield and ElevenLabs keys; credits debited through the governor. Without the keys
 //                          it reports "pending key" and spends nothing.
 //   probe-costs            print `higgsfield generate cost` for the model grid (the worker's weekly job writes the table)
 // None of these opens the studio database, so they are safe while the dev server runs.
 import { createServices, MEDIA_RENDER_JOB, type MediaRenderPayload, type ProviderEnv } from '@ios/agents';
 import { attachSampleBible, liveProviders as contentLive, planWeek, processSlot } from '@ios/content';
-import { DEFAULT_SETTINGS, type PostFormat } from '@ios/core';
+import { DEFAULT_SETTINGS, POST_FORMATS, type PostFormat } from '@ios/core';
 import { json } from '@ios/db';
 import { createTestDb } from '@ios/db/testing';
 import { createFakeProviders, type Providers } from '@ios/providers';
+import { createPromptCompiler } from '@ios/production';
 import { defaultBackend, integrationStates, isSecretName, readSecret } from '@ios/secrets';
 import { GEN_RESOLUTION, mediaModels, PROBE_GRID } from './config';
 import { mediaDeps } from './deps';
@@ -20,7 +21,7 @@ import { renderSlot } from './render';
 import { slotMedia } from './read';
 import { appleVisionAvailable } from './vision';
 
-const FORMATS: readonly PostFormat[] = ['talking', 'activity_text', 'voiceover', 'static', 'carousel'];
+const FORMATS: readonly PostFormat[] = POST_FORMATS;
 const [cmd, ...rest] = process.argv.slice(2);
 
 function penv(): ProviderEnv {
@@ -50,7 +51,7 @@ async function sample(format: PostFormat) {
   const env = penv();
   const missing = [
     ...(env.isLive('higgsfield') ? [] : ['higgsfield.api_key', 'higgsfield.api_secret']),
-    ...(env.isLive('elevenlabs') || !['talking', 'voiceover'].includes(format) ? [] : ['elevenlabs.api_key']),
+    ...(env.isLive('elevenlabs') || !['talking', 'voiceover', 'facecam_screen', 'reply_comment', 'news_greenscreen'].includes(format) ? [] : ['elevenlabs.api_key']),
   ];
   if (missing.length) {
     console.log(`pending key: ${missing.join(', ')}. Add with \`pnpm ios secrets set <name>\`; nothing was spent.`);
@@ -64,10 +65,12 @@ async function sample(format: PostFormat) {
     [studioId],
   );
   await attachSampleBible(db, personaId);
-  const services = createServices({ db, providers: providers(env), mode: 'fake', now: () => now });
+  const services = createServices({ db, providers: providers(env), mode: 'fake', now: () => now, prompts: createPromptCompiler });
   const next = new Date(now.getTime() + 7 * 86_400_000);
   const { slotIds } = await planWeek(services, personaId, next);
-  const slots = await db.query<{ id: string }>('SELECT id FROM calendar_slot WHERE id = ANY($1::uuid[]) AND format = $2 ORDER BY slot_at LIMIT 1', [slotIds, format]);
+  let slots = await db.query<{ id: string }>('SELECT id FROM calendar_slot WHERE id = ANY($1::uuid[]) AND format = $2 ORDER BY slot_at LIMIT 1', [slotIds, format]);
+  // A format the default week doesn't plan (the IOS-5 library) is booked on the first planned slot.
+  if (!slots[0]) slots = await db.query<{ id: string }>('UPDATE calendar_slot SET format = $2 WHERE id = (SELECT id FROM calendar_slot WHERE id = ANY($1::uuid[]) ORDER BY slot_at LIMIT 1) RETURNING id', [slotIds, format]);
   if (!slots[0]) throw new Error(`no ${format} slot planned`);
   const out = await processSlot(services, slots[0].id);
   if (out.status !== 'media_queued') throw new Error(`script stage ended at ${out.status}: ${out.blockReason ?? ''}`);
@@ -108,7 +111,7 @@ async function main() {
     case 'probe-costs':
       return probe();
     default:
-      console.log('Usage: pnpm media status | sample <talking|activity_text|voiceover|static|carousel> | probe-costs');
+      console.log(`Usage: pnpm media status | sample <${FORMATS.join('|')}> | probe-costs`);
   }
 }
 

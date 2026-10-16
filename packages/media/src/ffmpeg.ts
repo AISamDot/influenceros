@@ -4,7 +4,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { Q4_TARGETS } from './config';
-import type { Analysis, CardSpec, ColorGrade, Interval, MediaInfo, MediaToolkit, TextBox, VideoComposition } from './toolkit';
+import type { Analysis, CardSpec, ColorGrade, Interval, MediaInfo, MediaToolkit, Segment, TextBox, VideoComposition } from './toolkit';
 import { wrap } from './toolkit';
 
 /**
@@ -114,9 +114,15 @@ export function textSvg(t: TextBox, frame: { width: number; height: number }, o:
   const lh = t.fontSize * 1.25;
   const top = t.box.y + t.fontSize * 0.3 + t.fontSize;
   const accent = o.accent ?? '#F4C430';
-  const fill = t.style === 'cta' ? accent : o.solid ? o.solid.ink : '#FFFFFF';
-  const plate = o.solid ? '' : `<rect x="${t.box.x}" y="${t.box.y}" width="${t.box.w}" height="${t.box.h}" rx="${Math.round(t.fontSize * 0.35)}" fill="${t.style === 'caption' ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.45)'}"/>`;
-  const stroke = o.solid ? '' : ` stroke="rgba(0,0,0,0.6)" stroke-width="${Math.max(1, Math.round(t.fontSize / 22))}" paint-order="stroke"`;
+  // (IOS-5) A comment sticker is dark ink on a white plate, wherever it sits.
+  const sticker = t.style === 'sticker';
+  const fill = sticker ? '#16151A' : t.style === 'cta' ? accent : o.solid ? o.solid.ink : '#FFFFFF';
+  const plate = sticker
+    ? `<rect x="${t.box.x + 4}" y="${t.box.y + 6}" width="${t.box.w}" height="${t.box.h}" rx="${Math.round(t.fontSize * 0.5)}" fill="rgba(0,0,0,0.25)"/><rect x="${t.box.x}" y="${t.box.y}" width="${t.box.w}" height="${t.box.h}" rx="${Math.round(t.fontSize * 0.5)}" fill="#FFFFFF"/>`
+    : o.solid
+      ? ''
+      : `<rect x="${t.box.x}" y="${t.box.y}" width="${t.box.w}" height="${t.box.h}" rx="${Math.round(t.fontSize * 0.35)}" fill="${t.style === 'caption' ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.45)'}"/>`;
+  const stroke = o.solid || sticker ? '' : ` stroke="rgba(0,0,0,0.6)" stroke-width="${Math.max(1, Math.round(t.fontSize / 22))}" paint-order="stroke"`;
   const tspans = lines.map((l, i) => `<tspan x="${t.box.x + t.box.w / 2}" y="${Math.round(top + i * lh)}">${esc(l)}</tspan>`).join('');
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${frame.width}" height="${frame.height}">${plate}` +
@@ -124,17 +130,54 @@ export function textSvg(t: TextBox, frame: { width: number; height: number }, o:
   );
 }
 
+/**
+ * (IOS-5) Layout chrome drawn under the text: the News Desk banner (our own generic desk, never an outlet's logo), the
+ * slide window of a facecam backdrop, the ruled lines of a note card.
+ */
+export function cardChrome(spec: Pick<CardSpec, 'width' | 'height' | 'layout' | 'banner' | 'colors'>): string | null {
+  const { width: W, height: H } = spec;
+  const svg = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${body}</svg>`;
+  if (spec.layout === 'news') {
+    const label = esc((spec.banner ?? 'NEWS DESK').slice(0, 24));
+    return svg(
+      `<rect x="0" y="${Math.round(H * 0.1)}" width="${W}" height="${Math.round(H * 0.05)}" fill="#C8102E"/>` +
+        `<text x="96" y="${Math.round(H * 0.1 + H * 0.035)}" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-weight="800" font-size="${Math.round(H * 0.026)}" fill="#FFFFFF" letter-spacing="4">${label}</text>` +
+        `<rect x="0" y="${Math.round(H * 0.33)}" width="${W}" height="4" fill="#C8102E" opacity="0.8"/>`,
+    );
+  }
+  if (spec.layout === 'screen') {
+    const x = 70;
+    const y = Math.round(H * 0.13);
+    const w = W - 140;
+    const h = Math.round(H * 0.74);
+    return svg(
+      `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="28" fill="#FFFFFF" opacity="0.92"/>` +
+        `<rect x="${x}" y="${y}" width="${w}" height="64" rx="28" fill="${spec.colors.accent}" opacity="0.85"/>` +
+        [0, 1, 2].map((i) => `<circle cx="${x + 44 + i * 34}" cy="${y + 32}" r="10" fill="#FFFFFF" opacity="0.8"/>`).join(''),
+    );
+  }
+  if (spec.layout === 'note') {
+    const lines = Array.from({ length: 14 }, (_, i) => `<rect x="90" y="${Math.round(H * 0.2 + i * 78)}" width="${W - 180}" height="2" fill="#D9D2C3"/>`).join('');
+    return svg(`${lines}<rect x="150" y="${Math.round(H * 0.17)}" width="3" height="${Math.round(H * 0.66)}" fill="#E8A9A0"/>`);
+  }
+  return null;
+}
+
 /** The FFmpeg argv for one reel (pure, so the graph is unit-tested without the binary). */
 export function videoArgs(comp: VideoComposition, layers: readonly string[], out: string): string[] {
   const { width: W, height: H, fps } = comp;
   const D = comp.durationS.toFixed(3);
   const args = ['-hide_banner', '-nostats', '-y'];
-  for (const s of comp.segments) {
+  const pip = comp.pip?.segments.length ? comp.pip : null;
+  const input = (s: Segment) => {
     if (s.kind === 'image') args.push('-loop', '1', '-framerate', String(fps), '-t', s.durationS.toFixed(3), '-i', s.file);
     else args.push('-stream_loop', '-1', '-ss', (s.offsetS ?? 0).toFixed(3), '-t', s.durationS.toFixed(3), '-i', s.file);
-  }
+  };
+  comp.segments.forEach(input);
+  pip?.segments.forEach(input);
+  const pipN = pip?.segments.length ?? 0;
   for (const l of layers) args.push('-loop', '1', '-framerate', String(fps), '-t', D, '-i', l);
-  const audioIndex = comp.segments.length + layers.length;
+  const audioIndex = comp.segments.length + pipN + layers.length;
   if (comp.audio) args.push('-i', comp.audio.file);
   else args.push('-f', 'lavfi', '-t', D, '-i', 'anullsrc=r=48000:cl=stereo');
 
@@ -149,11 +192,23 @@ export function videoArgs(comp: VideoComposition, layers: readonly string[], out
     parts.push(`[${i}:v]${fit},${motion}setsar=1,fps=${fps},format=yuv420p,trim=duration=${s.durationS.toFixed(3)},setpts=PTS-STARTPTS[s${i}]`);
   });
   parts.push(`${comp.segments.map((_, i) => `[s${i}]`).join('')}concat=n=${comp.segments.length}:v=1:a=0[base]`);
-  parts.push(`[base]${gradeFilter(comp.grade)}${comp.sharpen ? `,${SHARPEN}` : ''}[g0]`);
+  let main = 'base';
+  if (pip) {
+    // (IOS-5) The persona's track scaled into its box over the main track (facecam over screen, News Desk green-screen).
+    const { x, y, w, h } = pip.box;
+    pip.segments.forEach((s, j) => {
+      const k = comp.segments.length + j;
+      parts.push(`[${k}:v]scale=${w}:${h}:force_original_aspect_ratio=increase:flags=lanczos,crop=${w}:${h},setsar=1,fps=${fps},format=yuv420p,trim=duration=${s.durationS.toFixed(3)},setpts=PTS-STARTPTS[p${j}]`);
+    });
+    parts.push(`${pip.segments.map((_, j) => `[p${j}]`).join('')}concat=n=${pip.segments.length}:v=1:a=0,drawbox=x=0:y=0:w=iw:h=ih:color=white@0.9:t=6[pip]`);
+    parts.push(`[base][pip]overlay=${x}:${y}:format=auto:eof_action=pass[withpip]`);
+    main = 'withpip';
+  }
+  parts.push(`[${main}]${gradeFilter(comp.grade)}${comp.sharpen ? `,${SHARPEN}` : ''}[g0]`);
   let cur = 'g0';
   comp.texts.forEach((t, k) => {
     const next = `o${k}`;
-    parts.push(`[${cur}][${comp.segments.length + k}:v]overlay=0:0:format=auto:enable='between(t,${t.startS.toFixed(2)},${t.endS.toFixed(2)})'[${next}]`);
+    parts.push(`[${cur}][${comp.segments.length + pipN + k}:v]overlay=0:0:format=auto:enable='between(t,${t.startS.toFixed(2)},${t.endS.toFixed(2)})'[${next}]`);
     cur = next;
   });
   parts.push(`[${cur}]format=yuv420p[vout]`);
@@ -222,10 +277,18 @@ export class FfmpegToolkit implements MediaToolkit {
     const sharp = (await import('sharp')).default;
     await mkdir(dirname(out), { recursive: true });
     const { width: W, height: H } = spec;
-    let base = spec.background
-      ? sharp(spec.background).resize(W, H, { fit: 'cover', kernel: 'lanczos3' })
-      : sharp({ create: { width: W, height: H, channels: 3, background: spec.colors.bg } });
-    if (spec.background) {
+    // (IOS-5) A meme puts its photo under a white band that carries the line.
+    const meme = spec.layout === 'meme' && !!spec.background;
+    const band = meme ? Math.min(Math.round(H * 0.42), Math.max(...spec.texts.map((t) => t.box.y + t.box.h), Math.round(H * 0.2)) + 40) : 0;
+    let base = meme
+      ? sharp({ create: { width: W, height: H, channels: 3, background: '#FFFFFF' } }).composite([
+          { input: await sharp(spec.background!).resize(W, H - band, { fit: 'cover', kernel: 'lanczos3' }).toBuffer(), top: band, left: 0 },
+        ])
+      : spec.background
+        ? sharp(spec.background).resize(W, H, { fit: 'cover', kernel: 'lanczos3' })
+        : sharp({ create: { width: W, height: H, channels: 3, background: spec.layout === 'news' ? '#0E1A2B' : spec.layout === 'note' ? '#FBF8F1' : spec.colors.bg } });
+    if (meme) base = sharp(await base.png().toBuffer());
+    if (spec.background && !meme) {
       const g = spec.grade;
       base = base
         .modulate({ brightness: 1 + g.brightness, saturation: g.saturation })
@@ -237,16 +300,18 @@ export class FfmpegToolkit implements MediaToolkit {
         ]);
     }
     if (spec.sharpen) base = base.sharpen({ sigma: 0.8 });
-    const scrim = spec.background
+    const scrim = spec.background && !meme && spec.texts.length
       ? `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0.45" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.55"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#s)"/></svg>`
       : null;
-    const solid = spec.background ? undefined : { ink: spec.colors.ink };
+    const solid = meme ? { ink: '#111111' } : spec.background ? undefined : { ink: spec.layout === 'news' ? '#FFFFFF' : spec.layout === 'note' ? '#1F1D1A' : spec.colors.ink };
+    const chrome = cardChrome(spec);
     const pager =
       spec.index && spec.total && spec.total > 1
         ? `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><text x="${W - 190}" y="${Math.round(H * 0.94)}" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-weight="700" font-size="34" fill="${spec.background ? '#FFFFFF' : spec.colors.ink}" opacity="0.7" text-anchor="end">${spec.index}/${spec.total}</text></svg>`
         : null;
     const layers = [
       ...(scrim ? [{ input: Buffer.from(scrim) }] : []),
+      ...(chrome ? [{ input: Buffer.from(chrome) }] : []),
       ...spec.texts.map((t) => ({ input: Buffer.from(textSvg(t, spec, { accent: spec.colors.accent, solid })) })),
       ...(pager ? [{ input: Buffer.from(pager) }] : []),
     ];

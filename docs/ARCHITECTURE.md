@@ -274,6 +274,43 @@ packages/formats      Per-persona Format Plans and the Stories engine (stream L)
 <!-- <<< stream J architecture -->
 
 <!-- >>> stream K architecture -->
+### Stream K: production playbook and the format-library renderers (IOS-5)
+
+PRD §3.12 notes, §3.15 items 1–8 and FR-4.3c's format library. `@ios/production` holds the pure playbook and its
+tables; `@ios/media` runs every generation (it imports `@ios/production`, never the reverse).
+
+- **Prompt compiler** (`createPromptCompiler` → `services.prompts`): five image blocks (subject/identity, wardrobe,
+  setting/location lock, camera/lens/realism, lighting/grounding) and five video blocks (start frame, action, camera
+  motion, audio/speech, constraints). The grounding block (stream J) goes into every prompt; every video prompt says
+  "no captions or subtitles"; every talking prompt carries the verbatim line, a "fluent ___ accent" (spec → bible →
+  World Bible country → neutral English) and the 2.5–3 wps pace; clips are ≤ 10 s (a longer line is flagged to split);
+  timecodes are stripped. `references` are only the persona's identity stack and the locked place's anchor frames:
+  mood boards arrive as text descriptors, so a pin can never be an image reference. `checkVideoPrompt` re-checks the
+  Owner rules on every compiled clip (recorded on the asset as `prompt_checks`).
+- **Identity** (`look.build`, run by media; daily `production.prepare` once the Soul ID is ready): the 5-view sheet
+  (front, side, back, front close-up, top-down) + detail strip, the identity stack (face close-up + 2 full-body on
+  grey: it goes into every persona generation), 4 core refs in varied settings, and BOPA (3×3 background grid → the pick
+  upscaled; keep-identity outfit edits; 2×2 pose grid → the pick upscaled; angles in degrees). Picks are automatic; the
+  Owner re-picks with `look.pick`. Shots that drift from the face reference stay `candidate`. Table `production_identity`.
+- **Location lock and chain**: `production.lock_locations` gives each recurring place (World Bible places from the
+  launched draft, then the bible's settings; ≤ 5) five candidates from one prompt, a pick and a second anchor angle
+  (`location_lock`). Every persona still in a render references the locked frames and is chained: within a post from
+  its first still, across posts from the newest *approved* frame at that place (`production_frame`). Q3 rejections
+  retire the frame and redo every still chained from it; Q4 passes approve the post's frames.
+- **Camera styles**: the persona's 3–5 styles (bible `look.camera_styles`, else a rotation with handheld), picked per
+  slot (talking formats get talking styles, recent ones are skipped) and recorded with the place and the chain in
+  `calendar_slot.meta.production`.
+- **Niche filter + hook templates**: the five questions and niche-vs-format feed the generator's producibility score
+  (`production.niche_filter` for the Studio Manager); `HOOK_TEMPLATES` (@ios/content, mirrored in `hook_template`) go
+  into the hook-lab prompt and `production.hook_templates`.
+- **Format templates** (media `render.ts`): `photo_dump` (5–10 casual 4:5 stills, mixed cameras, chained, a carousel),
+  `text_note` (a typeset note card, nothing generated), `facecam_screen` (the talking clips in a corner box over a
+  generated slide backdrop with the step lines), `reply_comment` (a talking reel with the comment as a sticker, the
+  handle anonymised, viewer text sanitised and gate-checked), `news_greenscreen` (the persona box over our own
+  "NEWS DESK" card, the headline in our words, no outlet named) and `meme` (the line in a white band over a reaction
+  still). `product_in_hand` / `trend_reenactment` render as activity loops. Q1 adds the timing and motion rules
+  (speech pace, no timecodes, no baked-in text, two-handed actions flagged, accent) and per-format lengths; Q4 adds
+  slide ranges, the comment sticker + handle check, the outlet check, the persona-box safe zone and card word limits.
 <!-- <<< stream K architecture -->
 
 <!-- >>> stream L architecture -->

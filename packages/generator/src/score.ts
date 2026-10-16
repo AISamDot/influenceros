@@ -1,5 +1,6 @@
 import type { Db } from '@ios/db';
 import { type LaunchPersona, loadArchivedPersonas } from '@ios/core/seed';
+import { nicheFilter } from '@ios/production';
 import { type NicheDef, nicheByKey, firstName } from './library';
 import { type ConceptOption, type ContentPlanDraft, type DraftState, type Distinctness, type OpportunityOption, type Scorecard, SCORECARD_WEIGHTS } from './types';
 
@@ -145,8 +146,12 @@ export function scoreConcept(input: ScoreInput): Scorecard {
   if (!settings.length || settings.length <= 4) prod += 5;
   if (!/\b(?:duo|two speakers|interview|debate between|crowd|panel|couple)\b/i.test(text)) prod += 5;
   if (!/\b(?:stunt|dance|dancing|running|chase|fight|sport|parkour|skate)\b/i.test(c.mechanic)) prod += 5;
+  // (IOS-5 stream K, PRD §3.15.7) The niche filter: could a real creator build a personal brand talking to camera
+  // about this? Each "no" of the five questions costs 2 points; a format posing as a niche costs 5 more.
+  const nf = nicheFilter({ niche: o?.niche ?? niche?.subNiche ?? '', premise: c.premise, mechanic: c.mechanic, archetype: c.archetype, hooks: c.hooks });
+  prod -= (5 - nf.score) * 2 + (nf.formatNotNiche ? 5 : 0);
   prod = clamp(prod, 0, SCORECARD_WEIGHTS.producibility);
-  notes.producibility = prod === 15 ? 'One speaker, few sets, talking-head friendly' : 'Motion or multiple speakers: harder for Seedance';
+  notes.producibility = `${prod === 15 ? 'One speaker, few sets, talking-head friendly' : 'Motion, multiple speakers or a weak niche: harder to produce'}; ${nf.summary}`;
 
   // Line safety (10): can win without nearing the lines.
   const flags = lineFlags([c.premise, c.contrast, c.mechanic, ...c.hooks, c.signOff, c.firstProduct?.name ?? ''].join(' \n '));
