@@ -106,7 +106,7 @@ export default async function Accounts({ searchParams }: { searchParams: Promise
   await requireOwnerPage();
   const sp = await searchParams;
   const { db, studio } = await studioContext();
-  const personas = await db.query<{ id: string }>(`SELECT id FROM persona WHERE studio_id = $1 AND state NOT IN ('KILLED','RETIRED') ORDER BY name`, [studio.id]);
+  const personas = await db.query<{ id: string }>(`SELECT id FROM persona WHERE studio_id = $1 AND state NOT IN ('KILLED','RETIRED','ARCHIVED') ORDER BY name`, [studio.id]);
   const sheets = await Promise.all(personas.map((p) => accountSetupSheet(db, p.id)));
   const zernio = integrationStates(defaultBackend()).find((s) => s.def.id === 'zernio');
   const unlabelled = sheets.flatMap((s) => s.rows).filter((r) => r.accountId && r.status === 'active' && !r.aiLabelOk).length;

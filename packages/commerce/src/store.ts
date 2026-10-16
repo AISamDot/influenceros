@@ -112,7 +112,7 @@ export async function productSweep(services: StudioServices, opts: { studioId?: 
             pr.store_status, pr.store_product_id,
             EXISTS (SELECT 1 FROM product_listing l WHERE l.product_id = pr.id AND l.channel = 'lemonsqueezy') AS has_listing
        FROM product pr JOIN persona pe ON pe.id = pr.persona_id
-      WHERE pr.status IN ('approved','live') AND pe.state NOT IN ('KILLED','RETIRED') AND ($1::uuid IS NULL OR pe.studio_id = $1)
+      WHERE pr.status IN ('approved','live') AND pe.state NOT IN ('KILLED','RETIRED','ARCHIVED') AND ($1::uuid IS NULL OR pe.studio_id = $1)
         AND (pr.store_status <> 'linked' AND pr.store_status <> 'free' OR pr.status <> 'live')
       ORDER BY pr.created_at`,
     [opts.studioId ?? null],

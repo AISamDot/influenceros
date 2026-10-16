@@ -44,7 +44,7 @@ async function fakeActions(services: StudioServices, input: StudioTurnInput, too
     ? input.mentions
     : (
         await services.db.query<{ id: string; slug: string; name: string }>(
-          `SELECT id, slug, name FROM persona WHERE studio_id = $1 AND state NOT IN ('KILLED','RETIRED')`,
+          `SELECT id, slug, name FROM persona WHERE studio_id = $1 AND state NOT IN ('KILLED','RETIRED','ARCHIVED')`,
           [input.studioId],
         )
       ).filter((p) => new RegExp(`\\b${escape(p.name.split(' ')[0]!.toLowerCase())}\\b`).test(lower));

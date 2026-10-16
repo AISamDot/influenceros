@@ -50,6 +50,9 @@ importers:
       '@ios/distribution':
         specifier: workspace:*
         version: link:../../packages/distribution
+      '@ios/generator':
+        specifier: workspace:*
+        version: link:../../packages/generator
       '@ios/knowledge':
         specifier: workspace:*
         version: link:../../packages/knowledge
@@ -246,6 +249,24 @@ importers:
         specifier: workspace:*
         version: link:../secrets
 
+  packages/generator:
+    dependencies:
+      '@ios/agents':
+        specifier: workspace:*
+        version: link:../agents
+      '@ios/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ios/db':
+        specifier: workspace:*
+        version: link:../db
+      '@ios/media':
+        specifier: workspace:*
+        version: link:../media
+      '@ios/providers':
+        specifier: workspace:*
+        version: link:../providers
+
   packages/knowledge:
     dependencies:
       '@anthropic-ai/sdk':
@@ -263,6 +284,9 @@ importers:
       '@ios/db':
         specifier: workspace:*
         version: link:../db
+      '@ios/generator':
+        specifier: workspace:*
+        version: link:../generator
       '@ios/providers':
         specifier: workspace:*
         version: link:../providers
@@ -364,6 +388,9 @@ importers:
       '@ios/distribution':
         specifier: workspace:*
         version: link:../distribution
+      '@ios/generator':
+        specifier: workspace:*
+        version: link:../generator
       '@ios/knowledge':
         specifier: workspace:*
         version: link:../knowledge

@@ -61,7 +61,7 @@ export async function POST(req: Request) {
     if (!personas.length) {
       // Personas in SETUP (the launch wave) aren't planned until they publish: say so instead of a false "done".
       const setup = await db.query<{ name: string; state: string }>(
-        `SELECT name, state FROM persona WHERE studio_id = $1 AND ($2::uuid IS NULL OR id = $2) AND state NOT IN ('KILLED','RETIRED') ORDER BY name`,
+        `SELECT name, state FROM persona WHERE studio_id = $1 AND ($2::uuid IS NULL OR id = $2) AND state NOT IN ('KILLED','RETIRED','ARCHIVED') ORDER BY name`,
         [studio.id, input.persona_id || null],
       );
       const who = input.persona_id ? (setup[0] ? `${setup[0].name} is in ${setup[0].state}` : 'that persona is not publishing') : 'No persona is publishing yet';

@@ -1,4 +1,5 @@
 import { NotFoundError, studioTotals, studioWall } from '@ios/core';
+import { listDrafts } from '@ios/generator';
 import Link from 'next/link';
 import { ChatPanel } from '@/components/chat-panel';
 import { Kpi } from '@/components/kpi';
@@ -21,10 +22,11 @@ export default async function StudioWall() {
     throw err;
   }
   const { db, studio } = ctx;
-  const [cards, totals, chat] = await Promise.all([
+  const [cards, totals, chat, drafts] = await Promise.all([
     studioWall(db, studio.id),
     studioTotals(db, studio.id),
     loadChat(db, studio.id, 'studio'),
+    listDrafts(db, studio.id, 'active'),
   ]);
   const views = cards.reduce((a, c) => a + c.totals.views7d, 0);
   const revenue = cards.reduce((a, c) => a + c.totals.revenue7dCents, 0);
@@ -72,7 +74,38 @@ export default async function StudioWall() {
             className="h-[420px] xl:sticky xl:top-20 xl:h-[calc(100dvh-7rem)]"
           />
         </div>
-        <section className="min-w-0 xl:order-1" aria-label="Personas">
+        <section className="min-w-0 space-y-4 xl:order-1" aria-label="Personas">
+          {cards.length === 0 ? (
+            <div className="card relative overflow-hidden p-6 sm:p-8">
+              <div className="pointer-events-none absolute inset-0 opacity-[0.08]" style={{ background: 'radial-gradient(70% 90% at 100% 0%, var(--accent), transparent 60%)' }} />
+              <div className="relative max-w-xl">
+                <div className="eyebrow">An empty studio</div>
+                <h2 className="mt-1 font-[family-name:var(--font-display)] text-[34px] leading-[1.05] tracking-tight">Create your first persona in the Persona Generator</h2>
+                <p className="mt-2 text-[14px] text-muted">
+                  The Studio Manager ranks opportunities with evidence, drafts three concepts, then the character, look, voice, content and products. You pick, edit or mix at every step,
+                  and you approve the launch.
+                </p>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <Link href="/generator" className="btn btn-ink">
+                    Open the Persona Generator
+                  </Link>
+                  <Link href="/archive" className="btn">
+                    Restore from the archive
+                  </Link>
+                </div>
+                <p className="mt-3 text-[12.5px] text-muted">The 14 Oct launch five (Rosa, Margot, Dot, Walt, Ambrose) are archived with everything kept.</p>
+              </div>
+            </div>
+          ) : null}
+          {drafts.length ? (
+            <Link href="/generator" className="card flex items-center gap-3 px-4 py-3 text-[13.5px] transition hover:shadow-lift">
+              <span className="pill bg-accent-soft text-accent">Generator</span>
+              <span className="min-w-0 flex-1 truncate">
+                {drafts.length} persona draft{drafts.length === 1 ? '' : 's'} in progress: {drafts.slice(0, 3).map((d) => d.title).join(', ')}
+              </span>
+              <span className="text-muted">Continue →</span>
+            </Link>
+          ) : null}
           <div className="grid gap-4 md:grid-cols-2">
             {cards.map((c) => (
               <PersonaCard key={c.persona.id} card={c} />

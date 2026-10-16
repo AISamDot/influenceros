@@ -134,6 +134,30 @@ describe('chat API', () => {
   });
 });
 
+describe('generator chat API', () => {
+  it('streams the Studio Manager reply on a draft step and applies the Owner instruction', async () => {
+    const { POST: genPost, GET: genGet } = await import('../app/api/generator/[draftId]/chat/route');
+    const { chooseOption, createDraft, getDraft } = await import('@ios/generator');
+    const { getServices } = await import('../lib/services');
+    const { OWNER } = await import('@ios/core');
+    const services = await getServices();
+    let d = await createDraft(services, { studioId, actor: OWNER });
+    d = await chooseOption(services, d.id, 1, 'A', { actor: OWNER });
+    const p = { params: Promise.resolve({ draftId: d.id }) };
+    const post = (body: string, withCookie = true) =>
+      genPost(new Request(`${BASE}/api/generator/${d.id}/chat?step=2`, { method: 'POST', headers: { 'content-type': 'application/json', ...(withCookie ? { cookie } : {}) }, body: JSON.stringify({ body }) }), p);
+    expect((await post('pick B', false)).status).toBe(401);
+    const res = await post("Combine A's look with B's mechanic");
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toMatch(/Mixed A's look with B's mechanic/);
+    expect((await getDraft(db, d.id))!.state.concept.chosenFrom).toBe('M');
+    const list = await genGet(new Request(`${BASE}/api/generator/${d.id}/chat`, { headers: { cookie } }), p);
+    expect(((await list.json()) as { messages: unknown[] }).messages).toHaveLength(2);
+    expect((await post('x'.repeat(5000))).status).toBe(400);
+  });
+});
+
 describe('session revocation reaches every non-public route and page', () => {
   it('a revoked session gets 401 from the pipeline, knowledge and profit routes', async () => {
     const { POST: pipelinePost, GET: pipelineGet } = await import('../app/api/pipeline/route');

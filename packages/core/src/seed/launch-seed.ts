@@ -1,5 +1,5 @@
 import { type Db, json } from '@ios/db';
-import { propose, sweepAutoApprovals } from '../approvals';
+import { propose } from '../approvals';
 import { portraitUri, thumbnailUri } from '../art';
 import { audit } from '../audit';
 import { addMessage, ensureThreads, findThread } from '../chat';
@@ -8,10 +8,10 @@ import { type Actor, DEFAULT_SETTINGS, STUDIO_MANAGER } from '../types';
 import type { FieldBrainSeed, LaunchPersona } from './launch';
 
 /**
- * Writes the launch personas. Used by the seed (a fresh studio) and by the `personas.import` job (an existing
- * studio picking up new folders or edited documents). Nothing here invents results: no metrics, orders, spend or
- * followers. Personas start in SETUP via the normal launch card, which the Studio Manager proposes and the
- * auto-approve timer executes (persona creation is delegated to the Studio Manager; the Owner is notified).
+ * Writes persona documents into a studio. Used by `seed({ personas })`, the `personas.import` job (an existing studio
+ * picking up new folders or edited documents), archive restores and Persona Generator launches (@ios/generator).
+ * Nothing here invents results: no metrics, orders, spend or followers. A new persona starts PROPOSED with an
+ * Owner-only launch card (Owner decision, 16 Oct: the Owner approves every launch; no timer).
  */
 
 const HOUR = 3_600_000;
@@ -32,7 +32,7 @@ export async function importLaunchPersona(
   db: Db,
   studioId: string,
   lp: LaunchPersona,
-  opts: { now: Date; proposeAt?: Date },
+  opts: { now: Date; proposeAt?: Date; source?: 'import' | 'archive' | 'generator'; createdBy?: string; approvedBy?: string; summary?: string },
 ): Promise<ImportResult> {
   const existing = await db.maybeOne<{ id: string; current_bible_version: number | null }>(
     'SELECT id, current_bible_version FROM persona WHERE studio_id = $1 AND slug = $2',
@@ -50,8 +50,8 @@ export async function importLaunchPersona(
   const personaId = persona.id;
   await db.query(
     `INSERT INTO persona_bible (persona_id, version, content, status, created_by, approved_by, approved_at)
-     VALUES ($1, 1, $2::jsonb, 'approved', 'agent:studio-manager', 'agent:studio-manager', $3)`,
-    [personaId, json(lp.bible), opts.now],
+     VALUES ($1, 1, $2::jsonb, 'approved', $4, $5, $3)`,
+    [personaId, json(lp.bible), opts.now, opts.createdBy ?? 'agent:studio-manager', opts.approvedBy ?? opts.createdBy ?? 'agent:studio-manager'],
   );
   // Accounts are created by the Owner (never automatically); these rows hold the chosen handles until then.
   for (const platform of ['tiktok', 'instagram'] as const) {
@@ -77,13 +77,17 @@ export async function importLaunchPersona(
     personaId,
     kind: 'persona_launch',
     title: `Launch ${lp.name}`,
-    summary: `${lp.niche}${lp.subNiche ? `: ${lp.subNiche}` : ''}. Bible ${lp.bibleLabel ?? 'v1'} imported; first post ${lp.launchDate ?? 'TBC'}.`,
+    summary:
+      opts.summary ??
+      `${lp.niche}${lp.subNiche ? `: ${lp.subNiche}` : ''}. Bible ${lp.bibleLabel ?? 'v1'} imported; first post ${lp.launchDate ?? 'TBC'}. Review it in the Persona Generator and approve the launch there.`,
+    payload: { source: opts.source ?? 'import' },
     proposedBy: STUDIO_MANAGER,
     subjectType: 'persona',
     subjectId: personaId,
+    ownerOnly: true,
     now: opts.proposeAt ?? opts.now,
   });
-  await audit(db, { studioId, personaId, actor: IMPORTER, action: 'persona.imported', entityType: 'persona', entityId: personaId, data: { slug: lp.slug, source: lp.bible.source_document as Record<string, unknown> } });
+  await audit(db, { studioId, personaId, actor: IMPORTER, action: 'persona.imported', entityType: 'persona', entityId: personaId, data: { slug: lp.slug, via: opts.source ?? 'import', source: lp.bible.source_document as Record<string, unknown> } });
   return { slug: lp.slug, personaId, created: true, updated: false, bibleVersion: 1, slots, nodes };
 }
 
@@ -298,19 +302,17 @@ export async function seedLaunchStudio(db: Db, personas: readonly LaunchPersona[
     json({ loudness_lufs: -14, true_peak_dbtp: -1, max_silence_s: 0.7, caption_drift_ms: 150, resolution: '1080x1920', fps: 30 }),
   ]);
   const results: ImportResult[] = [];
-  // The Studio Manager proposed the launch wave a day ago; the 24 h card timer has run, so the personas are in SETUP.
-  for (const lp of personas) results.push(await importLaunchPersona(db, studioId, lp, { now, proposeAt: new Date(now.getTime() - 25 * HOUR) }));
-  await sweepAutoApprovals(db, { now });
-  await db.query(`UPDATE notification SET read_at = now() WHERE studio_id = $1 AND title LIKE 'Launch %'`, [studioId]);
+  // Each persona waits PROPOSED for the Owner's launch approval (Owner-only cards; no timer).
+  for (const lp of personas) results.push(await importLaunchPersona(db, studioId, lp, { now, proposeAt: new Date(now.getTime() - HOUR) }));
 
   const launch = personas.map((p) => p.launchDate).filter(Boolean).sort()[0] ?? null;
   await notify(db, {
     studioId,
     kind: 'system',
     severity: 'warn',
-    title: `Launch wave: ${personas.length} personas in setup`,
-    body: `Create the TikTok and Instagram accounts (handles are in each Profile) and switch on the AI profile labels${launch ? ` before ${launch}` : ''}. Everything else runs automatically.`,
-    link: '/',
+    title: `Launch wave: ${personas.length} personas waiting for your launch approval`,
+    body: `Review each one and approve its launch${launch ? ` before ${launch}` : ''}; then create the TikTok and Instagram accounts (handles are in each Profile) and switch on the AI profile labels.`,
+    link: '/approvals',
   });
   await ensureThreads(db, studioId);
   const thread = await findThread(db, studioId, 'studio');
@@ -321,9 +323,9 @@ export async function seedLaunchStudio(db: Db, personas: readonly LaunchPersona[
     author: 'agent:studio-manager',
     at: new Date(now.getTime() - HOUR),
     body: [
-      `Launch wave imported: ${personas.length} personas, all in setup${launch ? `, first posts on ${launch}` : ''}.`,
+      `Launch wave imported: ${personas.length} personas, each waiting for your launch approval${launch ? `, first posts planned from ${launch}` : ''}.`,
       lines.join('\n'),
-      'Next, automatically: the Knowledge Builder researches each niche\'s Field Brain from the seeds, the News Desk starts daily briefings, and the content pipeline scripts the launch posts. The one thing I need from you is the accounts (see the notification). No results yet, so no numbers to report.',
+      'Once you approve a launch: the Knowledge Builder researches the niche\'s Field Brain from the seeds, the News Desk starts daily briefings, and the content pipeline scripts the launch posts. No results yet, so no numbers to report.',
     ].join('\n\n'),
     meta: { kind: 'notice' },
   });

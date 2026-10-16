@@ -11,6 +11,7 @@ const STATE_STYLE: Record<string, string> = {
   BRAND: 'bg-[#fbf0d9] text-[#8a5a00] dark:bg-[#33270d] dark:text-[#f3c86b]',
   KILLED: 'bg-danger-soft text-danger',
   RETIRED: 'bg-surface-3 text-muted',
+  ARCHIVED: 'bg-surface-3 text-faint border border-dashed border-line-strong',
 };
 
 export function LifecycleBadge({ state }: { state: string }) {

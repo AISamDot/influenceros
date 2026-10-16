@@ -24,7 +24,7 @@ export function knowledgeService(db: Db): KnowledgeService {
 /** Niches with at least one persona that isn't killed or retired. */
 export async function activeNiches(db: Db, studioId: string): Promise<string[]> {
   const rows = await db.query<{ niche: string }>(
-    `SELECT DISTINCT lower(niche) AS niche FROM persona WHERE studio_id = $1 AND state NOT IN ('KILLED','RETIRED') ORDER BY 1`,
+    `SELECT DISTINCT lower(niche) AS niche FROM persona WHERE studio_id = $1 AND state NOT IN ('KILLED','RETIRED','ARCHIVED') ORDER BY 1`,
     [studioId],
   );
   return rows.map((r) => r.niche);

@@ -19,6 +19,8 @@ export const TRANSITIONS: Readonly<Record<PersonaState, readonly PersonaState[]>
   BRAND: ['SCALING', 'RETIRED'],
   KILLED: ['RETIRED'],
   RETIRED: [],
+  // Archive and restore are not lifecycle edges: archive.ts parks a persona and returns it to the state it came from.
+  ARCHIVED: [],
 };
 
 /** States in which a persona may publish. */
@@ -62,7 +64,7 @@ async function assertApproval(
   if (!a || a.persona_id !== persona.id || !kinds.includes(a.kind)) {
     throw new ApprovalRequiredError(`approval ${input.approvalId} does not cover ${persona.state} → ${input.to}`);
   }
-  const ownerOnly = a.kind === 'persona_kill' || a.kind === 'persona_retire';
+  const ownerOnly = a.kind === 'persona_kill' || a.kind === 'persona_retire' || (a.kind === 'persona_launch' && a.payload?.owner_only === true);
   const ok = ownerOnly
     ? a.status === 'approved' && (a.decided_by ?? '').startsWith('owner:')
     : a.status === 'approved' || a.status === 'auto_approved';

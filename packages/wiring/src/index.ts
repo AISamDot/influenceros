@@ -4,6 +4,7 @@ import * as commerce from '@ios/commerce';
 import * as content from '@ios/content';
 import type { Db } from '@ios/db';
 import * as distribution from '@ios/distribution';
+import * as generator from '@ios/generator';
 import * as knowledge from '@ios/knowledge';
 import * as media from '@ios/media';
 import * as products from '@ios/products';
@@ -18,8 +19,8 @@ import { defaultBackend, integrationStates, isSecretName, readSecret, type Secre
  * profit; IOS-3/4: media, distribution, commerce, products).
  * Owned by the integrator; streams don't edit it (docs/IOS-2-CONTRACTS.md §3, docs/IOS-34-CONTRACTS.md §3).
  */
-export type ModuleName = 'agents' | 'content' | 'knowledge' | 'profit' | 'media' | 'distribution' | 'commerce' | 'products';
-export const MODULES: Readonly<Record<ModuleName, StudioModule>> = { agents, content, knowledge, profit, media, distribution, commerce, products };
+export type ModuleName = 'agents' | 'content' | 'knowledge' | 'profit' | 'media' | 'distribution' | 'commerce' | 'products' | 'generator';
+export const MODULES: Readonly<Record<ModuleName, StudioModule>> = { agents, content, knowledge, profit, media, distribution, commerce, products, generator };
 
 function mergeUnique<T>(kind: string, entries: Array<[string, T]>): Map<string, T> {
   const out = new Map<string, T>();

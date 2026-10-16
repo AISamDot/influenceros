@@ -3,6 +3,7 @@ import { audit } from './audit';
 import { addMessage, findThread } from './chat';
 import { capFor, creditPeriod, type Unit } from './governor';
 import { ApprovalError, NotFoundError } from './errors';
+import { archivePersona } from './archive';
 import { canTransition, transition } from './lifecycle';
 import { notify } from './notifications';
 import {
@@ -13,6 +14,7 @@ import {
   OWNER_ONLY_KINDS,
   payloadHash,
   postWindowAllowed,
+  requiresOwner,
 } from './policy';
 import { enqueue } from './queue';
 import { getSettings } from './settings';
@@ -88,6 +90,11 @@ export interface ProposeInput {
    * the proposal is refused. A post with no stored verdict is never auto-published.
    */
   gate?: GateVerdict;
+  /**
+   * (16 Oct) persona_launch only: the Owner must approve this launch (generator-created and archive-restored personas).
+   * The card is explicit with no timer, carries `payload.owner_only`, and the database refuses any other decider.
+   */
+  ownerOnly?: boolean;
   now?: Date;
 }
 
@@ -110,7 +117,12 @@ export async function propose(db: Db, input: ProposeInput): Promise<ApprovalRow>
       }
     }
 
-    const payload = validatePayload(input.kind, input.payload ?? {}, settings, now);
+    if (input.ownerOnly && input.kind !== 'persona_launch') throw new ApprovalError('ownerOnly applies to persona_launch cards only');
+    if (input.kind === 'persona_archive') {
+      if (!persona) throw new ApprovalError('persona_archive needs a persona');
+      if (['ARCHIVED', 'KILLED', 'RETIRED'].includes(persona.state)) throw new ApprovalError(`${persona.name} is ${persona.state}: nothing to archive`);
+    }
+    const payload = validatePayload(input.kind, { ...(input.payload ?? {}), ...(input.ownerOnly ? { owner_only: true } : {}) }, settings, now);
 
     // Posts: the approval is bound to one post of this persona, and the Gate verdict comes from the stored
     // gate_result, never from the caller.
@@ -131,7 +143,7 @@ export async function propose(db: Db, input: ProposeInput): Promise<ApprovalRow>
     }
 
     const autonomy: Autonomy | undefined = persona?.autonomy;
-    const policy = approvalPolicy(input.kind, settings, { autonomy, gate });
+    const policy = approvalPolicy(input.kind, settings, { autonomy, gate, ownerOnly: input.ownerOnly === true });
     const autoAt = policy.windowMs === null ? null : new Date(now.getTime() + policy.windowMs);
     const row = await tx.one<ApprovalRow>(
       `INSERT INTO approval (studio_id, persona_id, kind, mode, title, summary, payload, subject_type, subject_id,
@@ -169,7 +181,7 @@ export async function propose(db: Db, input: ProposeInput): Promise<ApprovalRow>
         studioId: input.studioId,
         personaId: input.personaId,
         kind: 'approval',
-        severity: input.kind === 'persona_kill' || input.kind === 'persona_retire' ? 'critical' : isOwnerOnly(input.kind) ? 'warn' : 'info',
+        severity: input.kind === 'persona_kill' || input.kind === 'persona_retire' ? 'critical' : isOwnerOnly(input.kind) || input.ownerOnly ? 'warn' : 'info',
         title: input.title,
         body: input.summary,
         link: '/approvals',
@@ -228,8 +240,14 @@ async function execute(tx: Db, a: ApprovalRow, actor: Actor): Promise<unknown> {
       await tx.query(`UPDATE kill_scale_proposal SET status = 'executed' WHERE approval_id = $1`, [a.id]);
       return { state: to };
     }
+    case 'persona_archive': {
+      if (!a.persona_id) throw new ApprovalError('archive approval without a persona');
+      const p = await archivePersona(tx, { personaId: a.persona_id, actor, approvalId: a.id, reason: a.summary ?? undefined });
+      return { state: p.state, from: p.archived_from_state };
+    }
     case 'persona_launch': {
       if (!a.persona_id) throw new ApprovalError('launch approval without a persona');
+      if (a.payload.owner_only === true && actor.type !== 'owner') throw new ApprovalError('this launch needs the Owner\'s approval');
       await transition(tx, { personaId: a.persona_id, to: 'SETUP', actor, approvalId: a.id, reason: 'launch approved' });
       return { state: 'SETUP' };
     }
@@ -523,7 +541,7 @@ export async function sweepAutoApprovals(db: Db, opts: { now?: Date } = {}): Pro
           `SELECT * FROM approval WHERE id = $1 AND status = 'pending' FOR UPDATE SKIP LOCKED`,
           [id],
         );
-        if (!a || isOwnerOnly(a.kind) || a.auto_approve_at === null || a.auto_approve_at > now) return false;
+        if (!a || requiresOwner(a) || a.auto_approve_at === null || a.auto_approve_at > now) return false;
         const settings = await getSettings(tx, a.studio_id);
         if (a.mode === 'auto_after' && a.kind !== 'persona_launch' && !settings.approvals.auto_approve_cards) {
           await makeExplicit(tx, a, SYSTEM, 'approval.auto_disabled', {});

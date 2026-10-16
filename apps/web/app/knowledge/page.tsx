@@ -26,7 +26,7 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
   const hits = q && niche ? await knowledgeService(db).retrieve({ studioId: studio.id, niche, query: q, k: 8 }) : null;
 
   const personas = await db.query<{ id: string; slug: string; name: string; niche: string; portrait_url: string | null }>(
-    `SELECT id, slug, name, niche, portrait_url FROM persona WHERE studio_id = $1 AND state NOT IN ('KILLED','RETIRED') ORDER BY name`,
+    `SELECT id, slug, name, niche, portrait_url FROM persona WHERE studio_id = $1 AND state NOT IN ('KILLED','RETIRED','ARCHIVED') ORDER BY name`,
     [studio.id],
   );
   const briefings = await Promise.all(personas.map(async (p) => ({ persona: p, briefing: await latestBriefing(db, p.id) })));

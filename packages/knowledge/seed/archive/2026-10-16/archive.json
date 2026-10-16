@@ -1,0 +1,14 @@
+{
+  "label": "2026-10-16",
+  "archived_on": "2026-10-16",
+  "decision": "Owner decision, 16 Oct 2026: the 14 Oct launch five are archived; new personas are co-created in the Persona Generator (PRD §3.12).",
+  "personas": {
+    "ambrose": "Ambrose Hale",
+    "dot": "Dot Pickering",
+    "margot": "Margot from 2075",
+    "rosa": "Rosa Bellini",
+    "sal": "Walt Novak (folder slug sal)"
+  },
+  "contents": "Each folder keeps bible.md, look-prompts.md, content-plan.md, field-brain-seed.md and products/ (manuscripts, listing packs, welcome sequences; build files where they existed), copied from Ventures/Influencer-OS/_archive/personas-2026-10-16. manifest.json pins niche, timezone and hue.",
+  "restore": "pnpm knowledge personas restore <slug|all> [--from 2026-10-16], or the Restore button on /archive. A restored persona is imported as PROPOSED and waits for the Owner's launch approval in the Persona Generator's review step."
+}

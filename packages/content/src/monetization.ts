@@ -178,7 +178,7 @@ export async function scoreOpportunities(services: StudioServices, ctx: PersonaC
   );
   const products = await db.query<{ ladder_rung: Rung; name: string; status: string }>(`SELECT ladder_rung, name, status FROM product WHERE persona_id = $1 AND status <> 'retired'`, [ctx.persona.id]);
   const siblings = await db.one<{ n: number }>(
-    `SELECT count(*)::int AS n FROM persona WHERE studio_id = $1 AND id <> $2 AND lower(niche) = lower($3) AND state NOT IN ('KILLED','RETIRED')`,
+    `SELECT count(*)::int AS n FROM persona WHERE studio_id = $1 AND id <> $2 AND lower(niche) = lower($3) AND state NOT IN ('KILLED','RETIRED','ARCHIVED')`,
     [ctx.persona.studio_id, ctx.persona.id, ctx.persona.niche],
   );
   const rungs = new Set(products.map((p) => p.ladder_rung));

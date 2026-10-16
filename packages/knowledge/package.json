@@ -17,6 +17,7 @@
     "@ios/agents": "workspace:*",
     "@ios/core": "workspace:*",
     "@ios/db": "workspace:*",
+    "@ios/generator": "workspace:*",
     "@ios/providers": "workspace:*",
     "fast-xml-parser": "5.11.2"
   }

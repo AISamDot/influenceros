@@ -70,6 +70,7 @@ export const STATE_LABEL: Record<string, string> = {
   BRAND: 'Brand',
   KILLED: 'Killed',
   RETIRED: 'Retired',
+  ARCHIVED: 'Archived',
 };
 
 export const FORMAT_LABEL: Record<string, string> = {

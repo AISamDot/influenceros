@@ -29,6 +29,7 @@ export const OWNER_ONLY_KINDS: readonly ApprovalKind[] = [
   'disclosure_change',
   'legal_text_change',
   'qc_override',
+  'persona_archive',
 ];
 export const CARD_KINDS: readonly ApprovalKind[] = ['persona_launch', 'product_v1'];
 
@@ -37,6 +38,13 @@ export const isOwnerOnly = (k: ApprovalKind) => OWNER_ONLY_KINDS.includes(k);
 export interface PolicyContext {
   autonomy?: Autonomy;
   gate?: GateVerdict;
+  /** (16 Oct) A launch the Owner must approve (generator-created or archive-restored personas): explicit, no timer. */
+  ownerOnly?: boolean;
+}
+
+/** (16 Oct) Whether an approval can only ever be approved by the Owner (its kind, or a launch marked owner_only). */
+export function requiresOwner(a: { kind: ApprovalKind; payload?: Record<string, unknown> | null }): boolean {
+  return isOwnerOnly(a.kind) || (a.kind === 'persona_launch' && a.payload?.owner_only === true);
 }
 
 export function approvalPolicy(
@@ -45,6 +53,7 @@ export function approvalPolicy(
   ctx: PolicyContext = {},
 ): { mode: ApprovalMode; windowMs: number | null } {
   if (isOwnerOnly(kind)) return { mode: 'explicit', windowMs: null };
+  if (kind === 'persona_launch' && ctx.ownerOnly) return { mode: 'explicit', windowMs: null };
   // Persona creation is delegated to the Studio Manager (PRD §3.7: the Owner gets a notification, not an approval
   // card), so a launch never waits on the cards switch: it auto-approves after the window and the Owner can still
   // reject it (veto) until then.

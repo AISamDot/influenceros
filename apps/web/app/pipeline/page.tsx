@@ -42,7 +42,7 @@ export default async function Pipeline({ searchParams }: { searchParams: Promise
   const view: View = VIEWS.some((v) => v.key === sp.view) ? (sp.view as View) : 'upcoming';
   const { db, studio } = await studioContext();
   const personas = await db.query<{ id: string; slug: string; name: string; portrait_url: string | null; state: string }>(
-    `SELECT id, slug, name, portrait_url, state FROM persona WHERE studio_id = $1 AND state NOT IN ('KILLED','RETIRED','PROPOSED') ORDER BY name`,
+    `SELECT id, slug, name, portrait_url, state FROM persona WHERE studio_id = $1 AND state NOT IN ('KILLED','RETIRED','PROPOSED','ARCHIVED') ORDER BY name`,
     [studio.id],
   );
   const selected = personas.find((p) => p.slug === sp.persona) ?? null;

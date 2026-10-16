@@ -25,7 +25,25 @@ const KIND_LABEL: Record<string, string> = {
   product_v1: 'Product v1',
   post: 'Post',
   qc_override: 'Publish anyway?',
+  persona_archive: 'Archive persona',
 };
+
+/** A launch only the Owner approves (generator-created or restored): decided in the Persona Generator's review step. */
+function LaunchReview({ a, draftId }: { a: Row; draftId: string }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Link href={`/generator/${draftId}?step=7`} className="btn btn-ink">
+        Review and approve in the Generator →
+      </Link>
+      <form action={`/api/approvals/${a.id}`} method="post">
+        <input type="hidden" name="decision" value="reject" />
+        <SubmitButton className="btn">
+          <IconX size={14} /> Reject
+        </SubmitButton>
+      </form>
+    </div>
+  );
+}
 
 /** QC failed on majors only: publishing anyway needs a reason (logged with the override). Blockers never get a card. */
 function QcOverrideDecide({ a }: { a: Row }) {
@@ -209,6 +227,9 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
   const kills = pending.filter((a) => a.kind === 'persona_kill' || a.kind === 'persona_retire');
   const explicit = pending.filter((a) => !kills.includes(a) && a.mode === 'explicit');
   const timed = pending.filter((a) => a.mode !== 'explicit');
+  const launchDrafts = new Map(
+    (await db.query<{ persona_id: string; id: string }>(`SELECT persona_id, id FROM persona_draft WHERE studio_id = $1 AND status = 'active' AND persona_id IS NOT NULL`, [studio.id])).map((r) => [r.persona_id, r.id]),
+  );
   const recent = await db.query<Row>(
     `SELECT a.*, p.name AS persona_name, p.slug AS persona_slug, p.portrait_url FROM approval a LEFT JOIN persona p ON p.id = a.persona_id
       WHERE a.studio_id = $1 AND a.status <> 'pending' ORDER BY a.decided_at DESC NULLS LAST LIMIT 8`,
@@ -267,7 +288,13 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
               {a.summary ? <p className="mt-0.5 text-[13px] text-muted">{a.summary}</p> : null}
               <Executes a={a} disclosure={studio.resolved.disclosure_text} />
             </div>
-            {a.kind === 'qc_override' ? <QcOverrideDecide a={a} /> : <Decide a={a} />}
+            {a.kind === 'qc_override' ? (
+              <QcOverrideDecide a={a} />
+            ) : a.kind === 'persona_launch' && a.persona_id && launchDrafts.has(a.persona_id) ? (
+              <LaunchReview a={a} draftId={launchDrafts.get(a.persona_id)!} />
+            ) : (
+              <Decide a={a} />
+            )}
           </article>
         ))}
       </section>
@@ -275,7 +302,7 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
       <section className="space-y-3">
         <h2 className="eyebrow">Auto-approving cards · {timed.length}</h2>
         <p className="-mt-1 text-[12.5px] text-muted">
-          Launches and product v1s approve themselves after 24 h; L1 posts publish after the veto window. Switch either off in Settings.
+          Product v1s approve themselves after 24 h; L1 posts publish after the veto window (switch either off in Settings). Persona launches never auto-approve.
         </p>
         <div className="grid gap-3 md:grid-cols-2">
           {timed.map((a) => (

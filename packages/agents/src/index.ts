@@ -23,7 +23,7 @@ export { acceptOwnerMessage, newMessageId, type OwnerTurn, respondToOwner } from
 export { isUntrustedMessage, transcript, turnTrust } from './agents/common';
 export { personaManagerAnswer, personaManagerTurn, proposalText, statusText } from './agents/persona-manager';
 export { overviewText, studioManagerTurn } from './agents/studio-manager';
-export { STUDIO_RULES } from './agents/prompts';
+export { STUDIO_MANAGER_SYSTEM, STUDIO_RULES, STUDIO_RULES_BLOCK } from './agents/prompts';
 export {
   applyFeedback,
   BIBLE_SECTIONS,

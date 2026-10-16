@@ -86,12 +86,13 @@ async function seriesFor(db: Db, personaIds: string[], now: Date, n = 7): Promis
   return out;
 }
 
-export async function studioWall(db: Db, studioId: string, now = new Date()): Promise<PersonaCard[]> {
+export async function studioWall(db: Db, studioId: string, now = new Date(), opts: { includeArchived?: boolean } = {}): Promise<PersonaCard[]> {
+  // Archived personas live on the Archive page, not the wall (personaPage still shows them).
   const personas = await db.query<PersonaRow>(
-    `SELECT * FROM persona WHERE studio_id = $1
+    `SELECT * FROM persona WHERE studio_id = $1 AND ($2::boolean OR state <> 'ARCHIVED')
       ORDER BY CASE state WHEN 'SCALING' THEN 0 WHEN 'BRAND' THEN 0 WHEN 'MONETISING' THEN 1 WHEN 'TESTING' THEN 2
                           WHEN 'RE_ANGLE' THEN 2 WHEN 'SETUP' THEN 3 WHEN 'PROPOSED' THEN 4 ELSE 5 END, name`,
-    [studioId],
+    [studioId, opts.includeArchived === true],
   );
   const ids = personas.map((p) => p.id);
   if (!ids.length) return [];
@@ -140,7 +141,7 @@ export async function studioTotals(
   studioId: string,
 ): Promise<{ active: number; live: number; setup: number; pending: number; kills: number; unread: number }> {
   return db.one(
-    `SELECT (SELECT count(*) FROM persona WHERE studio_id = $1 AND state NOT IN ('KILLED','RETIRED'))::int AS active,
+    `SELECT (SELECT count(*) FROM persona WHERE studio_id = $1 AND state NOT IN ('KILLED','RETIRED','ARCHIVED'))::int AS active,
             (SELECT count(*) FROM persona WHERE studio_id = $1 AND state = ANY($2::text[]))::int AS live,
             (SELECT count(*) FROM persona WHERE studio_id = $1 AND state IN ('PROPOSED','SETUP'))::int AS setup,
             (SELECT count(*) FROM approval WHERE studio_id = $1 AND status = 'pending')::int AS pending,
@@ -171,7 +172,7 @@ export interface PersonaPage {
 export async function personaPage(db: Db, slug: string, now = new Date()): Promise<PersonaPage | null> {
   const persona = await db.maybeOne<PersonaRow>('SELECT * FROM persona WHERE slug = $1', [slug]);
   if (!persona) return null;
-  const card = (await studioWall(db, persona.studio_id, now)).find((c) => c.persona.id === persona.id)!;
+  const card = (await studioWall(db, persona.studio_id, now, { includeArchived: true })).find((c) => c.persona.id === persona.id)!;
   const start = weekStart(now);
   const end = new Date(start.getTime() + 7 * 86_400_000);
   const [bible, slots, posts, products, plan, community, llm, credits] = await Promise.all([

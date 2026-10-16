@@ -5,6 +5,7 @@ export * from './settings';
 export * from './lifecycle';
 export * from './policy';
 export * from './approvals';
+export * from './archive';
 export * from './governor';
 export * from './metered';
 export * from './queue';

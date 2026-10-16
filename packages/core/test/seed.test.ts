@@ -2,36 +2,38 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from '@ios/db';
 import { createTestDb } from '@ios/db/testing';
 import { listPendingApprovals, personaPage, studioWall } from '../src';
-import { BIBLE_SECTIONS, launchPersonaSlugs, loadLaunchPersonas, parseContentPlan, parseSlotWhen, seed, type SeedSummary } from '../src/seed';
+import { BIBLE_SECTIONS, launchPersonaSlugs, loadArchivedPersonas, parseContentPlan, parseSlotWhen, seed, type SeedSummary } from '../src/seed';
 
 const NOW = new Date('2026-10-14T12:00:00Z'); // a Wednesday, before the 1 Nov launch
 const count = async (db: Db, sql: string, params: unknown[] = []) => (await db.one<{ n: number }>(`SELECT count(*)::int AS n FROM (${sql}) x`, params)).n;
 
-describe('seed: the launch personas', () => {
+// The launch five are archived (Owner decision, 16 Oct): the default seed is empty (packages/generator tests it), and
+// seeding the archived documents explicitly still exercises the importer end to end.
+describe('seed: persona documents (the archived launch five)', () => {
   let db: Db;
   let s: SeedSummary;
-  const slugs = launchPersonaSlugs();
+  const slugs = ['ambrose', 'dot', 'margot', 'rosa', 'sal'];
 
   beforeAll(async () => {
     db = await createTestDb();
-    s = await seed(db, { now: NOW });
+    s = await seed(db, { now: NOW, personas: loadArchivedPersonas('2026-10-16') });
   });
   afterAll(async () => db.close());
 
-  it('replaces the samples with the five launch personas from packages/knowledge/seed/personas', () => {
-    expect(slugs).toEqual(['ambrose', 'dot', 'margot', 'rosa', 'sal']);
+  it('seeds the documents it is given; the live seed folder is empty', () => {
+    expect(launchPersonaSlugs()).toEqual([]);
     expect(s.kind).toBe('launch');
     expect(s.personas.map((p) => p.slug)).toEqual(slugs);
   });
 
-  it('puts them in SETUP through the normal launch card, approved by the timer (creation is delegated)', async () => {
-    expect(s.personas.every((p) => p.state === 'SETUP')).toBe(true);
-    const cards = await db.query<{ status: string; decided_by: string; proposed_by: string }>(`SELECT status, decided_by, proposed_by FROM approval WHERE kind = 'persona_launch'`);
+  it('leaves them PROPOSED behind Owner-only launch cards (no timer: the Owner approves every launch)', async () => {
+    expect(s.personas.every((p) => p.state === 'PROPOSED')).toBe(true);
+    const cards = await db.query<{ status: string; mode: string; auto_approve_at: Date | null; proposed_by: string; payload: Record<string, unknown> }>(`SELECT status, mode, auto_approve_at, proposed_by, payload FROM approval WHERE kind = 'persona_launch'`);
     expect(cards).toHaveLength(5);
-    expect(cards.every((c) => c.status === 'auto_approved' && c.decided_by === 'system:auto-approve' && c.proposed_by === 'agent:studio-manager')).toBe(true);
-    expect(await listPendingApprovals(db, s.studioId)).toEqual([]);
+    expect(cards.every((c) => c.status === 'pending' && c.mode === 'explicit' && c.auto_approve_at === null && c.proposed_by === 'agent:studio-manager' && c.payload.owner_only === true)).toBe(true);
+    expect(await listPendingApprovals(db, s.studioId)).toHaveLength(5);
     const note = await db.one<{ title: string; read_at: Date | null }>(`SELECT title, read_at FROM notification WHERE title LIKE 'Launch wave%'`);
-    expect(note).toMatchObject({ title: 'Launch wave: 5 personas in setup', read_at: null });
+    expect(note).toMatchObject({ title: 'Launch wave: 5 personas waiting for your launch approval', read_at: null });
   });
 
   it('loads every bible with all Appendix A sections, approved by the Studio Manager', async () => {
@@ -129,7 +131,7 @@ describe('seed: the launch personas', () => {
     expect(msgs.filter((m) => m.author === 'agent:studio-manager')).toHaveLength(1);
     expect(msgs.filter((m) => m.author === 'agent:persona-manager')).toHaveLength(5);
     expect(msgs.every((m) => m.meta.kind === 'notice')).toBe(true);
-    expect(msgs.find((m) => m.author === 'agent:studio-manager')!.body).toMatch(/Launch wave imported: 5 personas/);
+    expect(msgs.find((m) => m.author === 'agent:studio-manager')!.body).toMatch(/Launch wave imported: 5 personas, each waiting for your launch approval/);
   });
 });
 
@@ -151,8 +153,8 @@ describe('seed: launch-plan parsing', () => {
     expect(ny!.slotAt.toISOString()).toBe('2026-11-01T23:00:00.000Z'); // EST
   });
 
-  it('parses all five launch folders', () => {
-    const personas = loadLaunchPersonas();
+  it('parses all five archived launch folders', () => {
+    const personas = loadArchivedPersonas('2026-10-16');
     expect(personas).toHaveLength(5);
     for (const p of personas) {
       expect(p.slots, p.slug).toHaveLength(20);
@@ -169,7 +171,7 @@ describe('seed: sample fallback (no launch folders)', () => {
   let s: SeedSummary;
   beforeAll(async () => {
     db = await createTestDb();
-    s = await seed(db, { now: NOW, personas: [] });
+    s = await seed(db, { now: NOW, samples: true });
   });
   afterAll(async () => db.close());
 

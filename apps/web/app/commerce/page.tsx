@@ -114,7 +114,7 @@ export default async function CommercePage({ searchParams }: { searchParams: Pro
     getCommerceSettings(db, studio.id),
     db.query<{ id: string; name: string; slug: string; state: string; store_id: string | null; store_name: string | null }>(
       `SELECT p.id, p.name, p.slug, p.state, sa.store_id, sa.store_name FROM persona p LEFT JOIN store_account sa ON sa.persona_id = p.id AND sa.status = 'linked'
-        WHERE p.studio_id = $1 AND p.state NOT IN ('PROPOSED','KILLED','RETIRED') ORDER BY p.name`,
+        WHERE p.studio_id = $1 AND p.state NOT IN ('PROPOSED','KILLED','RETIRED','ARCHIVED') ORDER BY p.name`,
       [studio.id],
     ),
     productStoreBoard(db, studio.id),

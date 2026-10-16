@@ -94,7 +94,7 @@ export const schedules: readonly ScheduledTask[] = [
     async run(services) {
       const rows = await services.db.query<{ id: string; studio_id: string }>(
         `SELECT p.id, p.studio_id FROM persona p
-          WHERE p.state NOT IN ('PROPOSED','KILLED','RETIRED')
+          WHERE p.state NOT IN ('PROPOSED','KILLED','RETIRED','ARCHIVED')
             AND EXISTS (SELECT 1 FROM subscriber s WHERE s.persona_id = p.id)
             AND NOT EXISTS (SELECT 1 FROM email_sequence q WHERE q.persona_id = p.id AND q.kind = 'welcome' AND q.status = 'active')`,
       );
@@ -108,7 +108,7 @@ export const schedules: readonly ScheduledTask[] = [
     async run(services, now) {
       const rows = await services.db.query<{ persona_id: string; studio_id: string }>(
         `SELECT DISTINCT pr.persona_id, p.studio_id FROM product pr JOIN persona p ON p.id = pr.persona_id
-          WHERE pr.ladder_rung = 'membership' AND pr.status = 'live' AND p.state NOT IN ('KILLED','RETIRED')
+          WHERE pr.ladder_rung = 'membership' AND pr.status = 'live' AND p.state NOT IN ('KILLED','RETIRED','ARCHIVED')
             AND NOT EXISTS (SELECT 1 FROM member_drop d WHERE d.persona_id = pr.persona_id AND d.month = $1 AND d.status = 'ready')`,
         [monthKey(now)],
       );

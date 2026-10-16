@@ -388,7 +388,7 @@ export interface FieldBrainStatus {
 export async function fieldBrainStatus(services: Pick<StudioServices, 'db' | 'providers'>, studioId: string, niche?: string): Promise<FieldBrainStatus[]> {
   const rows = await services.db.query<Omit<FieldBrainStatus, 'lastBuild'> & { niche: string }>(
     `WITH niches AS (
-       SELECT DISTINCT lower(niche) AS niche FROM persona WHERE studio_id = $1 AND state NOT IN ('KILLED','RETIRED')
+       SELECT DISTINCT lower(niche) AS niche FROM persona WHERE studio_id = $1 AND state NOT IN ('KILLED','RETIRED','ARCHIVED')
        UNION SELECT DISTINCT lower(niche) FROM knowledge_node WHERE studio_id = $1)
      SELECT n.niche,
             (SELECT count(*) FROM knowledge_node k WHERE k.studio_id = $1 AND lower(k.niche) = n.niche)::int AS nodes,

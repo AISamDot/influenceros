@@ -50,7 +50,7 @@ describe('IOS-3/4 shared contracts', () => {
 });
 
 describe('persona palettes: readable CTAs on every seed persona', () => {
-  const SEED = join(__dirname, '../../knowledge/seed/personas');
+  const SEED = join(__dirname, '../../knowledge/seed/archive/2026-10-16');
   const slugs = readdirSync(SEED, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
 
   it('parses 3- and 4-column palette tables (Sal keeps his cobalt)', () => {

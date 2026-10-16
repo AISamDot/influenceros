@@ -54,7 +54,7 @@ export async function sweepBriefs(services: StudioServices): Promise<number> {
     `SELECT pr.id, pr.persona_id, pe.studio_id
        FROM product pr JOIN persona pe ON pe.id = pr.persona_id
       WHERE pr.status IN ('brief','building','qc')
-        AND pe.state NOT IN ('KILLED','RETIRED')
+        AND pe.state NOT IN ('KILLED','RETIRED','ARCHIVED')
         AND EXISTS (SELECT 1 FROM product_brief b WHERE b.product_id = pr.id AND b.source = 'monetization')
         AND NOT EXISTS (SELECT 1 FROM product_manuscript m WHERE m.product_id = pr.id)
         AND NOT EXISTS (SELECT 1 FROM product_version v WHERE v.product_id = pr.id)

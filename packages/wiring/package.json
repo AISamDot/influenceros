@@ -18,6 +18,7 @@
     "@ios/core": "workspace:*",
     "@ios/db": "workspace:*",
     "@ios/distribution": "workspace:*",
+    "@ios/generator": "workspace:*",
     "@ios/knowledge": "workspace:*",
     "@ios/media": "workspace:*",
     "@ios/products": "workspace:*",

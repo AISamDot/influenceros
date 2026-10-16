@@ -9,7 +9,7 @@ import { allJobs, allSchedules, allTools, createStudioServices, MODULES, provide
  */
 describe('wiring', () => {
   it('composes every package without duplicate tools, job kinds or schedules', () => {
-    expect(Object.keys(MODULES).sort()).toEqual(['agents', 'commerce', 'content', 'distribution', 'knowledge', 'media', 'products', 'profit']);
+    expect(Object.keys(MODULES).sort()).toEqual(['agents', 'commerce', 'content', 'distribution', 'generator', 'knowledge', 'media', 'products', 'profit']);
     expect(() => allTools()).not.toThrow();
     expect(() => allJobs()).not.toThrow();
     expect(() => allSchedules()).not.toThrow();

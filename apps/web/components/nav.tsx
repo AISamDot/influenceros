@@ -9,6 +9,7 @@ import { ThemeToggle } from './theme-toggle';
 // Each stream appends its own links inside its marked block only (docs/IOS-2-CONTRACTS.md §6, docs/IOS-34-CONTRACTS.md §6).
 const LINKS: Array<{ href: string; label: string; badge?: 'approvals' }> = [
   { href: '/', label: 'Studio' },
+  { href: '/generator', label: 'Generator' },
   { href: '/pipeline', label: 'Pipeline' },
   { href: '/approvals', label: 'Approvals', badge: 'approvals' },
   { href: '/chat', label: 'Chat' },
@@ -34,6 +35,7 @@ const LINKS: Array<{ href: string; label: string; badge?: 'approvals' }> = [
   // >>> stream H nav (append only)
   { href: '/products', label: 'Products' },
   // <<< stream H nav
+  { href: '/archive', label: 'Archive' },
   { href: '/settings', label: 'Settings' },
 ];
 

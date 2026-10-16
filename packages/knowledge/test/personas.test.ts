@@ -3,24 +3,28 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { reviseBible } from '@ios/agents';
 import { OWNER } from '@ios/core';
-import { defaultPersonasDir, launchPersonaSlugs } from '@ios/core/seed';
+import { archiveDir, launchPersonaSlugs as slugsIn } from '@ios/core/seed';
 import { describe, expect, it } from 'vitest';
 import { embedPending, importPersonas, syncPersonaDocs } from '../src';
 import { knowledgeStudio } from './helpers';
 
+// The launch five now live in the dated archive (16 Oct); the importer still reads any folder of persona documents.
+const SOURCE = archiveDir('2026-10-16');
+const launchPersonaSlugs = () => slugsIn(SOURCE);
+
 describe('launch-persona importer (personas.import)', () => {
-  it('adds new persona folders to an existing studio with a launch card, and versions edited bibles', async () => {
+  it('adds new persona folders to an existing studio with an Owner-only launch card, and versions edited bibles', async () => {
     const t = await knowledgeStudio();
     const dir = mkdtempSync(join(tmpdir(), 'ios-personas-'));
-    expect(syncPersonaDocs(defaultPersonasDir(), dir)).toEqual(launchPersonaSlugs());
+    expect(syncPersonaDocs(SOURCE, dir)).toEqual(launchPersonaSlugs());
 
     const first = await importPersonas(t.services, { dir });
     expect(first.map((r) => [r.slug, r.created])).toEqual(launchPersonaSlugs().map((s) => [s, true]));
     const personas = await t.db.query<{ slug: string; state: string; niche: string }>('SELECT slug, state, niche FROM persona ORDER BY slug');
-    expect(personas.every((p) => p.state === 'PROPOSED')).toBe(true); // the launch card's timer (or the Owner) moves them on
+    expect(personas.every((p) => p.state === 'PROPOSED')).toBe(true); // only the Owner's launch approval moves them on
     const cards = await t.db.query<{ kind: string; mode: string; proposed_by: string }>(`SELECT kind, mode, proposed_by FROM approval WHERE status = 'pending'`);
     expect(cards).toHaveLength(personas.length);
-    expect(cards.every((c) => c.kind === 'persona_launch' && c.mode === 'auto_after' && c.proposed_by === 'agent:studio-manager')).toBe(true);
+    expect(cards.every((c) => c.kind === 'persona_launch' && c.mode === 'explicit' && c.proposed_by === 'agent:studio-manager')).toBe(true);
     const threads = await t.db.query(`SELECT 1 FROM chat_thread WHERE kind = 'persona'`);
     expect(threads).toHaveLength(personas.length);
 
@@ -52,7 +56,7 @@ describe('launch-persona importer (personas.import)', () => {
   it('keeps Owner feedback rules when edited documents are re-imported', async () => {
     const t = await knowledgeStudio();
     const dir = mkdtempSync(join(tmpdir(), 'ios-personas-'));
-    syncPersonaDocs(defaultPersonasDir(), dir);
+    syncPersonaDocs(SOURCE, dir);
     await importPersonas(t.services, { dir });
     const slug = launchPersonaSlugs()[0]!;
     const p = await t.db.one<{ id: string }>('SELECT id FROM persona WHERE slug = $1', [slug]);

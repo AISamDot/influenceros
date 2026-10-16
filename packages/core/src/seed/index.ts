@@ -9,7 +9,7 @@ import { notify } from '../notifications';
 import { weekStart } from '../queries';
 import { updatePersonaControls } from '../settings';
 import { DEFAULT_SETTINGS, OWNER, type PersonaRow, STUDIO_MANAGER } from '../types';
-import { loadLaunchPersonas, type LaunchPersona } from './launch';
+import type { LaunchPersona } from './launch';
 import { seedLaunchStudio } from './launch-seed';
 import { type SeedPersona, SEED_PERSONAS } from './personas';
 
@@ -17,6 +17,7 @@ export { SEED_PERSONAS } from './personas';
 export * from './launch';
 export * from './launch-seed';
 export * from './markdown';
+export * from './archive';
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
@@ -40,8 +41,11 @@ const SLOT_DAYS = [0, 0, 1, 2, 2, 3, 4, 4, 5, 6];
 const SLOT_HOURS = [13, 22, 17, 13, 22, 17, 13, 22, 15, 18];
 
 export interface SeedSummary {
-  /** 'launch': the real launch personas from packages/knowledge/seed/personas; 'samples': the IOS-1 demo studio. */
-  kind: 'launch' | 'samples';
+  /**
+   * 'empty': the default since 16 Oct (a studio with no personas, slots or products; personas come from the Persona
+   * Generator or an archive restore); 'launch': the persona documents passed in `personas`; 'samples': the IOS-1 demo.
+   */
+  kind: 'empty' | 'launch' | 'samples';
   studioId: string;
   personas: Array<{ slug: string; id: string; state: string }>;
 }
@@ -51,15 +55,45 @@ export async function isSeeded(db: Db): Promise<boolean> {
 }
 
 /**
- * Seeds a fresh database. When the launch-persona folders exist (packages/knowledge/seed/personas/<slug>/), the
- * studio holds those personas, in SETUP, with no invented results. Without them (or with `samples: true`) it
- * falls back to the IOS-1 sample studio, whose metrics and orders are demo data.
+ * Seeds a fresh database. Default (Owner decision, 16 Oct): an empty studio, with no personas, slots or products.
+ * New personas are co-created in the Persona Generator; the 14 Oct launch five are archived in
+ * packages/knowledge/seed/archive/2026-10-16 and restored with `pnpm knowledge personas restore`. `personas` seeds
+ * those documents as PROPOSED personas waiting for the Owner's launch approval; `samples` is the IOS-1 demo studio
+ * (made-up metrics and orders).
  */
 export async function seed(db: Db, opts: { now?: Date; personas?: readonly LaunchPersona[]; samples?: boolean } = {}): Promise<SeedSummary> {
   const now = opts.now ?? new Date();
-  const launch = opts.samples ? [] : (opts.personas ?? loadLaunchPersonas());
-  if (launch.length) return { kind: 'launch', ...(await seedLaunchStudio(db, launch, now)) };
-  return seedSamples(db, now);
+  if (opts.samples) return seedSamples(db, now);
+  if (opts.personas?.length) return { kind: 'launch', ...(await seedLaunchStudio(db, opts.personas, now)) };
+  return seedEmptyStudio(db, now);
+}
+
+/** A studio with nothing in it yet: settings, QC standard, chat threads and a pointer to the Persona Generator. */
+export async function seedEmptyStudio(db: Db, now: Date = new Date()): Promise<SeedSummary> {
+  const studio = await db.one<{ id: string }>(
+    `INSERT INTO studio (slug, name, settings) VALUES ('main', 'Influencer OS Studio', $1::jsonb) RETURNING id`,
+    [json(DEFAULT_SETTINGS)],
+  );
+  const studioId = studio.id;
+  await db.query(`INSERT INTO qc_standard (studio_id, version, rules) VALUES ($1, 1, $2::jsonb)`, [
+    studioId,
+    json({ loudness_lufs: -14, true_peak_dbtp: -1, max_silence_s: 0.7, caption_drift_ms: 150, resolution: '1080x1920', fps: 30 }),
+  ]);
+  await ensureThreads(db, studioId);
+  const thread = await findThread(db, studioId, 'studio');
+  await addMessage(db, {
+    threadId: thread.id,
+    role: 'agent',
+    author: 'agent:studio-manager',
+    at: now,
+    body: [
+      'The studio is empty: no personas yet.',
+      'Open the Persona Generator (/generator) and we\'ll build the first one together: I rank niche opportunities with evidence, draft three concepts, then the character, look, voice, content and products. You pick, edit or mix at every step, and you approve the launch.',
+      'The 14 Oct launch five (Rosa, Margot, Dot, Walt, Ambrose) are archived with everything kept. Restore any of them from /archive.',
+    ].join('\n\n'),
+    meta: { kind: 'notice' },
+  });
+  return { kind: 'empty', studioId, personas: [] };
 }
 
 /** The IOS-1 sample studio (demo data: metrics, orders and approvals are made up). */

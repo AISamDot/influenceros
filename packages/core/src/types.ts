@@ -8,6 +8,8 @@ export const PERSONA_STATES = [
   'SCALING',
   'BRAND',
   'RETIRED',
+  /** (16 Oct) Soft archive: every row kept, nothing runs; restoring returns to `archived_from_state`. */
+  'ARCHIVED',
 ] as const;
 export type PersonaState = (typeof PERSONA_STATES)[number];
 
@@ -108,6 +110,10 @@ export interface PersonaRow {
   launched_at: Date | null;
   state_changed_at: Date;
   created_at: Date;
+  /** (16 Oct) Set while the persona is ARCHIVED. */
+  archived_at?: Date | null;
+  archived_from_state?: PersonaState | null;
+  archive_reason?: string | null;
 }
 
 export type ApprovalKind =
@@ -121,7 +127,9 @@ export type ApprovalKind =
   | 'product_v1'
   | 'post'
   /** (IOS-4 fix) Publish a post whose QC failed on majors only, with the Owner's reason. Owner-only. */
-  | 'qc_override';
+  | 'qc_override'
+  /** (16 Oct) An agent's proposal to archive a persona that has launched. Owner-only. */
+  | 'persona_archive';
 export type ApprovalMode = 'explicit' | 'auto_after' | 'veto_window';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'auto_approved' | 'withdrawn';
 

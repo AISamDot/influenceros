@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import { IconFlag, IconSend } from './icons';
 
@@ -37,8 +38,14 @@ export function ChatPanel({
   className = '',
   accent,
   avatar,
+  endpoint,
+  refreshOnReply = false,
 }: {
   threadId: string;
+  /** Another chat endpoint with the same contract (GET → {messages}, POST {body} → streamed text), e.g. a generator draft. */
+  endpoint?: string;
+  /** Re-render the page's server components after each reply (the reply may have changed what the page shows). */
+  refreshOnReply?: boolean;
   title: string;
   subtitle?: string;
   initial: ChatMsg[];
@@ -54,13 +61,15 @@ export function ChatPanel({
   const [agentMode, setAgentMode] = useState(mode);
   const [error, setError] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+  const url = endpoint ?? `/api/chat/${threadId}/messages`;
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' });
   }, [msgs]);
 
   async function reload() {
-    const res = await fetch(`/api/chat/${threadId}/messages`, { cache: 'no-store' });
+    const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) return;
     const j = (await res.json()) as { messages: Array<ChatMsg & { created_at: string }> };
     setMsgs(j.messages.map((m) => ({ ...m, created_at: new Date(m.created_at).toISOString() })));
@@ -77,7 +86,7 @@ export function ChatPanel({
     const ownerId = `owner-${Date.now()}`;
     setMsgs((m) => [...m, { id: ownerId, role: 'owner', body, created_at: now }, { id: replyId, role: 'agent', body: '', created_at: now }]);
     try {
-      const res = await fetch(`/api/chat/${threadId}/messages`, {
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ body }),
@@ -98,6 +107,7 @@ export function ChatPanel({
         setMsgs((list) => list.map((x) => (x.id === replyId ? { ...x, body: x.body + chunk } : x)));
       }
       await reload();
+      if (refreshOnReply) router.refresh();
     } catch (err) {
       // Not saved: drop the optimistic bubbles and give the text back so nothing typed is lost.
       setError(err instanceof Error ? err.message : 'Failed to send');
@@ -282,8 +292,8 @@ function ChatApprovalCard({ body, approvalId, status }: { body: string; approval
 }
 
 /** Dashboard paths an agent may link to; anything else stays plain text. */
-const SAME_ORIGIN_PATH = /^\/(?:approvals|personas\/[a-z0-9-]+|money|pipeline(?:\/[0-9a-f-]{36})?|knowledge|chat|notifications|settings|niches)(?:[?#][\w=&%#.-]*)?$/i;
-const TOKEN_RE = /\[([^\]\n]{1,120})\]\((\/[^)\s]{1,200})\)|\*\*([^*\n]{1,200})\*\*|(\/(?:approvals|personas\/[a-z0-9-]+|money|pipeline(?:\/[0-9a-f-]{36})?|knowledge|chat|notifications|settings|niches)\b(?:[?#][\w=&%#.-]*)?)/gi;
+const SAME_ORIGIN_PATH = /^\/(?:approvals|personas\/[a-z0-9-]+|money|pipeline(?:\/[0-9a-f-]{36})?|generator(?:\/[0-9a-f-]{36})?|archive|knowledge|chat|notifications|settings|niches)(?:[?#][\w=&%#.-]*)?$/i;
+const TOKEN_RE = /\[([^\]\n]{1,120})\]\((\/[^)\s]{1,200})\)|\*\*([^*\n]{1,200})\*\*|(\/(?:approvals|personas\/[a-z0-9-]+|money|pipeline(?:\/[0-9a-f-]{36})?|generator(?:\/[0-9a-f-]{36})?|archive|knowledge|chat|notifications|settings|niches)\b(?:[?#][\w=&%#.-]*)?)/gi;
 
 /**
  * Agent text with dashboard links and bold: markdown links to same-origin paths and bare paths (/approvals,

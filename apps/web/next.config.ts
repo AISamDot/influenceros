@@ -14,6 +14,7 @@ const config: NextConfig = {
     '@ios/core',
     '@ios/db',
     '@ios/distribution',
+    '@ios/generator',
     '@ios/knowledge',
     '@ios/media',
     '@ios/products',

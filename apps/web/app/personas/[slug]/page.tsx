@@ -4,10 +4,12 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { AutonomyBadge, KillFlag, LifecycleBadge } from '@/components/badges';
 import { ChatPanel } from '@/components/chat-panel';
+import { Flash } from '@/components/flash';
 import { CommercePersonaPanel } from '@/components/commerce-persona-panel';
 import { DistributionPersonaPanel } from '@/components/distribution-persona-panel';
 import { FormatIcon, PlatformMark } from '@/components/icons';
 import { MediaPersonaPanel } from '@/components/media-persona-panel';
+import { PersonaArchiveBanner, PersonaArchivePanel } from '@/components/persona-archive-panel';
 import { ProductsPersonaPanel } from '@/components/products-persona-panel';
 import { Profile } from '@/components/profile';
 import { Sparkline } from '@/components/sparkline';
@@ -17,7 +19,7 @@ import { requireOwnerPage } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
-type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ tab?: string }> };
+type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ tab?: string; ok?: string; error?: string }> };
 
 export async function generateMetadata({ params }: Props) {
   const { slug } = await params;
@@ -62,7 +64,7 @@ function Stat({ label, value, values, color }: { label: string; value: string; v
 
 export default async function PersonaPage({ params, searchParams }: Props) {
   await requireOwnerPage();
-  const [{ slug }, { tab }] = await Promise.all([params, searchParams]);
+  const [{ slug }, { tab, ok, error }] = await Promise.all([params, searchParams]);
   const { db, studio } = await studioContext();
   const page = await personaPage(db, slug);
   if (!page) notFound();
@@ -79,6 +81,8 @@ export default async function PersonaPage({ params, searchParams }: Props) {
       <Link href="/" className="text-[13px] text-muted hover:text-fg">
         ← Studio
       </Link>
+      <Flash ok={ok} error={error} />
+      <PersonaArchiveBanner p={p} />
 
       {/* Hero */}
       <section className="card relative overflow-hidden p-5 sm:p-6">
@@ -308,6 +312,7 @@ export default async function PersonaPage({ params, searchParams }: Props) {
             <DistributionPersonaPanel db={db} studioId={studio.id} personaId={p.id} slug={p.slug} />
             <CommercePersonaPanel db={db} studioId={studio.id} personaId={p.id} slug={p.slug} />
             <ProductsPersonaPanel db={db} studioId={studio.id} personaId={p.id} slug={p.slug} />
+            <PersonaArchivePanel p={p} />
           </div>
 
           <div id="chat" className="min-w-0 scroll-mt-20">

@@ -82,4 +82,4 @@ export function deferOnBudget(err: unknown, what: string): never {
 }
 
 /** Personas whose work continues (not killed or retired). */
-export const ACTIVE_PERSONA_SQL = `state NOT IN ('KILLED','RETIRED')`;
+export const ACTIVE_PERSONA_SQL = `state NOT IN ('KILLED','RETIRED','ARCHIVED')`;

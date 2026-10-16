@@ -13,6 +13,7 @@ import { embedPending } from './embed';
 import { knowledgeLiveProviders } from './live';
 import { buildBriefing, scanNiche } from './news';
 import { importPersonas, personasSourceDir, syncPersonaDocs } from './personas';
+import { archiveOverview, archiveStudioPersona, restoreFromArchive } from '@ios/generator';
 import { createKnowledgeService } from './service';
 import { validateSkills } from './skills';
 import { requestFieldBrainBuild, requestNewsScan } from './requests';
@@ -28,6 +29,13 @@ const HELP = `pnpm knowledge <command>
   brief <persona-slug> [--force]     write a persona's morning briefing now
   personas sync [--from <dir>]       copy the persona documents into packages/knowledge/seed/personas
   personas import [--dir <dir>]      add new personas / new bible versions to the studio
+  personas archived                  the archive: archived documents (by date) and parked personas
+  personas restore <slug|all> [--from <YYYY-MM-DD|dir>]
+                                     restore archived personas as PROPOSED; approve each launch in the
+                                     Persona Generator's review step (/generator/<draft>)
+  personas archive <slug|all> [--confirm "<Name>"] [--reason "…"]
+                                     soft-archive personas (everything kept; restore any time). A persona
+                                     that has launched needs --confirm with its exact name
   skills check                       validate .claude/skills (frontmatter, no tool grants, no shell lines)`;
 
 const args = process.argv.slice(2);
@@ -36,7 +44,7 @@ const opt = (name: string) => {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : undefined;
 };
-const positional = args.filter((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1]!.startsWith('--') && ['--max-nodes', '--from', '--dir'].includes(args[i - 1]!)));
+const positional = args.filter((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1]!.startsWith('--') && ['--max-nodes', '--from', '--dir', '--confirm', '--reason'].includes(args[i - 1]!)));
 
 /** Env-only ProviderEnv for the CLI (the worker and the web app use @ios/wiring, which also reads the Keychain). */
 const envOnly: ProviderEnv = {
@@ -92,7 +100,7 @@ async function main(): Promise<void> {
         }
         const s = services(db);
         const summary = await scanNiche(s, { studioId, niche: sub, queueBriefings: false });
-        const personas = await db.query<{ id: string; slug: string }>(`SELECT id, slug FROM persona WHERE studio_id = $1 AND lower(niche) = lower($2) AND state NOT IN ('PROPOSED','KILLED','RETIRED')`, [studioId, sub]);
+        const personas = await db.query<{ id: string; slug: string }>(`SELECT id, slug FROM persona WHERE studio_id = $1 AND lower(niche) = lower($2) AND state NOT IN ('PROPOSED','KILLED','RETIRED','ARCHIVED')`, [studioId, sub]);
         const briefings = [];
         for (const p of personas) briefings.push({ slug: p.slug, items: (await buildBriefing(s, { personaId: p.id }))?.briefing.items.length ?? 0 });
         print({ ...summary, briefings });
@@ -114,7 +122,46 @@ async function main(): Promise<void> {
       if (sub === 'import') {
         return withDb(async (db, studioId) => print(await importPersonas(services(db), { studioId, dir: opt('--dir') ?? personasSourceDir() })));
       }
-      throw new Error('usage: pnpm knowledge personas sync|import');
+      if (sub === 'archived') {
+        return withDb(async (db, studioId) => {
+          const o = await archiveOverview(services(db), studioId);
+          print({
+            files: o.files.map((f) => ({ archive: f.label, slug: f.slug, name: f.name, niche: f.niche, bible: f.bibleLabel, products: f.products, in_studio: f.inStudio?.state ?? null })),
+            parked: o.parked.map((p) => ({ slug: p.slug, name: p.name, from: p.from, archived_at: p.archived_at, bible_versions: p.bible_versions, products: p.products })),
+            drafts: o.drafts.map((d) => ({ id: d.id, title: d.title })),
+          });
+        });
+      }
+      if (sub === 'restore') {
+        const target = positional[2];
+        if (!target) throw new Error('usage: pnpm knowledge personas restore <slug|all> [--from <YYYY-MM-DD|dir>]');
+        return withDb(async (db, studioId) => {
+          // The CLI runs on the Owner's Mac, as the Owner (like `pnpm owner`).
+          const res = await restoreFromArchive(services(db), { studioId, slugs: target === 'all' ? 'all' : target.split(','), from: opt('--from'), actor: OWNER });
+          print(res.map((r) => ({ ...r, ...(r.draftId ? { review: `/generator/${r.draftId}` } : {}) })));
+        });
+      }
+      if (sub === 'archive') {
+        const target = positional[2];
+        if (!target) throw new Error('usage: pnpm knowledge personas archive <slug|all> [--confirm "<Name>"] [--reason "…"]');
+        return withDb(async (db, studioId) => {
+          const rows = await db.query<{ id: string; slug: string; name: string; state: string }>(
+            `SELECT id, slug, name, state FROM persona WHERE studio_id = $1 AND state NOT IN ('ARCHIVED','KILLED','RETIRED') AND ($2::text = 'all' OR slug = ANY(string_to_array($2, ','))) ORDER BY slug`,
+            [studioId, target],
+          );
+          const out = [];
+          for (const p of rows) {
+            try {
+              await archiveStudioPersona(services(db), { personaId: p.id, actor: OWNER, confirmName: opt('--confirm'), reason: opt('--reason') ?? 'archived from the CLI' });
+              out.push({ slug: p.slug, archived: true, from: p.state });
+            } catch (err) {
+              out.push({ slug: p.slug, archived: false, error: err instanceof Error ? err.message : String(err) });
+            }
+          }
+          print(out.length ? out : `no active persona matches ${target}`);
+        });
+      }
+      throw new Error('usage: pnpm knowledge personas sync|import|archived|restore|archive');
     }
     case 'skills': {
       const problems = validateSkills();
