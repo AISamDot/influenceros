@@ -300,6 +300,12 @@
 /* <<< stream H css */
 /* IOS-5 (docs/IOS-5-CONTRACTS.md §6) */
 /* >>> stream I css */
+.radar-accel { background: var(--ok-soft); color: var(--ok); }
+.radar-meter, .radar-bar { display: block; height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.radar-bar { height: 6px; }
+.radar-meter > span, .radar-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.radar-meter > span.radar-meter-warm { background: var(--warn); }
+.radar-meter > span.radar-meter-hot { background: var(--danger); }
 /* <<< stream I css */
 /* >>> stream J css */
 /* <<< stream J css */
