@@ -1,7 +1,8 @@
-import { CORE_FORMATS, FORMAT_SHAPE, OPTIONAL_FORMATS, POST_FORMATS, scriptShape } from '@ios/core';
+import { CORE_FORMATS, FORMAT_SHAPE, OPTIONAL_FORMATS, POST_FORMATS, releaseHold, reserve, scriptShape } from '@ios/core';
 import { FakeApify } from '@ios/providers';
 import { describe, expect, it } from 'vitest';
 import {
+  APIFY_PROVIDER,
   ApifyWeeklyCapError,
   apifyWeekSpendUsd,
   basicPromptCompiler,
@@ -134,6 +135,20 @@ describe('meteredApify', () => {
     const spent = await apifyWeekSpendUsd(t.db, t.studioId, new Date());
     expect(spent).toBeCloseTo(10 * FakeApify.USD_PER_ITEM);
     await expect(run(20)).rejects.toBeInstanceOf(ApifyWeeklyCapError);
+    await t.db.close();
+  });
+
+  it('counts runs in flight (governor holds), so concurrent scans cannot overshoot the weekly cap', async () => {
+    const t = await createTestStudio({ settings: { apify_weekly_cap_usd: 0.05 } });
+    t.providers.research.fixture('apify/instagram-hashtag-scraper', Array.from({ length: 10 }, (_, i) => ({ id: i })));
+    // Another scan is running: its estimate is held on the ledger until it settles.
+    const hold = await reserve(t.db, { studioId: t.studioId, unit: 'media_usd', amount: 0.04, provider: APIFY_PROVIDER, operation: 'apify/instagram-hashtag-scraper' });
+    expect(await apifyWeekSpendUsd(t.db, t.studioId, new Date())).toBeCloseTo(0.04);
+    await expect(
+      meteredApify(t.services, { studioId: t.studioId, agent: 'radar', actor: 'apify/instagram-hashtag-scraper', input: { hashtags: ['x'] }, maxItems: 10, estimateUsd: 10 * FakeApify.USD_PER_ITEM }),
+    ).rejects.toBeInstanceOf(ApifyWeeklyCapError);
+    await releaseHold(t.db, hold);
+    expect(await apifyWeekSpendUsd(t.db, t.studioId, new Date())).toBe(0);
     await t.db.close();
   });
 });

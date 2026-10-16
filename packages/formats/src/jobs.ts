@@ -1,5 +1,5 @@
 import { enqueueOnceFor, type JobHandlerMap, type ScheduledTask, type StudioServices } from '@ios/agents';
-import { PUBLISHING_STATES } from '@ios/core';
+import { BudgetExceededError, DeferJob, PUBLISHING_STATES } from '@ios/core';
 import type { Db } from '@ios/db';
 import { curateHighlights, tuneStories } from './curate';
 import { ingestStoryMetrics, planStoryDay, produceStoryFrame, publishStoryFrame, queueDueStories, STORY_JOB } from './stories';
@@ -21,11 +21,21 @@ export const enqueuePlanDay = (db: Db, q: { studioId: string; personaId: string;
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
 
+/** A spent budget (media or the persona's LLM cap, e.g. the stories-producer or the Gate run) waits, no attempt spent. */
+async function deferOnBudget<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof BudgetExceededError) throw new DeferJob(6 * 3_600_000, `budget: ${err.message}`);
+    throw err;
+  }
+}
+
 export const formatsJobs: JobHandlerMap = {
   [STORY_JOB.plan]: async ({ services, job }) => {
     const personaId = str(job.payload.personaId);
     if (!personaId) throw new Error('stories.plan_day: personaId required');
-    const frames = await planStoryDay(services, personaId, str(job.payload.date) ?? undefined);
+    const frames = await deferOnBudget(() => planStoryDay(services, personaId, str(job.payload.date) ?? undefined));
     let queued = 0;
     for (const f of frames.filter((x) => x.status === 'planned')) {
       const j = await enqueueOnceFor(services.db, { kind: STORY_JOB.produce, key: `produce:${f.id}`, payload: { frameId: f.id }, studioId: f.studio_id, personaId, priority: 80 }, { ever: true });
@@ -36,7 +46,7 @@ export const formatsJobs: JobHandlerMap = {
   [STORY_JOB.produce]: async ({ services, job }) => {
     const frameId = str(job.payload.frameId);
     if (!frameId) throw new Error('stories.produce: frameId required');
-    const f = await produceStoryFrame(services, frameId);
+    const f = await deferOnBudget(() => produceStoryFrame(services, frameId));
     return { frameId, status: f.status, gate: f.gate_verdict };
   },
   [STORY_JOB.publish]: async ({ services, job }) => {

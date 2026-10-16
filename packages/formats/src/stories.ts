@@ -13,7 +13,7 @@ import {
   type StudioServices,
 } from '@ios/agents';
 import { fenceUntrusted, loadPersonaContext, type PersonaContext, qcPass, qcScore, runGate, saveGateResult, saveQcReport, sellQueue } from '@ios/content';
-import { type Actor, actorRef, assertCanPublish, audit, type Autonomy, BudgetExceededError, DeferJob, type PersonaState, type Platform, PublishBlockedError, PUBLISHING_STATES } from '@ios/core';
+import { type Actor, actorRef, assertCanPublish, audit, type Autonomy, BudgetExceededError, DeferJob, notify, type PersonaState, type Platform, PublishBlockedError, PUBLISHING_STATES } from '@ios/core';
 import { json } from '@ios/db';
 import { EXPORT, getProfile, gradeFromKit, hfSpend, mediaDeps, mediaModels, SAFE_ZONE, type TextBox } from '@ios/media';
 import { STORY_FRAME_COST_USD } from './catalog';
@@ -69,6 +69,7 @@ export interface StoryFrameRow {
   media_key: string | null;
   width: number | null;
   height: number | null;
+  credits: number | string | null;
   qc_report_id: string | null;
   gate_result_id: string | null;
   gate_verdict: 'green' | 'amber' | 'red' | null;
@@ -244,6 +245,8 @@ export async function planStoryDay(services: StudioServices, personaId: string, 
   const sell = sellDay ? (await sellQueue(services.db, ctx, mondayOf(from)))[0] ?? null : null;
   const delivers = ctx.keywords.find((k) => k.keyword === ctx.leadKeyword)?.delivers ?? 'the free starter guide';
 
+  const dayBeats = kinds.includes('storyline') ? await storyBeatsFor(services, personaId, date, from, to) : [];
+  let storylineN = 0;
   const briefs: FrameBrief[] = [];
   for (const [i, kind] of kinds.entries()) {
     const [h, m] = times[i] ?? SLOT_TIMES[i]!;
@@ -251,10 +254,7 @@ export async function planStoryDay(services: StudioServices, personaId: string, 
     let grounding: Grounding | null = null;
     let beat: SlotBeat | null = null;
     if (kind === 'world') grounding = (await services.world.grounding(personaId, at).catch(() => null)) ?? stubGrounding(p, at);
-    if (kind === 'storyline') {
-      const beats = await services.world.beatsForWeek({ personaId, weekStart: mondayOf(at), slots: [{ index: 0, at, format: 'static', purpose: 'reach' }] }).catch(() => []);
-      beat = beats.find((x) => x.slotIndex === 0) ?? null;
-    }
+    if (kind === 'storyline') beat = dayBeats[storylineN++] ?? null;
     briefs.push({
       seq: i + 1,
       kind,
@@ -341,6 +341,28 @@ Return {"frames": [{"seq": 1, "text": "...", "scene": "..."}]}.`,
     }
   });
   return rows.length ? rows : framesFor(services, personaId, date);
+}
+
+/**
+ * Storyline beats for a day's storyline frames, read-only: the beats the week's calendar already carries (the
+ * CadencePolicy week plan asks J's WorldService once per week and stores each slot's beat in meta.story). Today's
+ * beat first, then the week's other beats rotated by weekday, so frames on different days tell different beats.
+ * Never calls WorldService.beatsForWeek (that assigns beats and would move a feed slot's beat onto a story frame).
+ */
+export async function storyBeatsFor(services: Pick<StudioServices, 'db'>, personaId: string, date: string, from: Date, to: Date): Promise<SlotBeat[]> {
+  const week = mondayOf(new Date(`${date}T12:00:00Z`));
+  const rows = await services.db.query<{ slot_at: Date; story: SlotBeat }>(
+    `SELECT slot_at, meta->'story' AS story FROM calendar_slot
+      WHERE persona_id = $1 AND status <> 'skipped' AND meta ? 'story' AND jsonb_typeof(meta->'story') = 'object'
+        AND slot_at >= $2 AND slot_at < $3 ORDER BY slot_at`,
+    [personaId, new Date(Math.min(week.getTime(), from.getTime())), new Date(Math.max(week.getTime() + 7 * DAY_MS, to.getTime()))],
+  );
+  const ok = rows.filter((r) => r.story && typeof r.story.beat === 'string' && r.story.beat.trim());
+  const today = ok.filter((r) => new Date(r.slot_at) >= from && new Date(r.slot_at) < to);
+  const rest = ok.filter((r) => !today.includes(r));
+  const shift = rest.length ? weekdayOf(date) % rest.length : 0;
+  const ordered = [...today, ...rest.slice(shift), ...rest.slice(0, shift)].map((r) => r.story);
+  return ordered.filter((b, i) => ordered.findIndex((x) => x.beatId === b.beatId) === i);
 }
 
 /** A stand-in grounding until stream J's WorldService has a World Bible for the persona. */
@@ -438,20 +460,26 @@ export async function produceStoryFrame(services: StudioServices, frameId: strin
   const model = mediaModels().still;
   const scope = { studioId: p.studio_id, personaId: f.persona_id, slotId: null, ref: { type: 'persona' as const, id: f.persona_id } };
   let still: { url: string; credits: number };
-  try {
-    still = await hfSpend(services, scope, { operation: 'still', model }, () =>
-      services.providers.imageVideo.generateStill({
-        prompt: compiled.text,
-        aspect: '9:16',
-        model,
-        resolution: '720p',
-        ...(profile?.soulId ? { soulId: profile.soulId } : {}),
-        ...(compiled.references.length ? { referenceImageUrls: compiled.references } : {}),
-      }),
-    );
-  } catch (err) {
-    if (err instanceof BudgetExceededError) throw new DeferJob(6 * 3_600_000, `media budget: ${err.message}`);
-    throw err;
+  if (f.still_url) {
+    // A retry after a later step failed: the still is already paid for, so reuse it instead of buying another.
+    still = { url: f.still_url, credits: Number(f.credits ?? 0) };
+  } else {
+    try {
+      still = await hfSpend(services, scope, { operation: 'still', model }, () =>
+        services.providers.imageVideo.generateStill({
+          prompt: compiled.text,
+          aspect: '9:16',
+          model,
+          resolution: '720p',
+          ...(profile?.soulId ? { soulId: profile.soulId } : {}),
+          ...(compiled.references.length ? { referenceImageUrls: compiled.references } : {}),
+        }),
+      );
+    } catch (err) {
+      if (err instanceof BudgetExceededError) throw new DeferJob(6 * 3_600_000, `media budget: ${err.message}`);
+      throw err;
+    }
+    await services.db.query(`UPDATE story_frame SET still_url = $2, credits = $3, updated_at = now() WHERE id = $1 AND status = 'planned'`, [f.id, still.url, still.credits]);
   }
 
   const deps = mediaDeps(services);
@@ -520,14 +548,20 @@ export const STORY_LATE_MS = 18 * 3_600_000;
  * stale jobs behind.
  */
 export async function queueDueStories(services: StudioServices, now: Date = services.now()): Promise<{ queued: number; skipped: number }> {
+  // The reason says what actually happened: the last publish failure or hold when there was one.
   const late = await services.db.query<{ id: string }>(
-    `UPDATE story_frame SET status = 'skipped', block_reason = 'missed its day (not posted late)', updated_at = now()
-      WHERE status IN ('approved','awaiting_approval','planned') AND planned_at < $1 RETURNING id`,
+    `UPDATE story_frame f SET status = 'skipped', updated_at = now(),
+            block_reason = COALESCE(
+              (SELECT 'not posted within its day: ' || string_agg(sp.platform || ': ' || COALESCE(sp.reason, sp.status), '; ')
+                 FROM story_post sp WHERE sp.story_frame_id = f.id AND sp.status IN ('failed','blocked')),
+              'missed its day (not posted late)')
+      WHERE f.status IN ('approved','awaiting_approval','planned') AND f.planned_at < $1 RETURNING f.id`,
     [new Date(now.getTime() - STORY_LATE_MS)],
   );
   const due = await services.db.query<StoryFrameRow>(`SELECT * FROM story_frame WHERE status = 'approved' AND planned_at <= $1 ORDER BY planned_at LIMIT 200`, [now]);
   let queued = 0;
   for (const f of due) if (await enqueuePublish(services, f)) queued += 1;
+  await reverifyStories(services, now).catch(() => undefined);
   return { queued, skipped: late.length };
 }
 
@@ -551,9 +585,38 @@ export interface StoryPublishResult {
   readonly results: ReadonlyArray<{ platform: Platform; status: 'published' | 'processing' | 'unsupported' | 'blocked' | 'failed'; externalId?: string | null; reason?: string }>;
 }
 
+/** How long a story publish that a kill switch or a missing AI profile label holds waits before it is tried again. */
+export const STORY_BLOCK_RETRY_MS = 3_600_000;
+
+type StoryPostStatus = StoryPublishResult['results'][number]['status'];
+
+/** A verify result for a story: live with the AI label → published; live without it or failed → failed; else processing. */
+function storyVerdict(v: { status: 'live' | 'processing' | 'failed'; aiLabel: boolean }): { status: 'published' | 'processing' | 'failed'; reason: string | null } {
+  if (v.status === 'live' && v.aiLabel) return { status: 'published', reason: null };
+  if (v.status === 'live') return { status: 'failed', reason: 'went up without the platform AI label' };
+  if (v.status === 'failed') return { status: 'failed', reason: 'the platform reports the story failed' };
+  return { status: 'processing', reason: null };
+}
+
+async function notifyStoryFailed(services: Pick<StudioServices, 'db'>, f: Pick<StoryFrameRow, 'studio_id' | 'persona_id'>, platform: Platform, reason: string): Promise<void> {
+  await notify(services.db, {
+    studioId: f.studio_id,
+    personaId: f.persona_id,
+    kind: 'publish',
+    severity: 'warn',
+    title: `A ${platform} story failed verification`,
+    body: `It ${reason}, so it is marked failed.`,
+    link: '/pipeline',
+  });
+}
+
 /**
  * Publishes an approved frame as kind 'story' to every platform whose story capability is on and where the persona has
- * an active account, after core's kill-switch check, AI flag on, idempotent per (frame, platform).
+ * an active account with its AI profile label on, after core's kill-switch check, AI flag on, idempotent per
+ * (frame, platform). Each publish is verified like a feed post: a story the platform shows without the AI label is
+ * marked failed and the Owner is told. A publish error is thrown back to the queue (retried with backoff; the per-platform
+ * check skips platforms already done); a kill-switch or AI-label hold defers the job. Past STORY_LATE_MS nothing is
+ * retried and an unposted frame is skipped with the last reason.
  */
 export async function publishStoryFrame(services: StudioServices, frameId: string): Promise<StoryPublishResult> {
   const f = await services.db.one<StoryFrameRow>('SELECT * FROM story_frame WHERE id = $1', [frameId]);
@@ -561,11 +624,11 @@ export async function publishStoryFrame(services: StudioServices, frameId: strin
   const pub = services.providers.publish;
   const caps = pub.storyCapabilities ? await pub.storyCapabilities() : [];
   const results: Array<StoryPublishResult['results'][number]> = [];
-  const accounts = await services.db.query<{ platform: Platform; handle: string; token_ref: string | null }>(
-    `SELECT platform, handle, token_ref FROM account WHERE persona_id = $1 AND status = 'active' AND platform IN ('instagram','tiktok','youtube','pinterest') ORDER BY created_at`,
+  const accounts = await services.db.query<{ platform: Platform; handle: string; token_ref: string | null; ai_label_ok: boolean | null }>(
+    `SELECT platform, handle, token_ref, ai_label_ok FROM account WHERE persona_id = $1 AND status = 'active' AND platform IN ('instagram','tiktok','youtube','pinterest') ORDER BY created_at`,
     [f.persona_id],
   );
-  const record = async (platform: Platform, status: StoryPublishResult['results'][number]['status'], externalId: string | null, reason: string | null) => {
+  const record = async (platform: Platform, status: StoryPostStatus, externalId: string | null, reason: string | null) => {
     await services.db.query(
       `INSERT INTO story_post (story_frame_id, persona_id, platform, status, external_id, reason, published_at) VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (story_frame_id, platform) DO UPDATE SET status = EXCLUDED.status, external_id = COALESCE(EXCLUDED.external_id, story_post.external_id), reason = EXCLUDED.reason, published_at = COALESCE(story_post.published_at, EXCLUDED.published_at)`,
@@ -573,8 +636,14 @@ export async function publishStoryFrame(services: StudioServices, frameId: strin
     );
     results.push({ platform, status, externalId, ...(reason ? { reason } : {}) });
   };
+  // Publish errors worth retrying (a 5xx or a timeout); a story that verified without the AI label is final.
+  const retryable: string[] = [];
   for (const a of accounts) {
-    const done = await services.db.maybeOne<{ status: string }>(`SELECT status FROM story_post WHERE story_frame_id = $1 AND platform = $2 AND status IN ('published','processing','unsupported')`, [f.id, a.platform]);
+    // 'failed' is final only when verification failed it (the story is up): retrying would re-post nothing new.
+    const done = await services.db.maybeOne<{ status: string }>(
+      `SELECT status FROM story_post WHERE story_frame_id = $1 AND platform = $2 AND (status IN ('published','processing','unsupported') OR (status = 'failed' AND external_id IS NOT NULL))`,
+      [f.id, a.platform],
+    );
     if (done) continue;
     if (!caps.some((c) => c.platform === a.platform && c.stories)) {
       await record(a.platform, 'unsupported', null, 'the publishing API has no Stories for this platform');
@@ -589,17 +658,33 @@ export async function publishStoryFrame(services: StudioServices, frameId: strin
       }
       throw err;
     }
+    if (a.ai_label_ok === false) {
+      await record(a.platform, 'blocked', null, `the AI profile label is off on @${a.handle}: turn it on before anything posts there`);
+      continue;
+    }
     if (!f.media_url) {
       await record(a.platform, 'failed', null, 'no rendered frame');
       continue;
     }
+    let r: Awaited<ReturnType<typeof pub.publish>>;
     try {
       const vendorRef = a.token_ref && !a.token_ref.startsWith('vault:') ? a.token_ref : null;
-      const r = await pub.publish({ accountRef: vendorRef ?? a.handle, platform: a.platform, mediaUrls: [f.media_url], caption: '', aiLabel: true, kind: 'story', idempotencyKey: `story:${f.id}:${a.platform}` });
-      await record(a.platform, r.status === 'published' ? 'published' : 'processing', r.externalId, null);
+      r = await pub.publish({ accountRef: vendorRef ?? a.handle, platform: a.platform, mediaUrls: [f.media_url], caption: '', aiLabel: true, kind: 'story', idempotencyKey: `story:${f.id}:${a.platform}` });
     } catch (err) {
-      await record(a.platform, 'failed', null, err instanceof Error ? err.message.slice(0, 300) : String(err));
+      const reason = err instanceof Error ? err.message.slice(0, 300) : String(err);
+      await record(a.platform, 'failed', null, reason);
+      retryable.push(`${a.platform}: ${reason}`);
+      continue;
     }
+    // Verify like a feed post: published only once the platform shows it with the AI label.
+    let verdict: { status: 'published' | 'processing' | 'failed'; reason: string | null } = { status: 'processing', reason: null };
+    try {
+      verdict = storyVerdict(await pub.verify(r.externalId));
+    } catch {
+      // Up but unconfirmed: it stays 'processing' and reverifyStories() checks it again.
+    }
+    await record(a.platform, verdict.status, r.externalId, verdict.reason);
+    if (verdict.status === 'failed') await notifyStoryFailed(services, f, a.platform, verdict.reason ?? 'failed');
   }
   const any = results.some((r) => r.status === 'published' || r.status === 'processing');
   if (any) await services.db.query(`UPDATE story_frame SET status = 'published', updated_at = now() WHERE id = $1`, [f.id]);
@@ -608,7 +693,48 @@ export async function publishStoryFrame(services: StudioServices, frameId: strin
   } else if (!accounts.length) {
     await services.db.query(`UPDATE story_frame SET block_reason = 'no active account to post to', updated_at = now() WHERE id = $1`, [f.id]);
   }
+  const late = services.now().getTime() - new Date(f.planned_at).getTime() > STORY_LATE_MS;
+  const blocked = results.filter((r) => r.status === 'blocked');
+  if (late) {
+    if (!any && f.status === 'approved' && (retryable.length || blocked.length)) {
+      const why = [...retryable, ...blocked.map((b) => `${b.platform}: ${b.reason}`)].join('; ');
+      await services.db.query(`UPDATE story_frame SET status = 'skipped', block_reason = $2, updated_at = now() WHERE id = $1 AND status = 'approved'`, [f.id, `not posted within its day: ${why}`.slice(0, 500)]);
+    }
+    return { frameId, results };
+  }
+  if (retryable.length) throw new Error(`story publish failed (retrying): ${retryable.join('; ')}`.slice(0, 500));
+  if (blocked.length) throw new DeferJob(STORY_BLOCK_RETRY_MS, `story publish held: ${blocked.map((b) => `${b.platform}: ${b.reason}`).join('; ')}`.slice(0, 500));
   return { frameId, results };
+}
+
+/**
+ * Re-verifies stories left 'processing' (verify threw or the platform was still processing) while they are live
+ * (24 h): live with the AI label → published; without it, or failed → failed and the Owner is told.
+ */
+export async function reverifyStories(services: StudioServices, now: Date = services.now(), limit = 25): Promise<{ published: number; failed: number }> {
+  const rows = await services.db.query<{ id: string; platform: Platform; external_id: string; studio_id: string; persona_id: string }>(
+    `SELECT sp.id, sp.platform, sp.external_id, f.studio_id, f.persona_id FROM story_post sp JOIN story_frame f ON f.id = sp.story_frame_id
+      WHERE sp.status = 'processing' AND sp.external_id IS NOT NULL AND sp.published_at >= $1 ORDER BY sp.published_at LIMIT $2`,
+    [new Date(now.getTime() - DAY_MS), limit],
+  );
+  const out = { published: 0, failed: 0 };
+  for (const r of rows) {
+    let v: ReturnType<typeof storyVerdict>;
+    try {
+      v = storyVerdict(await services.providers.publish.verify(r.external_id));
+    } catch {
+      continue;
+    }
+    if (v.status === 'processing') continue;
+    const moved = await services.db.query(`UPDATE story_post SET status = $2, reason = $3 WHERE id = $1 AND status = 'processing' RETURNING id`, [r.id, v.status, v.reason]);
+    if (!moved.length) continue;
+    if (v.status === 'published') out.published += 1;
+    else {
+      out.failed += 1;
+      await notifyStoryFailed(services, r, r.platform, v.reason ?? 'failed');
+    }
+  }
+  return out;
 }
 
 // ───────────────────────────── Metrics ─────────────────────────────

@@ -1,6 +1,7 @@
 import { createTestStudio, makeTestPersona } from '@ios/agents/testing';
 import { fingerprintOf, type ConceptFingerprint } from '@ios/agents';
-import { describe, expect, it } from 'vitest';
+import { BudgetExceededError } from '@ios/core';
+import { describe, expect, it, vi } from 'vitest';
 import { contradictions, createWorldService, extractFacts, seriesOf, WORLD_TOOLS } from '../src';
 import { clock, personaWithWorld, worldStudio } from './helpers';
 
@@ -64,6 +65,36 @@ describe('the continuity ledger', () => {
 const fp = (over: Partial<ConceptFingerprint> = {}): ConceptFingerprint => ({
   ...fingerprintOf({ title: 'The envelope method for a pension', hookType: 'contrarian', pillar: 'budgeting', niche: 'personal finance', format: 'talking', hook: 'Cash in envelopes beats any app at 79' }),
   ...over,
+});
+
+describe('the continuity ledger when something fails', () => {
+  it('a failed continuity-keeper run falls back to the rule-based facts: the ledger still records, and "Angie" → "Angelo" still blocks', async () => {
+    const t = await worldStudio();
+    const p = await personaWithWorld(t, { homeBase: 'a terraced house in Yorkshire' });
+    const run = vi.spyOn(t.services.runtime, 'run').mockRejectedValue(new BudgetExceededError('llm cap', { scope: 'persona', unit: 'llm_usd', used: 1, cap: 0, requested: 0.01 }));
+    const id = '55555555-5555-4555-8555-555555555555';
+    await t.services.world.recordApproved({ studioId: t.studioId, personaId: p.id, subject: { type: 'script', id }, text: 'My sister Angie is 34 and thinks budgeting is boring.', at: clock.now });
+    expect(await t.db.query(`SELECT subject, value FROM continuity_fact WHERE persona_id = $1 AND source_type = 'script'`, [p.id])).toEqual(expect.arrayContaining([{ subject: 'sister', value: 'Angie' }]));
+    const checks = await t.services.world.checkContent({ studioId: t.studioId, personaId: p.id, subject: { type: 'script', id: null }, text: 'My brother Angelo still thinks budgeting is boring.', at: clock.now });
+    expect(failing(checks, 'continuity')).toHaveLength(1);
+    expect(run).toHaveBeenCalled();
+    await t.db.close();
+  });
+
+  it('a failure part-way leaves no marker, so the retry records the subject in full', async () => {
+    const t = await worldStudio();
+    const p = await personaWithWorld(t, { homeBase: 'a terraced house in Yorkshire' });
+    const id = '66666666-6666-4666-8666-666666666666';
+    const q = { studioId: t.studioId, personaId: p.id, subject: { type: 'script' as const, id }, text: 'My sister Angie keeps her pension in six envelopes, one per bill.', at: clock.now, fingerprint: fp() };
+    vi.spyOn(t.providers.embeddings, 'embed').mockRejectedValueOnce(new Error('embeddings 503'));
+    await expect(t.services.world.recordApproved(q)).rejects.toThrow(/503/);
+    expect(await t.db.query(`SELECT 1 FROM continuity_record WHERE subject_id = $1`, [id])).toHaveLength(0);
+    await t.services.world.recordApproved(q);
+    expect(await t.db.one(`SELECT facts FROM continuity_record WHERE subject_id = $1`, [id])).toMatchObject({ facts: expect.any(Number) });
+    expect(await t.db.query(`SELECT 1 FROM concept_fingerprint WHERE subject_id = $1`, [id])).toHaveLength(1);
+    expect((await t.db.query(`SELECT 1 FROM continuity_fact WHERE source_id = $1 AND subject = 'sister'`, [id])).length).toBe(1);
+    await t.db.close();
+  });
 });
 
 describe('the no-repeat engine', () => {

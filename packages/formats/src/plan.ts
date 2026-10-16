@@ -65,6 +65,30 @@ export function defaultStoryMix(perDay: number): Record<StoryFrameKind, number> 
   return { world: 1, storyline: 2, reshare: 1, engagement: 1, sell: 1 };
 }
 
+/**
+ * Moves a daily Stories mix to `perDay` frames from where it is (the Owner's own mix survives the Stories lever):
+ * a frame is added as a reshare (when there is none), else a storyline frame; removed from the second storyline frame,
+ * then the reshare, then a second engagement frame. Matches the default mixes when starting from one.
+ */
+export function resizeStoryMix(current: Partial<Record<StoryFrameKind, number>>, perDayIn: number): Record<StoryFrameKind, number> {
+  const target = Math.min(STORIES_PER_DAY.max, Math.max(STORIES_PER_DAY.min, Math.round(perDayIn)));
+  const mix = Object.fromEntries(STORY_FRAME_KINDS.map((k) => [k, Math.max(0, Math.round(current[k] ?? 0))])) as Record<StoryFrameKind, number>;
+  const total = () => STORY_FRAME_KINDS.filter((k) => k !== 'sell').reduce((a, k) => a + mix[k], 0);
+  for (let guard = 0; total() < target && guard < 10; guard++) {
+    if (mix.reshare === 0) mix.reshare = 1;
+    else mix.storyline += 1;
+  }
+  for (let guard = 0; total() > target && guard < 10; guard++) {
+    if (mix.storyline > 1) mix.storyline -= 1;
+    else if (mix.reshare > 0) mix.reshare -= 1;
+    else if (mix.engagement > 1) mix.engagement -= 1;
+    else if (mix.world > 1) mix.world -= 1;
+    else if (mix.storyline > 0) mix.storyline -= 1;
+    else break;
+  }
+  return mix;
+}
+
 export function storiesPlan(perDayIn: number, mixIn?: Partial<Record<StoryFrameKind, number>>, reasons: Partial<Record<StoryFrameKind, string>> = {}): StoriesPlan {
   const base = defaultStoryMix(perDayIn);
   const mix = { ...base, ...(mixIn ?? {}) } as Record<StoryFrameKind, number>;
@@ -257,9 +281,18 @@ export function recommendPlan(q: RecommendInput): FormatPlan {
     for (let guard = 0; (mix[f] ?? 0) < floor && guard < 10; guard++) {
       // The donor is the format most over its weight (ties: the pricier one), never one the archetype asked for.
       const over = (k: string) => (mix[k] ?? 0) / Math.max(0.25, w[k] ?? 0);
-      const donor = Object.keys(mix).filter((k) => k !== f && (mix[k] ?? 0) > 1).sort((a, b2) => over(b2) - over(a) || FORMAT_COST_USD[b2 as PostFormat] - FORMAT_COST_USD[a as PostFormat])[0];
+      let donor = Object.keys(mix).filter((k) => k !== f && (mix[k] ?? 0) > 1).sort((a, b2) => over(b2) - over(a) || FORMAT_COST_USD[b2 as PostFormat] - FORMAT_COST_USD[a as PostFormat])[0];
+      if (!donor) {
+        // Every line is at 1: switch off the lowest-weight optional format (never a core one, never the product in
+        // hand the ladder just asked for) so the floor still fits the week.
+        donor = Object.keys(mix)
+          .filter((k) => k !== f && k !== 'product_in_hand' && isOptionalFormat(k as PostFormat) && (mix[k] ?? 0) === 1)
+          .sort((a, b2) => (w[a] ?? 0) - (w[b2] ?? 0) || FORMAT_COST_USD[b2 as PostFormat] - FORMAT_COST_USD[a as PostFormat])[0];
+        if (donor) note(donor as PostFormat, `off this week: its slot goes to the ${FORMAT_LABEL[f].toLowerCase()} floor`);
+      }
       if (!donor) break;
       mix = { ...mix, [donor]: mix[donor]! - 1, [f]: (mix[f] ?? 0) + 1 };
+      if (mix[donor] === 0 && isOptionalFormat(donor as PostFormat)) delete mix[donor];
     }
   }
 
@@ -344,7 +377,17 @@ export function editPlan(plan: FormatPlan, patch: PlanPatch, source: 'owner' | '
   let stories = plan.stories;
   if (patch.storiesPerDay !== undefined || patch.storyMix) {
     const current = Object.fromEntries(plan.stories.mix.map((m) => [m.kind, m.perDay])) as Record<StoryFrameKind, number>;
-    stories = patch.storyMix ? storiesPlan(patch.storiesPerDay ?? plan.stories.perDay, { ...current, ...patch.storyMix }) : storiesPlan(patch.storiesPerDay!);
+    const keep = Object.fromEntries(plan.stories.mix.map((m) => [m.kind, m.reason])) as Partial<Record<StoryFrameKind, string>>;
+    if (patch.storyMix) {
+      stories = storiesPlan(plan.stories.perDay, { ...current, ...patch.storyMix });
+      if (patch.storiesPerDay !== undefined && Math.round(patch.storiesPerDay) !== stories.perDay) {
+        throw new FormatPlanError(`Stories: the daily mix adds up to ${stories.perDay} frames, not the ${Math.round(patch.storiesPerDay)} a day asked for`);
+      }
+    } else {
+      const mix = resizeStoryMix(current, patch.storiesPerDay!);
+      const reasons = Object.fromEntries(STORY_FRAME_KINDS.filter((k) => mix[k] === current[k] && mix[k] > 0 && keep[k]).map((k) => [k, keep[k]!]));
+      stories = storiesPlan(patch.storiesPerDay!, mix, reasons);
+    }
     changed.push(`Stories ${plan.stories.perDay} → ${stories.perDay} a day`);
   }
   const next = buildPlan({

@@ -348,6 +348,19 @@ describe('launch is atomic (correct-sec-3)', () => {
   });
 });
 
+describe('inspiration pins are mood only', () => {
+  it('a sheet whose face matches a picked pin blocks the launch', async () => {
+    const t = await generatorStudio();
+    const d = await walk(t);
+    const cur = await t.db.one<{ check: unknown }>(`SELECT state->'look'->'chosen'->'check' AS check FROM persona_draft WHERE id = $1`, [d.id]);
+    const base = cur.check && typeof cur.check === 'object' ? cur.check : { mode: 'live', drift: { verdict: 'stable', note: '' }, distinct: { score: 80, nearest: null, note: '' } };
+    const check = { ...base, distinct: { score: 10, nearest: 'pin: Red carpet look', note: 'The face is too close to a picked inspiration pin' }, pins: { checked: 1, verdict: 'too_similar', nearest: { title: 'Red carpet look', similarity: 0.91 } } };
+    await t.db.query(`UPDATE persona_draft SET state = jsonb_set(state, '{look,chosen,check}', $2::jsonb, true) WHERE id = $1`, [d.id, JSON.stringify(check)]);
+    await expect(launchDraft(t.services, d.id, { actor: OWNER })).rejects.toThrow(/Too close to inspiration pin "Red carpet look"/);
+    expect(await t.db.query('SELECT 1 FROM persona')).toHaveLength(0);
+  });
+});
+
 describe('persona documents resolve from the archive (correct-sec-4)', () => {
   it('reads a restored persona\'s look prompts, and a generator persona uses its character sheet', async () => {
     const archived = readPersonaDoc('rosa', 'lookPrompts');

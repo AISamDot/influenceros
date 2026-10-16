@@ -119,6 +119,44 @@ describe('CadencePolicy and the format lever read the Format Plan', () => {
     expect((await t.services.cadence.target(owner.id, NEXT_MONDAY)).postsPerWeek).toBe(11);
   });
 
+  it('a winner keeps its scaled feed cadence through a Stories lever move and an Owner edit (the plan in force is what the calendar books)', async () => {
+    t = await createTestStudio({ now: () => NOW, formatPlans: createFormatPlanService, cadence: createCadencePolicy });
+    const w = await makeTestPersona(t, { state: 'SCALING' });
+    await savePlan(t.db, { studioId: t.studioId, personaId: w.id, plan: { ...defaultPlan(), source: 'recommended' }, actor: STUDIO_MANAGER, now: daysAgo(20) });
+    expect((await t.services.cadence.target(w.id, NEXT_MONDAY)).postsPerWeek).toBe(WINNER_CADENCE.postsPerWeek);
+    // The persona page shows what the calendar plans.
+    const shown = await planInForce(t.db, w.id, NOW);
+    expect(shown!.postsPerWeek).toBe(WINNER_CADENCE.postsPerWeek);
+    expect(planMixOf(shown!)).toEqual(Object.fromEntries(Object.entries(WINNER_CADENCE.formatMix).filter(([, n]) => n > 0)));
+    expect((await planInForce(t.db, w.id, NOW, { scaleForWinner: false }))!.postsPerWeek).toBe(10);
+
+    // Two weeks of Stories where viewers stay and reply: the lever adds a frame a day, the feed is untouched.
+    const { id: studioId } = await t.db.one<{ id: string }>('SELECT studio_id AS id FROM persona WHERE id = $1', [w.id]);
+    for (let i = 0; i < 15; i++) {
+      const date = new Date(NOW.getTime() - (1 + Math.floor(i / 5)) * 86_400_000);
+      const f = await t.db.one<{ id: string }>(
+        `INSERT INTO story_frame (studio_id, persona_id, story_date, seq, kind, status, planned_at) VALUES ($1, $2, $3::date, $4, 'world', 'published', $5) RETURNING id`,
+        [studioId, w.id, date.toISOString().slice(0, 10), (i % 5) + 1, date],
+      );
+      const sp = await t.db.one<{ id: string }>(`INSERT INTO story_post (story_frame_id, persona_id, platform, status, external_id, published_at) VALUES ($1, $2, 'instagram', 'published', $3, $4) RETURNING id`, [f.id, w.id, `s${i}`, date]);
+      await t.db.query(
+        `INSERT INTO story_metric (story_post_id, story_frame_id, persona_id, platform, captured_on, reach, replies, taps_forward, taps_back, exits) VALUES ($1, $2, $3, 'instagram', $4::date, 500, 10, 40, 5, 20)`,
+        [sp.id, f.id, w.id, date.toISOString().slice(0, 10)],
+      );
+    }
+    const { tuneStories } = await import('../src');
+    expect(await tuneStories(t.services, w.id)).toMatchObject({ from: 4, to: 5 });
+    const after = await t.services.cadence.target(w.id, NEXT_MONDAY);
+    expect(after.postsPerWeek).toBe(WINNER_CADENCE.postsPerWeek);
+    expect(after.formatMix).toEqual(WINNER_CADENCE.formatMix);
+    expect((await planInForce(t.db, w.id, NOW))!.stories.perDay).toBe(5);
+
+    // An Owner edit starts from the plan in force (17), so switching one format on never cuts the feed to 11.
+    const inForce = (await planInForce(t.db, w.id, NOW))!;
+    await savePlan(t.db, { studioId: t.studioId, personaId: w.id, plan: editPlan(inForce, { enabled: { meme: true } }), actor: OWNER, now: new Date(NOW.getTime() + 1000) });
+    expect((await t.services.cadence.target(w.id, NEXT_MONDAY)).postsPerWeek).toBe(WINNER_CADENCE.postsPerWeek + 1);
+  });
+
   it('re-tunes the plan weekly from per-format results, within bounds: never switches a format on, keeps every on format ≥ 1', async () => {
     t = await createTestStudio({ now: () => NOW, formatPlans: createFormatPlanService, cadence: createCadencePolicy });
     const p = await makeTestPersona(t, { name: 'Tuned' });

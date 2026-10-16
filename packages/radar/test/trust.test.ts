@@ -87,6 +87,8 @@ describe('scraped text is untrusted', () => {
     // The shortlist is third-party output (it marks the rest of the run untrusted)…
     expect(s.tools.get('winners.shortlist')!.untrustedOutput).toBe(true);
     expect(s.tools.get('radar.report')!.untrustedOutput).toBe(true);
+    // So is anything that carries text derived from scraped posts: remix concepts and the monetisation notes.
+    for (const name of ['remix.list', 'remix.brief', 'radar.patterns']) expect(s.tools.get(name)!.untrustedOutput, name).toBe(true);
     // …so a write the caption "asks" for is refused when the Owner didn't ask for it.
     await expect(s.tools.invoke(ctx({ untrusted: true, ownerText: null }), 'remix.brief', { persona_id: persona.id })).rejects.toBeInstanceOf(ToolPermissionError);
     await expect(s.tools.invoke(ctx({ untrusted: true, ownerText: 'What are the winners this week?' }), 'remix.brief', { persona_id: persona.id })).rejects.toBeInstanceOf(ToolPermissionError);

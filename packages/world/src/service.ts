@@ -79,24 +79,34 @@ export async function groundingFor(base: ServiceBase, personaId: string, at: Dat
   return computeGrounding(personaId, w.bible, at, await liveWeather(base, personaId, w.bible, at));
 }
 
-/** Facts in a text: the deterministic extractor, plus the continuity-keeper's extraction (live mode adds what patterns miss). */
+/**
+ * Facts in a text: the deterministic extractor, plus the continuity-keeper's extraction (live mode adds what patterns
+ * miss). A failed model run (provider error, spent budget) falls back to the deterministic facts, so the rule-based
+ * contradiction block and the ledger never depend on the model being up.
+ */
 export async function factsIn(services: StudioServices, q: { studioId: string; personaId: string; text: string; label: string }): Promise<Fact[]> {
   const rules = extractFacts(q.text);
   if (q.text.trim().length < 20) return rules;
-  const res = await services.runtime.run<{ facts: Fact[] }>({
-    agent: 'continuity-keeper',
-    scope: { studioId: q.studioId, personaId: q.personaId },
-    label: q.label,
-    system:
-      "You keep an AI character's continuity ledger. Extract only facts the character states about herself and her fictional world: people (relation + name), pets, her age, life events (with numbers), possessions, opinions (positive/negative), where she lives. Ignore advice, hypotheticals and other people's lines. Kinds: person, pet, age, event, possession, opinion, place, other.",
-    prompt: `Text:\n${q.text.slice(0, 4000)}\nReturn {"facts": [{"kind": "...", "subject": "...", "value": "...", "statement": "..."}]}.`,
-    maxTokens: 800,
-    parse: parseFacts,
-    jsonSchema: FACTS_SCHEMA as unknown as Record<string, unknown>,
-    fake: () => ({ facts: rules }),
-    costRef: { type: 'persona', id: q.personaId },
-  });
-  return mergeFacts(rules, res.output.facts);
+  let llm: Fact[];
+  try {
+    const res = await services.runtime.run<{ facts: Fact[] }>({
+      agent: 'continuity-keeper',
+      scope: { studioId: q.studioId, personaId: q.personaId },
+      label: q.label,
+      system:
+        "You keep an AI character's continuity ledger. Extract only facts the character states about herself and her fictional world: people (relation + name), pets, her age, life events (with numbers), possessions, opinions (positive/negative), where she lives. Ignore advice, hypotheticals and other people's lines. Kinds: person, pet, age, event, possession, opinion, place, other.",
+      prompt: `Text:\n${q.text.slice(0, 4000)}\nReturn {"facts": [{"kind": "...", "subject": "...", "value": "...", "statement": "..."}]}.`,
+      maxTokens: 800,
+      parse: parseFacts,
+      jsonSchema: FACTS_SCHEMA as unknown as Record<string, unknown>,
+      fake: () => ({ facts: rules }),
+      costRef: { type: 'persona', id: q.personaId },
+    });
+    llm = res.output.facts;
+  } catch {
+    return rules;
+  }
+  return mergeFacts(rules, llm);
 }
 
 export async function ledgerOf(db: Db, personaId: string, exclude?: { type: string; id: string | null } | null): Promise<LedgerFact[]> {
@@ -282,16 +292,21 @@ async function checkContentWith(services: StudioServices, q: WorldCheckRequest):
   return out;
 }
 
+/**
+ * Logs an approved subject. The continuity_record marker is written last, once its facts and fingerprint are stored
+ * (both idempotent: insertFacts skips facts already in the ledger, recordFingerprint is ON CONFLICT DO NOTHING), so a
+ * failure part-way leaves no marker and a retry records the subject in full.
+ */
 async function recordWith(services: StudioServices, q: WorldRecordRequest): Promise<void> {
-  const first = await services.db.maybeOne<{ subject_id: string }>(
-    `INSERT INTO continuity_record (subject_type, subject_id, persona_id) VALUES ($1, $2, $3) ON CONFLICT (subject_type, subject_id) DO NOTHING RETURNING subject_id`,
-    [q.subject.type, q.subject.id, q.personaId],
-  );
-  if (!first) return;
+  const seen = await services.db.maybeOne('SELECT 1 FROM continuity_record WHERE subject_type = $1 AND subject_id = $2', [q.subject.type, q.subject.id]);
+  if (seen) return;
   const facts = await factsIn(services, { studioId: q.studioId, personaId: q.personaId, text: q.text, label: `continuity: record ${q.subject.type}` });
   const n = await insertFacts(services.db, { studioId: q.studioId, personaId: q.personaId, facts, sourceType: q.subject.type, sourceId: q.subject.id, at: q.at });
-  await services.db.query('UPDATE continuity_record SET facts = $3 WHERE subject_type = $1 AND subject_id = $2', [q.subject.type, q.subject.id, n]);
   if (q.fingerprint) await recordFingerprint(services, { studioId: q.studioId, personaId: q.personaId, subject: q.subject, fingerprint: q.fingerprint, text: q.text });
+  await services.db.query(
+    `INSERT INTO continuity_record (subject_type, subject_id, persona_id, facts) VALUES ($1, $2, $3, $4) ON CONFLICT (subject_type, subject_id) DO NOTHING`,
+    [q.subject.type, q.subject.id, q.personaId, n],
+  );
 }
 
 export const createWorldService: ServiceFactory<WorldService> = (base, services) => ({

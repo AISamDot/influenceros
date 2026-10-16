@@ -141,7 +141,9 @@ export interface InternalWinner {
 
 /**
  * Our own winners: live posts published in the last 14 days and at least 24 h old whose views AND saves + shares beat
- * the persona's median over its last 20 posts by ≥ INTERNAL_WINNER_LIFT (latest metric snapshot per post).
+ * the persona's median over its last 20 posts by ≥ INTERNAL_WINNER_LIFT, all measured at 24 h (PRD §3.15.9): each
+ * post's first snapshot captured the day after it went live, so a fresh post is never compared with cumulative
+ * numbers of older ones. Posts with no 24 h snapshot are left out of both the candidates and the baseline.
  */
 export async function internalWinners(db: Db, personaId: string, now: Date): Promise<InternalWinner[]> {
   const rows = await db.query<{ id: string; title: string | null; format: PostFormat; published_at: Date; views: number | null; ss: number | null }>(
@@ -149,7 +151,9 @@ export async function internalWinners(db: Db, personaId: string, now: Date): Pro
        FROM post p
        LEFT JOIN calendar_slot cs ON cs.id = p.calendar_slot_id
        LEFT JOIN idea i ON i.id = cs.idea_id
-       LEFT JOIN LATERAL (SELECT views, saves, shares FROM metric_snapshot ms WHERE ms.post_id = p.id ORDER BY captured_on DESC LIMIT 1) m ON true
+       LEFT JOIN LATERAL (SELECT views, saves, shares FROM metric_snapshot ms
+                           WHERE ms.post_id = p.id AND ms.captured_on >= (p.published_at AT TIME ZONE 'UTC')::date + 1
+                           ORDER BY captured_on ASC LIMIT 1) m ON true
       WHERE p.persona_id = $1 AND p.status = 'live' AND p.published_at IS NOT NULL
       ORDER BY p.published_at DESC LIMIT 60`,
     [personaId],

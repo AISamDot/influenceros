@@ -55,13 +55,17 @@ export async function computeReview(services: StudioServices, d: Pick<DraftRow, 
   }
   const check = state.look.chosen?.check;
   if (check?.drift.verdict === 'drifting') risks.push(`Look: ${check.drift.note}`);
-  if (check && check.distinct.score < 35) risks.push(`Look: ${check.distinct.note}`);
+  // A sheet whose face matches a picked inspiration pin (likely a real person) blocks the launch: pins are mood only.
+  const pinCheck = (check as { pins?: { verdict?: string; nearest?: { title?: string } | null } } | undefined)?.pins;
+  const pinClash = pinCheck?.verdict === 'too_similar';
+  if (pinClash) risks.push(`Too close to inspiration pin "${pinCheck?.nearest?.title ?? 'a picked pin'}": the face matches it, and pins are mood only. Pick another sheet.`);
+  else if (check && check.distinct.score < 35) risks.push(`Look: ${check.distinct.note}`);
   if (check?.mode === 'placeholder' || state.look.chosen?.variants.every((v) => v.provider === 'placeholder')) risks.push('Look: placeholder sheets only; the Soul ID and face checks run once Higgsfield is connected.');
   if (state.voice.chosen?.fake) risks.push('Voice: a fake preview; the real voice is designed once ElevenLabs is connected.');
   for (const r of niche.risks) risks.push(`Niche: ${r}`);
   if (scorecard.total && scorecard.total < 60) risks.push(`Scorecard ${scorecard.total}/100 is under 60: strengthen the weakest dimension before launch.`);
 
-  const ready = missing.length === 0 && flags.length === 0 && dist.verdict !== 'clone';
+  const ready = missing.length === 0 && flags.length === 0 && dist.verdict !== 'clone' && !pinClash;
   return {
     scorecard,
     distinctness: dist,

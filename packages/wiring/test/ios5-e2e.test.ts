@@ -198,7 +198,9 @@ describe('IOS-5 end to end (fakes)', () => {
     const tune = await allJobs()[formats.STORY_JOB.tune]!({ services, job: { payload: { personaId: pid } } as unknown as JobRow, heartbeat: async () => true });
     expect(tune).toMatchObject({ personas: 1, moved: [{ personaId: pid, from, to: leaving ? from - 1 : from + 1 }] });
     const tuned = await services.formatPlans.planFor(pid);
-    expect(tuned).toMatchObject({ source: 'lever', stories: { perDay: leaving ? from - 1 : from + 1 } });
+    // A new plan version from the lever; only Stories moved, so the feed lines keep their source (and winner scaling).
+    expect(tuned).toMatchObject({ source: adopted!.source, stories: { perDay: leaving ? from - 1 : from + 1 } });
+    expect(tuned!.reason).toMatch(/^Stories lever:/);
     expect(tuned!.lines.map((l) => [l.format, l.perWeek])).toEqual(adopted!.lines.map((l) => [l.format, l.perWeek]));
     expect(clock.now.getTime() - new Date('2026-11-10T00:00:00Z').getTime()).toBeLessThan(5 * DAY);
   }, 240_000);

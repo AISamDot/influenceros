@@ -84,6 +84,8 @@ const radarPatterns: ToolDef<{ niche: string }, unknown> = {
   description: 'How the fast-growing accounts in a niche make money (bio link, digital products, memberships, Fanvue, brand deals, affiliate), as shares of the accounts reviewed.',
   scope: 'studio',
   callers: READERS,
+  // The notes come from the untrusted account reviews (scraped bios and captions).
+  untrustedOutput: true,
   inputSchema: { type: 'object', additionalProperties: false, required: ['niche'], properties: { niche: { type: 'string', maxLength: 80 } } },
   parse: (raw) => ({ niche: text(obj(raw, ['niche']), 'niche', 80)! }),
   run: (ctx, i) => monetisationPatterns(ctx.services.db, ctx.studioId, i.niche),
@@ -164,6 +166,8 @@ const remixBrief: ToolDef<{ persona_id: string; radar_post_id?: string }, unknow
   scope: 'persona',
   callers: MANAGERS,
   mutates: true,
+  // The concept is written by the trend-scout from fenced scraped captions and transcripts.
+  untrustedOutput: true,
   ownerIntent: /\b(?:remix|brief|make|create|draft|book|turn|rebuild)\b.*\b(?:remix|brief|winner|outlier|reel|trend)/i,
   inputSchema: { type: 'object', additionalProperties: false, required: ['persona_id'], properties: { persona_id: PERSONA, radar_post_id: { type: 'string', format: 'uuid' } } },
   parse: (raw) => {
@@ -182,6 +186,7 @@ const remixList: ToolDef<{ persona_id: string }, unknown> = {
   description: 'The persona’s recent Viral Remix briefs and double-downs: concept, format, status (booked / blocked as a repeat) and the idea they became.',
   scope: 'persona',
   callers: MANAGERS,
+  untrustedOutput: true,
   inputSchema: { type: 'object', additionalProperties: false, required: ['persona_id'], properties: { persona_id: PERSONA } },
   parse: (raw) => ({ persona_id: uuid(obj(raw, ['persona_id']), 'persona_id')! }),
   run: (ctx, i) =>

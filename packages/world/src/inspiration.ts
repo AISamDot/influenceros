@@ -57,7 +57,10 @@ export async function searchInspiration(
   let source: InspirationPin['source'] = 'pinterest-api';
   let pins: InspirationPin[] = [];
   let costUsd = 0;
-  const api = await services.providers.pinterest.searchPins({ query, limit });
+  // The fake Pinterest answers only in a fake studio: with live research but no Pinterest key yet, search goes to the
+  // metered Apify scraper instead of storing fixture pins.
+  const pinterestLive = !services.providers.pinterest.name.startsWith('fake') || services.providers.research.name.startsWith('fake');
+  const api = pinterestLive ? await services.providers.pinterest.searchPins({ query, limit }) : { supported: false, pins: [] as InspirationPin[] };
   if (api.supported) pins = api.pins.slice(0, limit);
   else {
     source = 'apify';
@@ -125,16 +128,46 @@ const SETTING = ['kitchen', 'allotment', 'garden', 'greenhouse', 'porch', 'front
 const VIBE = ['cosy', 'cozy', 'homely', 'rustic', 'minimal', 'retro', 'vintage', 'cottagecore', 'grandmacore', 'eclectic', 'tidy', 'cluttered', 'bright', 'moody', 'nostalgic', 'whimsical', 'practical', 'warm', 'calm', 'lived-in', 'handmade', 'thrifted'];
 const STYLING = ['natural light', 'film grain', 'flat lay', 'close-up', 'candid', 'handheld', 'overhead', 'soft focus', 'documentary'];
 
-/** Text descriptors only: never a URL, a name, or anything about a face or identity. */
+const LEXICON: Readonly<Record<string, readonly string[]>> = {
+  palette: PALETTE,
+  wardrobe: WARDROBE,
+  setting: SETTING,
+  vibe: VIBE,
+  styling: STYLING,
+  mood: [...VIBE, ...PALETTE, ...SETTING, ...STYLING],
+};
+const escapeRe = (w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Text descriptors only, allow-listed in code: `<key>: <values>` where the key is palette, wardrobe, setting, vibe,
+ * styling, mood or age range, and only lexicon words survive (an age range is a decade like "60s" or "60–70"). Free
+ * text from a model or pin (a name, a URL, a face, "zendaya-inspired") never reaches a prompt.
+ */
 export function cleanDescriptors(list: readonly unknown[]): string[] {
   const out: string[] = [];
   for (const raw of list) {
     if (typeof raw !== 'string') continue;
-    const d = raw.replace(/\s+/g, ' ').trim().slice(0, 90);
-    if (!d || /https?:|www\.|\.com\b|@/i.test(d)) continue;
-    if (/\b(?:face|facial|lookalike|looks like|identical|same person|celebrity|actress|actor|influencer named|selfie of)\b/i.test(d)) continue;
-    if (/\b[A-Z][a-z]+ [A-Z][a-z]+\b/.test(d)) continue; // a person's name
-    if (!out.includes(d)) out.push(d);
+    const d = raw.replace(/\s+/g, ' ').trim().slice(0, 200);
+    const m = /^(palette|wardrobe|setting|vibe|styling|mood|age range)\s*:\s*(.+)$/i.exec(d);
+    if (!m) continue;
+    const key = m[1]!.toLowerCase();
+    const value = m[2]!.toLowerCase();
+    let clean: string;
+    if (key === 'age range') {
+      const span = /\b([1-9]0)\s*(?:s\b)?\s*(?:-|–|to)\s*([1-9]0)s?\b/.exec(value);
+      const decade = /\b([1-9]0)s\b/.exec(value);
+      clean = span ? `${span[1]}–${span[2]}` : decade ? `${decade[1]}s` : '';
+    } else {
+      // Lexicon words in the order they appear in the value.
+      const hits = LEXICON[key]!
+        .map((w) => ({ w, at: new RegExp(`(?:^|[^a-z])${escapeRe(w)}s?(?![a-z])`).exec(value)?.index ?? -1 }))
+        .filter((h) => h.at >= 0)
+        .sort((a, b) => a.at - b.at || b.w.length - a.w.length);
+      clean = [...new Set(hits.map((h) => h.w))].slice(0, 5).join(', ');
+    }
+    if (!clean) continue;
+    const item = `${key}: ${clean}`;
+    if (!out.includes(item)) out.push(item);
     if (out.length >= 12) break;
   }
   return out;

@@ -106,7 +106,9 @@ export const STORY_TUNE = { minFrames: 14, lowDrop: 0.3, highDrop: 0.5, minReply
  */
 export async function tuneStories(services: StudioServices, personaId: string): Promise<{ from: number; to: number; reason: string } | null> {
   const now = services.now();
-  const plan = await planInForce(services.db, personaId, now);
+  // The stored lines (not the winner-scaled view): the lever moves Stories only, so the feed lines and their source
+  // carry over unchanged and the CadencePolicy keeps scaling a recommended plan for a winner.
+  const plan = await planInForce(services.db, personaId, now, { scaleForWinner: false });
   if (!plan) return null;
   const stats = await storyStats(services, personaId, now, 14);
   const frames = stats.reduce((a, s) => a + s.frames, 0);
@@ -121,7 +123,7 @@ export async function tuneStories(services: StudioServices, personaId: string): 
   if (to === from) return null;
   const reason = `Stories lever: ${Math.round(drop * 100)}% of viewers tap away or exit, ${replyRate.toFixed(1)} replies per 100 reached over ${frames} frames: ${from} → ${to} frames a day.`;
   const { version: _v, leverReason: _l, ...current } = plan;
-  const next = editPlan(current, { storiesPerDay: to, note: reason }, 'lever');
+  const next = { ...editPlan(current, { storiesPerDay: to, note: reason }, 'lever'), source: current.source };
   const persona = await services.db.one<{ studio_id: string }>('SELECT studio_id FROM persona WHERE id = $1', [personaId]);
   await savePlan(services.db, { studioId: persona.studio_id, personaId, plan: { ...next, reason }, actor: { type: 'agent', id: 'profit-engine' }, now, effectiveFrom: mondayOf(now), action: 'formats.stories_tuned' });
   return { from, to, reason };

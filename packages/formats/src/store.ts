@@ -1,8 +1,9 @@
-import type { FormatPlan } from '@ios/agents';
-import { type Actor, actorRef, audit, isOptionalFormat, POST_FORMATS, type PostFormat } from '@ios/core';
+import { type FormatPlan, WINNER_STATES } from '@ios/agents';
+import { type Actor, actorRef, audit, isOptionalFormat, type PersonaState, POST_FORMATS, type PostFormat } from '@ios/core';
 import { type Db, json } from '@ios/db';
+import { planTarget } from '@ios/profit';
 import { FORMAT_COST_USD, round2 } from './catalog';
-import { defaultPlan, feedCostPerWeek, parsePlan, validatePlan } from './plan';
+import { defaultPlan, feedCostPerWeek, parsePlan, planLines, validatePlan } from './plan';
 import { isoDate, mondayOf } from './time';
 
 /**
@@ -86,11 +87,43 @@ interface OverrideRow {
   effective_from: string | Date;
 }
 
+type PlanInForce = FormatPlan & { version: number; leverReason: string | null };
+
+/**
+ * The plan the CadencePolicy actually books: a recommended / default plan for a winner (SCALING / BRAND) is scaled to
+ * the winner cadence (profit planTarget), so the persona page, Owner edits and the Stories lever all start from the
+ * same feed lines as the calendar. The source stays as stored (it is still the Studio Manager's plan).
+ */
+async function winnerScaled(db: Db, personaId: string, plan: PlanInForce): Promise<PlanInForce> {
+  if (plan.source !== 'recommended' && plan.source !== 'default') return plan;
+  const p = await db.maybeOne<{ state: PersonaState }>('SELECT state FROM persona WHERE id = $1', [personaId]);
+  if (!p || !WINNER_STATES.includes(p.state)) return plan;
+  const t = planTarget({ version: plan.version, plan, posts_per_week: plan.postsPerWeek, source: plan.source, reason: null }, null, p.state);
+  if (t.postsPerWeek === plan.postsPerWeek) return plan;
+  const reasons = Object.fromEntries(
+    plan.lines.map((l) => {
+      const n = Math.max(0, Math.round(Number(t.formatMix[l.format as keyof typeof t.formatMix] ?? 0)));
+      return [l.format, n !== (l.enabled ? l.perWeek : 0) ? `winner cadence: ${l.enabled ? l.perWeek : 0} → ${n} a week; ${l.reason}` : l.reason];
+    }),
+  ) as Partial<Record<PostFormat, string>>;
+  const lines = planLines(t.formatMix as Partial<Record<PostFormat, number>>, reasons);
+  const postsPerWeek = lines.reduce((a, l) => a + l.perWeek, 0);
+  return {
+    ...plan,
+    postsPerWeek,
+    lines,
+    reason: `${plan.reason} Scaled to the winner cadence (${postsPerWeek} feed posts a week) while the persona is ${p.state}.`.trim(),
+    costPerWeekUsd: round2(feedCostPerWeek(lines) + plan.stories.costPerWeekUsd),
+  };
+}
+
 /**
  * The persona's plan in force: the latest version, with the lines and total from a newer lever / Owner cadence
- * override when there is one (source 'lever', the override's reason). null = no plan (the cadence default applies).
+ * override when there is one (source 'lever', the override's reason), and a recommended plan scaled to the winner
+ * cadence for a SCALING / BRAND persona (as the calendar books it; `scaleForWinner: false` returns the stored lines).
+ * null = no plan (the cadence default applies).
  */
-export async function planInForce(db: Db, personaId: string, now: Date): Promise<(FormatPlan & { version: number; leverReason: string | null }) | null> {
+export async function planInForce(db: Db, personaId: string, now: Date, opts: { scaleForWinner?: boolean } = {}): Promise<PlanInForce | null> {
   const v = await latestPlanVersion(db, personaId);
   if (!v) return null;
   const o = await db.maybeOne<OverrideRow>(
@@ -98,7 +131,10 @@ export async function planInForce(db: Db, personaId: string, now: Date): Promise
       WHERE persona_id = $1 AND effective_from <= $2::date ORDER BY effective_from DESC, seq DESC LIMIT 1`,
     [personaId, isoDate(new Date(mondayOf(now).getTime() + 7 * 86_400_000))],
   );
-  if (!o || new Date(o.created_at).getTime() <= v.createdAt.getTime()) return { ...v.plan, version: v.version, leverReason: null };
+  if (!o || new Date(o.created_at).getTime() <= v.createdAt.getTime()) {
+    const stored: PlanInForce = { ...v.plan, version: v.version, leverReason: null };
+    return opts.scaleForWinner === false ? stored : winnerScaled(db, personaId, stored);
+  }
   const lines = POST_FORMATS.map((format) => {
     const prev = v.plan.lines.find((l) => l.format === format);
     const perWeek = Math.max(0, Math.round(Number(o.format_mix[format] ?? (isOptionalFormat(format) ? 0 : prev?.perWeek ?? 0))));

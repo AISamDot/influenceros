@@ -135,4 +135,39 @@ describe('Format Plans (FR-4.3c)', () => {
     expect(four.costPerWeekUsd).toBeCloseTo((4 * 7 + 1) * 0.05, 2);
     expect(FORMAT_COST_USD.static).toBeLessThan(FORMAT_COST_USD.talking);
   });
+
+  it('moves Stories per day from the current mix (the Owner\'s mix survives) and refuses a count that disagrees with the mix', () => {
+    const owner = editPlan(defaultPlan(), { storyMix: { reshare: 0, engagement: 2 } });
+    expect(owner.stories.perDay).toBe(4);
+    const up = editPlan(owner, { storiesPerDay: 5 }, 'lever');
+    const mix = Object.fromEntries(up.stories.mix.map((m) => [m.kind, m.perDay]));
+    expect(mix).toMatchObject({ world: 1, storyline: 1, reshare: 1, engagement: 2 });
+    const down = editPlan(owner, { storiesPerDay: 3 }, 'lever');
+    // Down: the extra storyline, then the reshare, then a second engagement frame (the storyline thread stays).
+    expect(Object.fromEntries(down.stories.mix.map((m) => [m.kind, m.perDay]))).toMatchObject({ world: 1, storyline: 1, reshare: 0, engagement: 1 });
+    // From the default mixes it lands on the default mixes.
+    for (const [from, to] of [[3, 4], [4, 5], [5, 4], [4, 3]] as const) {
+      const moved = editPlan(editPlan(defaultPlan(), { storiesPerDay: from }), { storiesPerDay: to });
+      expect(moved.stories.mix.map((m) => m.perDay)).toEqual(storiesPlan(to).mix.map((m) => m.perDay));
+    }
+    expect(() => editPlan(defaultPlan(), { storiesPerDay: 3, storyMix: { engagement: 1 } })).toThrow(/not the 3 a day/);
+    expect(editPlan(defaultPlan(), { storiesPerDay: 5, storyMix: { storyline: 2 } }).stories.perDay).toBe(5);
+  });
+
+  it('keeps the paid-product carousel floor even when every format sits at 1 slot', () => {
+    const ladder = [
+      { rung: 'tripwire', priceCents: 900 },
+      { rung: 'core', priceCents: 2900 },
+    ];
+    let checked = 0;
+    for (const archetype of ['funny meme tech news', 'chaotic AI news comedian with money tips', 'relatable crypto market memes', 'funny tech news storyteller']) {
+      for (let budget = 50; budget <= 500; budget += 25) {
+        const p = recommendPlan({ niche: 'tech', archetype, ladder, budgetUsdPerMonth: budget, benchmark: null });
+        invariants(p);
+        expect(count(p, 'carousel'), `${archetype} @ $${budget}`).toBeGreaterThanOrEqual(2);
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(40);
+  });
 });

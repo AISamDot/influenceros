@@ -135,6 +135,33 @@ describe('inspiration boards (mood and format only)', () => {
     await t.db.close();
   });
 
+  it('descriptors are allow-listed: key + lexicon words only, so a person\'s name in any spelling never reaches a prompt', () => {
+    expect(
+      cleanDescriptors([
+        'styling: zendaya-inspired street style',
+        'vibe: taylor swift era',
+        'wardrobe: Beyonce stage looks',
+        'vibe: cosy, a bit like grandma in Emmerdale',
+        'wardrobe: cream cardigans and pearls',
+        'age range: 60s to 70s',
+        'Taylor Swift: warm',
+        'mood: nostalgic thrifted kitchen',
+      ]),
+    ).toEqual(['vibe: cosy', 'wardrobe: cardigan, pearls', 'age range: 60–70', 'mood: nostalgic, thrifted, kitchen']);
+  });
+
+  it('with live research but no Pinterest key, search goes to the metered Apify scraper, never the fixture pins', async () => {
+    const t = await worldStudio();
+    const d = await t.db.one<{ id: string }>(`INSERT INTO persona_draft (studio_id, title, state, created_by) VALUES ($1, 'x', '{}'::jsonb, 'owner:hossam') RETURNING id`, [t.studioId]);
+    Object.defineProperty(t.providers.research, 'name', { value: 'apify' });
+    (t.providers.research as FakeApify).fixture(PINTEREST_APIFY.actor, () => [{ id: 'ap1', url: 'https://www.pinterest.com/pin/ap1/', title: 'Sage kitchen', description: 'cosy', images: { orig: { url: 'https://i.test/1.jpg' } } }]);
+    const r = await searchInspiration(t.services, { studioId: t.studioId, draftId: d.id, query: 'sage kitchen', limit: 3 });
+    expect(r.source).toBe('apify');
+    expect(t.providers.pinterest.calls.filter((c) => c.method === 'searchPins')).toHaveLength(0);
+    expect(r.pins.every((p) => !p.url.includes('fake.pinterest.local'))).toBe(true);
+    await t.db.close();
+  });
+
   it('no stream J code path passes a pin or its image as a prompt reference', () => {
     const dir = join(__dirname, '..', 'src');
     for (const f of readdirSync(dir)) {

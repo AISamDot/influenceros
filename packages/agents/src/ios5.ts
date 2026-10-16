@@ -375,11 +375,11 @@ export class ApifyWeeklyCapError extends Error {
   }
 }
 
-/** Apify spend in the trailing 7 days (credit_ledger debits with provider 'apify'). */
+/** Apify spend in the trailing 7 days: credit_ledger debits with provider 'apify', plus the holds of runs in flight. */
 export async function apifyWeekSpendUsd(db: Db, studioId: string, now: Date): Promise<number> {
   const row = await db.one<{ usd: number | null }>(
     `SELECT COALESCE(sum(amount), 0)::float8 AS usd FROM credit_ledger
-      WHERE studio_id = $1 AND provider = $2 AND entry_type = 'debit' AND created_at > $3`,
+      WHERE studio_id = $1 AND provider = $2 AND entry_type IN ('debit','hold') AND created_at > $3`,
     [studioId, APIFY_PROVIDER, new Date(now.getTime() - 7 * 86_400_000)],
   );
   return Number(row.usd ?? 0);

@@ -1,7 +1,7 @@
 import { type Grounding, nullWorld, type WorldRecordRequest, type WorldService } from '@ios/agents';
 import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
 import { attachSampleBible } from '@ios/content';
-import { type JobRow, OWNER, setKillSwitch } from '@ios/core';
+import { BudgetExceededError, clearKillSwitch, DeferJob, type JobRow, OWNER, setKillSwitch } from '@ios/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // Generator walks and full Story days are heavy under the parallel suite (PGlite per test).
@@ -38,6 +38,8 @@ afterEach(async () => {
 });
 
 const recorded: WorldRecordRequest[] = [];
+/** Calls to WorldService.beatsForWeek (the Stories engine must never make one: it assigns beats). */
+const beatCalls: unknown[] = [];
 const grounding = (personaId: string, at: Date): Grounding => ({
   personaId,
   timezone: 'Europe/London',
@@ -56,7 +58,7 @@ const grounding = (personaId: string, at: Date): Grounding => ({
 const world = (): WorldService => ({
   ...nullWorld(),
   grounding: async (personaId, at) => grounding(personaId, at),
-  beatsForWeek: async ({ slots }) => slots.map((s) => ({ slotIndex: s.index, arcId: 'a1', chapterId: 'c2', beatId: 'b5', chapter: 'Chapter 2: The allotment', beat: 'The shed key is missing again and I know who took it' })),
+  beatsForWeek: async (q) => (beatCalls.push(q), q.slots).map((s) => ({ slotIndex: s.index, arcId: 'a1', chapterId: 'c2', beatId: 'b5', chapter: 'Chapter 2: The allotment', beat: 'The shed key is missing again and I know who took it' })),
   recordApproved: async (q) => {
     recorded.push(q);
   },
@@ -64,6 +66,7 @@ const world = (): WorldService => ({
 
 async function studio(opts: { world?: boolean } = {}) {
   recorded.length = 0;
+  beatCalls.length = 0;
   t = await createTestStudio({ now: () => NOW, formatPlans: createFormatPlanService, ...(opts.world === false ? {} : { world: world }) });
   const p = await makeTestPersona(t, { timezone: 'Europe/London', name: 'Dot Pickering' });
   await attachSampleBible(t.db, p.id);
@@ -72,6 +75,12 @@ async function studio(opts: { world?: boolean } = {}) {
 
 async function account(tt: TestStudio, personaId: string, platform: string, handle: string) {
   await tt.db.query(`INSERT INTO account (persona_id, platform, handle, token_ref, status, ai_label_ok) VALUES ($1, $2, $3, $4, 'active', true)`, [personaId, platform, handle, `acc_${platform}_${handle}`]);
+}
+
+/** A planned feed slot carrying the storyline beat the week plan stored for it (meta.story). */
+async function beatSlot(tt: TestStudio, personaId: string, at: Date, beatId: string, beat: string) {
+  const story = { slotIndex: 0, arcId: 'a1', chapterId: 'c2', beatId, chapter: 'Chapter 2: The allotment', beat };
+  await tt.db.query(`INSERT INTO calendar_slot (persona_id, slot_at, format, purpose, title, meta) VALUES ($1, $2, 'talking', 'reach', $3, $4::jsonb)`, [personaId, at, beat, JSON.stringify({ story })]);
 }
 
 async function livePost(tt: TestStudio, personaId: string, title: string, at: Date): Promise<string> {
@@ -99,6 +108,7 @@ describe('Stories engine (FR-4.3d)', () => {
     const p = await studio();
     await livePost(t!, p.id, 'Five cheap dinners from one chicken', new Date(NOW.getTime() - 20 * 3_600_000));
     await t!.db.query(`INSERT INTO calendar_slot (persona_id, slot_at, format, purpose, title) VALUES ($1, $2, 'talking', 'sell', 'Walkthrough: the meal plan')`, [p.id, new Date('2026-10-20T18:00:00Z')]);
+    await beatSlot(t!, p.id, new Date('2026-10-20T12:00:00Z'), 'b5', 'The shed key is missing again and I know who took it');
     const frames = await planStoryDay(t!.services, p.id);
     expect(frames.map((f) => f.kind)).toEqual(['world', 'storyline', 'reshare', 'engagement', 'sell']);
     expect(frames.every((f) => f.status === 'planned' && f.story_date.toString().length > 0)).toBe(true);
@@ -107,6 +117,8 @@ describe('Stories engine (FR-4.3d)', () => {
     expect(new Date(frames[4]!.planned_at).toISOString()).toBe('2026-10-20T19:30:00.000Z');
     expect(frames[0]!.text).toMatch(/Tuesday in Leeds: light rain, 9°C/);
     expect(frames[1]!.text).toMatch(/The allotment/);
+    expect(frames[1]!.beat).toMatchObject({ beatId: 'b5' });
+    expect(beatCalls).toHaveLength(0); // read from the week's calendar, never assigned (that would move a feed beat)
     expect(frames[2]!.reshare_post_id).toBeTruthy();
     expect(frames[2]!.text).toMatch(/Five cheap dinners/);
     expect(frames[3]!.text).toContain(frames[3]!.cta_keyword!);
@@ -167,11 +179,16 @@ describe('Stories engine (FR-4.3d)', () => {
     await publishStoryFrame(t!.services, frames[0]!.id);
     expect(t!.providers.publish.calls.filter((c) => c.method === 'publish')).toHaveLength(1);
 
-    // Kill switch: nothing goes out, the frame says why.
+    // Published only once verified with the AI label (like a feed post).
+    expect(t!.providers.publish.calls.filter((c) => c.method === 'verify')).toHaveLength(1);
+
+    // Kill switch: nothing goes out, the frame says why, and the job is deferred (retried once the switch clears).
     await setKillSwitch(t!.db, t!.studioId, { scope: 'persona', personaId: p.id }, OWNER, 'pause');
-    const blocked = await publishStoryFrame(t!.services, frames[1]!.id);
-    expect(blocked.results.find((r) => r.platform === 'instagram')).toMatchObject({ status: 'blocked' });
+    await expect(publishStoryFrame(t!.services, frames[1]!.id)).rejects.toBeInstanceOf(DeferJob);
+    expect((await t!.db.one<{ status: string }>(`SELECT status FROM story_post WHERE story_frame_id = $1 AND platform = 'instagram'`, [frames[1]!.id])).status).toBe('blocked');
     expect(t!.providers.publish.calls.filter((c) => c.method === 'publish')).toHaveLength(1);
+    await clearKillSwitch(t!.db, t!.studioId, { scope: 'persona', personaId: p.id }, OWNER);
+    expect((await publishStoryFrame(t!.services, frames[1]!.id)).results.find((r) => r.platform === 'instagram')).toMatchObject({ status: 'published' });
   });
 
   it('blocks a frame that uses a story as proof a product works (Gate red), holds amber / L0 frames for the Owner, and fails QC on a link', async () => {
@@ -242,9 +259,13 @@ describe('Stories engine (FR-4.3d)', () => {
     // Viewers stay (12% drop) and reply: one more frame a day, written as a lever version of the plan.
     const moved = await tuneStories(t!.services, p.id);
     expect(moved).toMatchObject({ from: 4, to: 5 });
+    // Only Stories moved: the feed lines and their source carry over (a recommended plan keeps its winner scaling).
     const plan = await t!.services.formatPlans.planFor(p.id);
-    expect(plan).toMatchObject({ source: 'lever' });
+    expect(plan).toMatchObject({ source: 'default' });
+    expect(plan!.reason).toMatch(/^Stories lever:/);
+    expect(plan!.lines.map((l) => [l.format, l.perWeek])).toEqual(defaultPlan().lines.map((l) => [l.format, l.perWeek]));
     expect(plan!.stories.perDay).toBe(5);
+    expect((await t!.db.one<{ action: string }>(`SELECT action FROM audit_log WHERE action LIKE 'formats.%' ORDER BY id DESC LIMIT 1`)).action).toBe('formats.stories_tuned');
     expect(await tuneStories(t!.services, p.id)).toBeNull(); // already at the 5 a day cap
   });
 
@@ -273,5 +294,86 @@ describe('Stories engine (FR-4.3d)', () => {
     expect(storyChecks({ kind: 'engagement', text: 'Reply GUIDE for the list', cta_keyword: 'GUIDE' }, { width: 1080, height: 1920, ocr: 'Reply GUIDE for the list' }).every((c) => c.pass)).toBe(true);
     const bad = storyChecks({ kind: 'sell', text: 'Buy now', cta_keyword: 'SHEET' }, { width: 720, height: 1280, ocr: 'nothing' });
     expect(bad.filter((c) => !c.pass).map((c) => c.check).sort()).toEqual(['story_keyword', 'story_ocr', 'story_size']);
+  });
+});
+
+describe('Stories engine: audit fixes', () => {
+  it('storyline frames read the week\'s beats from the calendar: today\'s first, rotated by day, and never reassign a feed beat', async () => {
+    const p = await studio();
+    await beatSlot(t!, p.id, new Date('2026-10-19T12:00:00Z'), 'b1', 'The first seed packet arrives');
+    await beatSlot(t!, p.id, new Date('2026-10-21T12:00:00Z'), 'b2', 'The shed key goes missing');
+    await beatSlot(t!, p.id, new Date('2026-10-23T12:00:00Z'), 'b3', 'Mavis has the key all along');
+    const before = await t!.db.query<{ slot_at: Date; meta: unknown }>(`SELECT slot_at, meta FROM calendar_slot WHERE persona_id = $1 ORDER BY slot_at`, [p.id]);
+    // Tuesday: no reshare post, so two storyline frames, each with a different beat.
+    const tue = await planStoryDay(t!.services, p.id, '2026-10-20');
+    const tueBeats = tue.filter((f) => f.kind === 'storyline').map((f) => f.beat?.beatId);
+    expect(tueBeats).toHaveLength(2);
+    expect(new Set(tueBeats).size).toBe(2);
+    // Wednesday leads with Wednesday's own beat.
+    const wed = await planStoryDay(t!.services, p.id, '2026-10-21');
+    expect(wed.find((f) => f.kind === 'storyline')!.beat).toMatchObject({ beatId: 'b2' });
+    expect(beatCalls).toHaveLength(0);
+    expect(await t!.db.query(`SELECT slot_at, meta FROM calendar_slot WHERE persona_id = $1 ORDER BY slot_at`, [p.id])).toEqual(before);
+  });
+
+  it('a failed publish is retried (the job throws), and a frame that never posts is skipped with the real reason', async () => {
+    const p = await studio();
+    await account(t!, p.id, 'instagram', 'dot');
+    const [f] = await planStoryDay(t!.services, p.id);
+    expect((await produceStoryFrame(t!.services, f!.id)).status).toBe('approved');
+    t!.providers.publish.failNext = 1;
+    await expect(publishStoryFrame(t!.services, f!.id)).rejects.toThrow(/retrying.*503/);
+    expect((await t!.db.one<{ status: string }>(`SELECT status FROM story_post WHERE story_frame_id = $1`, [f!.id])).status).toBe('failed');
+    expect((await framesFor(t!.services, p.id, DATE))[0]!.status).toBe('approved');
+    // The retry goes out.
+    expect((await publishStoryFrame(t!.services, f!.id)).results[0]).toMatchObject({ platform: 'instagram', status: 'published' });
+    expect((await framesFor(t!.services, p.id, DATE))[0]!.status).toBe('published');
+
+    // Another frame keeps failing until its day is over: skipped with the failure, not "missed its day".
+    const g = (await framesFor(t!.services, p.id, DATE))[1]!;
+    expect((await produceStoryFrame(t!.services, g.id)).status).toBe('approved');
+    t!.providers.publish.failNext = 1;
+    await expect(publishStoryFrame(t!.services, g.id)).rejects.toThrow(/retrying/);
+    await queueDueStories(t!.services, new Date('2026-10-22T12:00:00Z'));
+    const skipped = await t!.db.one<{ status: string; block_reason: string }>(`SELECT status, block_reason FROM story_frame WHERE id = $1`, [g.id]);
+    expect(skipped.status).toBe('skipped');
+    expect(skipped.block_reason).toMatch(/instagram: fake zernio: upstream 503/);
+  });
+
+  it('checks the AI label: an account without its AI profile label is held, and a story the platform shows unlabelled is failed and reported', async () => {
+    const p = await studio();
+    await account(t!, p.id, 'instagram', 'dot');
+    const [f1, f2] = await planStoryDay(t!.services, p.id);
+    for (const f of [f1!, f2!]) expect((await produceStoryFrame(t!.services, f.id)).status).toBe('approved');
+    await t!.db.query(`UPDATE account SET ai_label_ok = false WHERE persona_id = $1`, [p.id]);
+    await expect(publishStoryFrame(t!.services, f1!.id)).rejects.toBeInstanceOf(DeferJob);
+    expect(await t!.db.one(`SELECT status, reason FROM story_post WHERE story_frame_id = $1`, [f1!.id])).toMatchObject({ status: 'blocked', reason: expect.stringMatching(/AI profile label/) });
+    expect(t!.providers.publish.calls.filter((c) => c.method === 'publish')).toHaveLength(0);
+
+    await t!.db.query(`UPDATE account SET ai_label_ok = true WHERE persona_id = $1`, [p.id]);
+    vi.spyOn(t!.providers.publish, 'verify').mockResolvedValueOnce({ status: 'live', url: 'https://instagram.example/s/1', aiLabel: false } as never);
+    const res = await publishStoryFrame(t!.services, f2!.id);
+    expect(res.results[0]).toMatchObject({ status: 'failed', reason: expect.stringMatching(/without the platform AI label/) });
+    expect((await framesFor(t!.services, p.id, DATE))[1]!.status).toBe('approved');
+    expect((await t!.db.one<{ n: number }>(`SELECT count(*)::int AS n FROM notification WHERE title LIKE '%story failed verification%'`)).n).toBe(1);
+    // Final: a retry re-posts nothing.
+    await publishStoryFrame(t!.services, f2!.id);
+    expect(t!.providers.publish.calls.filter((c) => c.method === 'publish')).toHaveLength(1);
+  });
+
+  it('a produce retry reuses the paid still, and a spent budget defers the job instead of burning attempts', async () => {
+    const p = await studio();
+    const [f] = await planStoryDay(t!.services, p.id);
+    const put = vi.spyOn(t!.providers.storage, 'putFile').mockRejectedValueOnce(new Error('disk full'));
+    await expect(produceStoryFrame(t!.services, f!.id)).rejects.toThrow(/disk full/);
+    expect(await t!.db.one(`SELECT status, still_url IS NOT NULL AS has_still FROM story_frame WHERE id = $1`, [f!.id])).toMatchObject({ status: 'planned', has_still: true });
+    expect((await produceStoryFrame(t!.services, f!.id)).status).toBe('approved');
+    expect(t!.providers.imageVideo.calls.filter((c) => c.method === 'generateStill')).toHaveLength(1);
+    put.mockRestore();
+
+    const [, g] = await framesFor(t!.services, p.id, DATE);
+    vi.spyOn(t!.providers.storage, 'putFile').mockRejectedValueOnce(new BudgetExceededError('llm cap', { scope: 'persona', unit: 'llm_usd', used: 1, cap: 1, requested: 0.1 }));
+    const job = { payload: { frameId: g!.id } } as unknown as JobRow;
+    await expect(jobs['stories.produce']!({ services: t!.services, job, heartbeat: async () => true })).rejects.toBeInstanceOf(DeferJob);
   });
 });
