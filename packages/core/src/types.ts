@@ -19,19 +19,67 @@ export const PLATFORMS: readonly Platform[] = ['tiktok', 'instagram', 'youtube',
 /** The five weekly-mix formats (PRD §3.3); the cadence mix always covers these. */
 export type CoreFormat = 'talking' | 'activity_text' | 'voiceover' | 'static' | 'carousel';
 /**
- * (16 Oct, PRD §3.12 step 4) Optional formats the Owner switches on per week (settings.formats): "product in hand"
- * (the persona holding our own product, from its cover as a second reference, for sell slots) and "trend reenactment"
- * (a reference movement clip drives the character: Kling 3.0 motion transfer through Higgsfield).
+ * Optional formats from the format library (PRD §3.12 step 4, FR-4.3c), switched on per persona by its Format Plan
+ * (IOS-5 stream L) or, until that lands, per week in studio settings.formats:
+ * - "product_in_hand": the persona holding our own product, from its cover as a second reference, for sell slots;
+ * - "trend_reenactment": a reference movement clip drives the character (Kling 3.0 motion transfer, motion only);
+ * - (IOS-5) "photo_dump": 5–10 casual "camera roll" stills from the week, an IG carousel (4:5 or 1:1);
+ * - (IOS-5) "text_note": a text-on-image note / quote card (static);
+ * - (IOS-5) "facecam_screen": the persona in a corner over a generated screen recording or slides;
+ * - (IOS-5) "reply_comment": a talking or text answer to a top comment, the comment shown as a sticker-like overlay
+ *   with the commenter's handle anonymised;
+ * - (IOS-5) "news_greenscreen": the persona over a News Desk headline card (never a real outlet's logo);
+ * - (IOS-5) "meme": a relatable text post.
+ * The IOS-5 values and their CHECK constraints (migration 0016) landed with docs/IOS-5-CONTRACTS.md: stream L owns
+ * what they mean in the plan (Format Plan, cadence, calendar); stream K builds their renderers, scripts and QC.
  */
-export type OptionalFormat = 'product_in_hand' | 'trend_reenactment';
+export type OptionalFormat =
+  | 'product_in_hand'
+  | 'trend_reenactment'
+  | 'photo_dump'
+  | 'text_note'
+  | 'facecam_screen'
+  | 'reply_comment'
+  | 'news_greenscreen'
+  | 'meme';
 export type PostFormat = CoreFormat | OptionalFormat;
 export const CORE_FORMATS: readonly CoreFormat[] = ['talking', 'activity_text', 'voiceover', 'static', 'carousel'];
-export const OPTIONAL_FORMATS: readonly OptionalFormat[] = ['product_in_hand', 'trend_reenactment'];
+export const OPTIONAL_FORMATS: readonly OptionalFormat[] = [
+  'product_in_hand',
+  'trend_reenactment',
+  'photo_dump',
+  'text_note',
+  'facecam_screen',
+  'reply_comment',
+  'news_greenscreen',
+  'meme',
+];
 export const POST_FORMATS: readonly PostFormat[] = [...CORE_FORMATS, ...OPTIONAL_FORMATS];
 /** Formats written and cut like an activity + on-screen text loop: no voice, on-screen lines carry the post. */
 export const TEXT_LOOP_FORMATS: readonly PostFormat[] = ['activity_text', 'product_in_hand', 'trend_reenactment'];
-/** The core format a post is written as (the optional formats are written like activity + text). */
-export const scriptShape = (f: PostFormat): CoreFormat => (TEXT_LOOP_FORMATS.includes(f) ? 'activity_text' : (f as CoreFormat));
+/**
+ * The core format each post is written as (its script shape): the base the Scriptwriter, Q1 and the board fall back
+ * to until stream K gives a format its own script rules. Talking-shaped formats are spoken; static-shaped ones are
+ * a single image line; carousel-shaped ones are slides.
+ */
+export const FORMAT_SHAPE: Readonly<Record<PostFormat, CoreFormat>> = {
+  talking: 'talking',
+  activity_text: 'activity_text',
+  voiceover: 'voiceover',
+  static: 'static',
+  carousel: 'carousel',
+  product_in_hand: 'activity_text',
+  trend_reenactment: 'activity_text',
+  photo_dump: 'carousel',
+  text_note: 'static',
+  facecam_screen: 'talking',
+  reply_comment: 'talking',
+  news_greenscreen: 'talking',
+  meme: 'static',
+};
+/** The core format a post is written as (see FORMAT_SHAPE). */
+export const scriptShape = (f: PostFormat): CoreFormat => FORMAT_SHAPE[f] ?? 'activity_text';
+export const isOptionalFormat = (f: string): f is OptionalFormat => (OPTIONAL_FORMATS as readonly string[]).includes(f);
 export type PostPurpose = 'reach' | 'trust' | 'sell';
 export type GateVerdict = 'green' | 'amber' | 'red';
 
@@ -87,6 +135,11 @@ export interface StudioSettings {
    * trend_reenactment takes reach slots booked from a trend idea with a reference clip.
    */
   formats: Record<OptionalFormat, number>;
+  /**
+   * (IOS-5) Weekly cap on Apify scraping spend (USD, trailing 7 days, every actor run: Growth Radar, Winner Finder,
+   * Pinterest fallback, market scans). Owner-only like every cap; enforced by `meteredApify` in @ios/agents.
+   */
+  apify_weekly_cap_usd: number;
 }
 
 export const DEFAULT_SETTINGS: StudioSettings = {
@@ -112,7 +165,8 @@ export const DEFAULT_SETTINGS: StudioSettings = {
     ],
     pass: ['Opinions', 'General education', 'First-person stories and situations ("my date stood me up tonight", "day 12 of my no-buy")', 'Dramatised scenarios and character lore'],
   },
-  formats: { product_in_hand: 0, trend_reenactment: 0 },
+  formats: { product_in_hand: 0, trend_reenactment: 0, photo_dump: 0, text_note: 0, facecam_screen: 0, reply_comment: 0, news_greenscreen: 0, meme: 0 },
+  apify_weekly_cap_usd: 10,
 };
 
 export interface PersonaRow {

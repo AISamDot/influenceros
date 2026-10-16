@@ -18,12 +18,16 @@
     "@ios/core": "workspace:*",
     "@ios/db": "workspace:*",
     "@ios/distribution": "workspace:*",
+    "@ios/formats": "workspace:*",
     "@ios/generator": "workspace:*",
     "@ios/knowledge": "workspace:*",
     "@ios/media": "workspace:*",
+    "@ios/production": "workspace:*",
     "@ios/products": "workspace:*",
     "@ios/profit": "workspace:*",
     "@ios/providers": "workspace:*",
-    "@ios/secrets": "workspace:*"
+    "@ios/radar": "workspace:*",
+    "@ios/secrets": "workspace:*",
+    "@ios/world": "workspace:*"
   }
 }

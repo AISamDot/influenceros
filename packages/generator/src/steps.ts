@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { runAgent, STUDIO_RULES_BLOCK, type StudioServices } from '@ios/agents';
+import { type OpportunityEvidence, runAgent, STUDIO_RULES_BLOCK, type StudioServices } from '@ios/agents';
 import { type Actor, BudgetExceededError } from '@ios/core';
 import { listArchivedPersonas } from '@ios/core/seed';
 import type { Db } from '@ios/db';
@@ -17,6 +17,7 @@ import {
   type CharacterStep,
   type ConceptOption,
   type ContentPlanDraft,
+  type DraftExtensionKey,
   type DraftRow,
   type DraftState,
   emptyState,
@@ -362,7 +363,10 @@ async function generate(services: StudioServices, d: DraftRow, key: StepKey, ins
         () => fakeOpportunities({ draftId: d.id, generation: gen, idea: state.seed.idea, mix }),
         mergeOpportunities,
       );
-      state.opportunity = { ...state.opportunity, status: 'ready', generation: gen, options: r.value, instruction: instruction ?? null };
+      // (IOS-5) Growth Radar evidence (stream I's RadarService; [] until the Radar has data).
+      const radarEvidence = await services.radar.opportunityEvidence({ studioId: d.studio_id, niches: r.value.map((o) => o.niche), limit: 12 });
+      state.radar = radarEvidence.length ? { evidence: radarEvidence, at: services.now().toISOString() } : (state.radar ?? null);
+      state.opportunity = { ...state.opportunity, status: 'ready', generation: gen, options: withRadarEvidence(r.value, radarEvidence), instruction: instruction ?? null };
       state.opportunity.advice = advise(key, state);
       return { state, ...note(r.note) };
     }
@@ -460,6 +464,21 @@ async function generate(services: StudioServices, d: DraftRow, key: StepKey, ins
         mergeContent,
       );
       state.content = { ...state.content, status: 'ready', generation: gen, options: [r.value], chosen: clone(r.value), chosenFrom: 'A', instruction: instruction ?? null };
+      // (IOS-5) Step 6 also drafts the Format Plan (stream L) and the World Bible + storyline (stream J).
+      const ch = state.character.chosen;
+      const [formatPlan, world] = await Promise.all([
+        services.formatPlans.recommend({ studioId: d.studio_id, niche: niche.key, archetype: concept.archetype, ladder: r.value.ladder.map((x) => ({ rung: x.rung, priceCents: x.priceCents })) }),
+        services.world.draftWorld({
+          studioId: d.studio_id,
+          draftId: d.id,
+          niche: niche.key,
+          concept: { name: concept.name, archetype: concept.archetype, premise: concept.premise, mechanic: concept.mechanic },
+          character: ch ? { homeBase: ch.homeBase, lore: ch.lore, identity: ch.identity } : null,
+          timezone: state.seed.timezone ?? null,
+        }),
+      ]);
+      state.formatPlan = formatPlan;
+      state.world = world;
       state.content.advice = advise(key, state);
       return { state, ...note(r.note) };
     }
@@ -469,6 +488,15 @@ async function generate(services: StudioServices, d: DraftRow, key: StepKey, ins
       return { state };
     }
   }
+}
+
+/** Adds the Radar's evidence for an option's niche to that option (flag 'S': the studio's own data). */
+export function withRadarEvidence(options: OpportunityOption[], evidence: readonly OpportunityEvidence[]): OpportunityOption[] {
+  if (!evidence.length) return options;
+  return options.map((o) => {
+    const mine = evidence.filter((e) => e.niche.toLowerCase() === o.niche.toLowerCase()).slice(0, 3);
+    return mine.length ? { ...o, evidence: [...o.evidence, ...mine.map((e) => ({ signal: e.signal, detail: e.detail, flag: 'S' as const, source: e.source }))] } : o;
+  });
 }
 
 const ORDER: StepKey[] = STEPS.map((s) => s.key);
@@ -569,6 +597,23 @@ export async function chooseOption(services: StudioServices, draftId: string, st
     const next = d.state[nextKey] as StepState<unknown, unknown>;
     if (nextKey === 'review' || next.status === 'empty' || next.status === 'stale') return regenerateStep(services, draftId, step + 1, { actor: ctx.actor });
     return d;
+  });
+}
+
+/**
+ * (IOS-5) Replaces one of the draft's extensions (the World Bible + storyline, or the Format Plan) with the Owner's
+ * edit or a stream's regenerated value. A new draft version, like every other change. Streams J and L call it from
+ * their own server actions and chat tools (docs/IOS-5-CONTRACTS.md §5.5).
+ */
+export async function setDraftExtension<K extends DraftExtensionKey>(services: StudioServices, draftId: string, key: K, value: DraftState[K], ctx: Ctx & { change?: string }): Promise<DraftRow> {
+  return withDraftLock(draftId, async () => {
+    const d = await requireDraft(services.db, draftId);
+    assertEditable(d);
+    checkVersion(d, ctx.expectVersion);
+    const state = clone(d.state);
+    state[key] = value;
+    const reviewed = await withReview(services, d, state);
+    return commit(services.db, draftId, { step: 6, change: ctx.change ?? `${key === 'world' ? 'world bible' : 'format plan'}: edited`, actor: ctx.actor, expectVersion: ctx.expectVersion ?? d.version }, async () => reviewed);
   });
 }
 

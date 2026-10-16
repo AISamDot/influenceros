@@ -28,6 +28,8 @@ export const SECRETS = {
   'notion.api_key': { env: 'NOTION_API_KEY', label: 'Notion integration key (product templates)' },
   'notion.template_parent_id': { env: 'NOTION_TEMPLATE_PARENT_ID', label: 'Notion parent page ID for product templates' },
   'apify.token': { env: 'APIFY_TOKEN', label: 'Apify token' },
+  // IOS-5 stream J: Pinterest API v5 (OAuth access token for the one studio account; pending its key).
+  'pinterest.access_token': { env: 'PINTEREST_ACCESS_TOKEN', label: 'Pinterest API v5 access token (studio account)' },
   'pixabay.api_key': { env: 'PIXABAY_API_KEY', label: 'Pixabay API key' },
   'discord.bot_token': { env: 'DISCORD_BOT_TOKEN', label: 'Discord bot token' },
   'vercel.token': { env: 'VERCEL_TOKEN', label: 'Vercel token' },

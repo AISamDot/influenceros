@@ -702,6 +702,10 @@ export async function handleComment(services: StudioServices, c: CommentRow, bit
     status: cls.severity ? 'escalated' : 'handled',
     meta: { ...base.meta, reply_id: reply.id, reply_text: g.text, replied_at: now.toISOString(), gate_result_id: g.gateResultId },
   });
+  // (IOS-5) Facts the persona states in a sent reply go to stream J's continuity ledger; never blocks the community worker.
+  await services.world
+    .recordApproved({ studioId: bits.studioId, personaId: c.persona_id, subject: { type: 'reply', id: c.id }, text: g.text, at: now })
+    .catch(() => undefined);
 }
 
 interface ThreadRow {

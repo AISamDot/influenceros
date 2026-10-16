@@ -7,10 +7,14 @@ import { ChatPanel } from '@/components/chat-panel';
 import { Flash } from '@/components/flash';
 import { CommercePersonaPanel } from '@/components/commerce-persona-panel';
 import { DistributionPersonaPanel } from '@/components/distribution-persona-panel';
+import { FormatsPersonaPanel } from '@/components/formats-persona-panel';
 import { FormatIcon, PlatformMark } from '@/components/icons';
 import { MediaPersonaPanel } from '@/components/media-persona-panel';
 import { PersonaArchiveBanner, PersonaArchivePanel } from '@/components/persona-archive-panel';
+import { ProductionPersonaPanel } from '@/components/production-persona-panel';
 import { ProductsPersonaPanel } from '@/components/products-persona-panel';
+import { StoriesPersonaPanel } from '@/components/stories-persona-panel';
+import { WorldPersonaPanel } from '@/components/world-persona-panel';
 import { Profile } from '@/components/profile';
 import { Sparkline } from '@/components/sparkline';
 import { compact, daysSince, FORMAT_LABEL, localTime, money, shortDate, usd, weekday, zoneLabel } from '@/lib/format';
@@ -312,6 +316,11 @@ export default async function PersonaPage({ params, searchParams }: Props) {
             <DistributionPersonaPanel db={db} studioId={studio.id} personaId={p.id} slug={p.slug} />
             <CommercePersonaPanel db={db} studioId={studio.id} personaId={p.id} slug={p.slug} />
             <ProductsPersonaPanel db={db} studioId={studio.id} personaId={p.id} slug={p.slug} />
+            {/* IOS-5 panels: each stream fills only its own component (docs/IOS-5-CONTRACTS.md §4). */}
+            <FormatsPersonaPanel db={db} studioId={studio.id} personaId={p.id} slug={p.slug} />
+            <StoriesPersonaPanel db={db} studioId={studio.id} personaId={p.id} slug={p.slug} />
+            <WorldPersonaPanel db={db} studioId={studio.id} personaId={p.id} slug={p.slug} />
+            <ProductionPersonaPanel db={db} studioId={studio.id} personaId={p.id} slug={p.slug} />
             <PersonaArchivePanel p={p} />
           </div>
 

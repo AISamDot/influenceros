@@ -11,7 +11,9 @@ import {
   type FeedItem,
   type FeedProvider,
   type FieldMap,
+  type GeoPlace,
   type HiggsfieldOperation,
+  type InspirationPin,
   type ImageVideoProvider,
   type LlmProvider,
   type LlmRequest,
@@ -20,6 +22,8 @@ import {
   type MediaResolution,
   type MediaResult,
   type ModelTier,
+  type PinterestBoard,
+  type PinterestProvider,
   type Platform,
   type PostMetrics,
   type Providers,
@@ -32,10 +36,14 @@ import {
   type StoreInfo,
   type StoreProduct,
   type StoreProvider,
+  type StoryCapability,
+  type StoryMetrics,
   type TalkingProvider,
   type TopicResearch,
   type TranscribeProvider,
   type VoiceProvider,
+  type WeatherNow,
+  type WeatherProvider,
   type WebResearchProvider,
 } from './types';
 
@@ -251,6 +259,22 @@ export class FakeZernio extends Recorder implements PublishProvider {
   readonly hidden = new Set<string>();
   /** Metrics overrides per externalId (tests set growth); otherwise deterministic from the id. */
   readonly metrics = new Map<string, PostMetrics>();
+  /** (IOS-5, stream L owns this part) Story support per platform; tests may flip it. */
+  readonly storySupport: Record<Platform, boolean> = { instagram: true, tiktok: false, youtube: false, pinterest: false };
+  /** Story metrics overrides per externalId; otherwise deterministic from the id. */
+  readonly storyMetrics = new Map<string, StoryMetrics>();
+  async storyCapabilities(): Promise<StoryCapability[]> {
+    this.record('storyCapabilities', {});
+    return (Object.keys(this.storySupport) as Platform[]).map((platform) => ({ platform, stories: this.storySupport[platform] }));
+  }
+  async fetchStoryMetrics(req: { externalId: string; platform: Platform }): Promise<StoryMetrics> {
+    this.record('fetchStoryMetrics', req);
+    const set = this.storyMetrics.get(req.externalId);
+    if (set) return set;
+    const h = parseInt(shortHash(req.externalId, 6), 16);
+    const reach = 200 + (h % 800);
+    return { reach, replies: h % 7, tapsForward: Math.round(reach * 0.3), tapsBack: Math.round(reach * 0.04), exits: Math.round(reach * 0.08) };
+  }
 
   private guard(req: PublishRequest): void {
     // The type already forces `true`; this catches untyped callers.
@@ -489,9 +513,22 @@ export class FakeResendAudience extends Recorder implements AudienceProvider {
 
 export class FakeApify extends Recorder implements ResearchProvider {
   readonly name = 'fake-apify';
-  async runActor(req: { actor: string; input: Record<string, unknown> }) {
+  /** Pay-per-result price the fake charges, per item (tests read it to check governor debits). */
+  static readonly USD_PER_ITEM = 0.002;
+  /** Fixture items per actor id (exact match, else the longest registered prefix). Streams register their own in tests. */
+  readonly fixtures = new Map<string, unknown[] | ((input: Record<string, unknown>) => unknown[])>();
+  /** Registers fixture items for an actor id or id prefix (e.g. 'apify/instagram-profile-scraper'). */
+  fixture(actor: string, items: unknown[] | ((input: Record<string, unknown>) => unknown[])): this {
+    this.fixtures.set(actor, items);
+    return this;
+  }
+  async runActor(req: { actor: string; input: Record<string, unknown>; maxItems?: number; timeoutS?: number }) {
     const id = this.record('runActor', req);
-    return { runId: `run_${id}`, items: [{ actor: req.actor, sample: true }] };
+    const key = this.fixtures.has(req.actor) ? req.actor : [...this.fixtures.keys()].filter((k) => req.actor.startsWith(k)).sort((a, b) => b.length - a.length)[0];
+    const found = key !== undefined ? this.fixtures.get(key)! : null;
+    const all = found ? (typeof found === 'function' ? found(req.input) : found) : [{ actor: req.actor, sample: true }];
+    const items = req.maxItems !== undefined ? all.slice(0, Math.max(0, req.maxItems)) : all;
+    return { runId: `run_${id}`, items, costUsd: Math.round(items.length * FakeApify.USD_PER_ITEM * 10_000) / 10_000 };
   }
   async topPosts(req: { niche: string; platform: Platform; limit?: number }) {
     const id = this.record('topPosts', req);
@@ -503,6 +540,80 @@ export class FakeApify extends Recorder implements ResearchProvider {
       views: 250_000 - i * 31_000,
       postedAt: new Date(Date.UTC(2026, 9, 1 + i)),
     }));
+  }
+}
+
+// ─── IOS-5: weather (Open-Meteo) and Pinterest (stream J owns these fakes' bodies) ───
+
+/** Deterministic weather: a seasonal temperature curve by latitude and day of year, rain on some days. */
+export class FakeWeather extends Recorder implements WeatherProvider {
+  readonly name = 'fake-open-meteo';
+  /** Fixed answers for tests (`at` is ignored when set). */
+  fixed: Partial<WeatherNow> | null = null;
+  constructor(private readonly now: () => Date = () => new Date()) {
+    super();
+  }
+  async current(req: { lat: number; lon: number; timezone: string }): Promise<WeatherNow> {
+    this.record('current', req);
+    const at = this.now();
+    const start = Date.UTC(at.getUTCFullYear(), 0, 1);
+    const doy = Math.floor((at.getTime() - start) / 86_400_000);
+    const north = req.lat >= 0;
+    const seasonal = Math.cos(((doy - (north ? 200 : 20)) / 365) * 2 * Math.PI);
+    const tempC = Math.round((14 - Math.abs(req.lat) / 6 + seasonal * 10) * 10) / 10;
+    const rainy = (doy + Math.round(req.lon)) % 4 === 0;
+    const hour = at.getUTCHours();
+    const base: WeatherNow = {
+      at,
+      tempC,
+      code: rainy ? 61 : 2,
+      summary: rainy ? 'light rain' : 'partly cloudy',
+      precipitationMm: rainy ? 1.2 : 0,
+      cloudCoverPct: rainy ? 90 : 40,
+      isDay: hour >= 7 && hour < 18,
+      sunrise: null,
+      sunset: null,
+    };
+    return { ...base, ...(this.fixed ?? {}) };
+  }
+  async geocode(req: { name: string; country?: string }): Promise<GeoPlace[]> {
+    this.record('geocode', req);
+    const h = parseInt(shortHash(req.name.toLowerCase(), 6), 16);
+    return [{ name: req.name, region: null, country: req.country ?? 'United Kingdom', lat: 50 + (h % 600) / 100, lon: -3 + (h % 500) / 100, timezone: 'Europe/London' }];
+  }
+}
+
+export class FakePinterest extends Recorder implements PinterestProvider {
+  readonly name = 'fake-pinterest';
+  readonly boards: PinterestBoard[] = [];
+  readonly pins: Array<{ id: string; boardId: string; title: string; description: string; link?: string; mediaUrl: string }> = [];
+  async listBoards() {
+    this.record('listBoards', {});
+    return [...this.boards];
+  }
+  async createBoard(req: { name: string; description?: string; privacy?: PinterestBoard['privacy'] }) {
+    const id = this.record('createBoard', req);
+    const board: PinterestBoard = { id: `board_${id}`, name: req.name, privacy: req.privacy ?? 'PUBLIC' };
+    this.boards.push(board);
+    return board;
+  }
+  async createPin(req: { boardId: string; title: string; description: string; link?: string; mediaUrl: string; altText?: string }) {
+    const id = this.record('createPin', req);
+    this.pins.push({ id: `pin_${id}`, boardId: req.boardId, title: req.title, description: req.description, link: req.link, mediaUrl: req.mediaUrl });
+    return { id: `pin_${id}`, url: `https://fake.pinterest.local/pin/${id}` };
+  }
+  async searchPins(req: { query: string; limit?: number }) {
+    const id = this.record('searchPins', req);
+    const pins: InspirationPin[] = Array.from({ length: Math.min(req.limit ?? 6, 12) }, (_, i) => ({
+      id: `pin_${id}_${i}`,
+      url: `https://fake.pinterest.local/pin/${id}-${i}`,
+      imageUrl: `https://fake.pinterest.local/img/${id}-${i}.jpg`,
+      title: `${req.query} idea ${i + 1}`,
+      description: `Mood reference for ${req.query}`,
+      board: null,
+      source: 'pinterest-api',
+    }));
+    return { supported: true, pins };
   }
 }
 
@@ -629,6 +740,8 @@ export interface FakeProviders extends Providers {
   readonly feeds: FakeFeeds;
   readonly audience: FakeResendAudience;
   readonly storage: MemoryMediaStore;
+  readonly weather: FakeWeather;
+  readonly pinterest: FakePinterest;
 }
 
 export function createFakeProviders(
@@ -650,5 +763,7 @@ export function createFakeProviders(
     feeds: new FakeFeeds(),
     audience: new FakeResendAudience(),
     storage: new MemoryMediaStore(),
+    weather: new FakeWeather(),
+    pinterest: new FakePinterest(),
   };
 }

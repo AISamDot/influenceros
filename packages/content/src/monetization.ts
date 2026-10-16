@@ -1,4 +1,4 @@
-import type { StudioServices } from '@ios/agents';
+import { meteredApify, type StudioServices } from '@ios/agents';
 import { addMessage, findThread, notify, type PostFormat } from '@ios/core';
 import { type Db, json } from '@ios/db';
 import { gateRules, runGate, saveGateResult, verdictOf } from './gate';
@@ -100,11 +100,22 @@ export async function ingestAudienceSignals(services: StudioServices, personaId:
   return added;
 }
 
-/** Market scan (Apify actors for Etsy / KDP best-sellers). Items without a title and price are ignored. */
+/** Market scan (Apify actors for Etsy / KDP best-sellers). Items without a title and price are ignored; a capped week skips it. */
 export async function marketScan(services: StudioServices, ctx: PersonaContext, weekKey: string): Promise<number> {
   let added = 0;
   try {
-    const res = await services.providers.research.runActor({ actor: 'etsy-bestsellers', input: { query: `${ctx.persona.niche} printable`, limit: 20 } });
+    // (IOS-5) Every Apify run goes through the governor and the studio's weekly Apify cap (meteredApify).
+    const res = await meteredApify(services, {
+      studioId: ctx.persona.studio_id,
+      personaId: ctx.persona.id,
+      agent: 'monetization-agent',
+      ref: { type: 'persona', id: ctx.persona.id },
+      actor: 'etsy-bestsellers',
+      input: { query: `${ctx.persona.niche} printable`, limit: 20 },
+      maxItems: 20,
+      estimateUsd: 0.1,
+      operation: 'market_scan',
+    });
     for (const raw of res.items.slice(0, 20)) {
       const it = asRecord(raw);
       const title = asString(it.title);

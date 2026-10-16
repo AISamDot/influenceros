@@ -1,6 +1,6 @@
-import { type AgentName, baseCadence, CADENCE_BOUNDS, type CadencePolicy, type CadenceTarget, DEFAULT_CADENCE, type RoutingPolicy, type ServiceBase } from '@ios/agents';
+import { type AgentName, baseCadence, CADENCE_BOUNDS, type CadencePolicy, type CadenceTarget, DEFAULT_CADENCE, type FormatMix, type RoutingPolicy, type ServiceBase } from '@ios/agents';
 import type { PersonaState } from '@ios/core';
-import type { PostFormat, PostPurpose } from '@ios/core';
+import { type CoreFormat, type PostFormat, type PostPurpose, POST_FORMATS } from '@ios/core';
 import type { Db } from '@ios/db';
 import type { ModelTier } from '@ios/providers';
 import { apportion, isoDate, sum } from './util';
@@ -11,15 +11,18 @@ import { apportion, isoDate, sum } from './util';
  * Both read the overrides the Profit Engine's levers write, and fall back to the defaults.
  */
 
-export const FORMATS: readonly PostFormat[] = ['talking', 'activity_text', 'voiceover', 'static', 'carousel'];
+export const FORMATS: readonly CoreFormat[] = ['talking', 'activity_text', 'voiceover', 'static', 'carousel'];
 export const PURPOSES: readonly PostPurpose[] = ['reach', 'trust', 'sell'];
 
-/** Format-mix bounds: every format keeps at least one slot; no format takes more than half the week. */
-export function formatBounds(postsPerWeek: number): { min: Record<PostFormat, number>; max: Record<PostFormat, number> } {
+/**
+ * Format-mix bounds: every core format keeps at least one slot; no format takes more than half the week. Optional
+ * formats (IOS-5) may go to 0 (off); stream L tunes their bounds from the Format Plan.
+ */
+export function formatBounds(postsPerWeek: number): { min: Partial<Record<PostFormat, number>>; max: Partial<Record<PostFormat, number>> } {
   const max = Math.ceil(postsPerWeek / 2);
   return {
-    min: Object.fromEntries(FORMATS.map((f) => [f, 1])) as Record<PostFormat, number>,
-    max: Object.fromEntries(FORMATS.map((f) => [f, max])) as Record<PostFormat, number>,
+    min: Object.fromEntries(POST_FORMATS.map((f) => [f, (FORMATS as readonly PostFormat[]).includes(f) ? 1 : 0])) as Partial<Record<PostFormat, number>>,
+    max: Object.fromEntries(POST_FORMATS.map((f) => [f, max])) as Partial<Record<PostFormat, number>>,
   };
 }
 
@@ -31,7 +34,7 @@ export function scaleTarget(current: CadenceTarget, postsPerWeek: number, source
   const n = Math.min(CADENCE_BOUNDS.max, Math.max(CADENCE_BOUNDS.min, Math.round(postsPerWeek)));
   return {
     postsPerWeek: n,
-    formatMix: apportion(n, current.formatMix, formatBounds(n)),
+    formatMix: apportion(n, current.formatMix as Readonly<Record<string, number>>, formatBounds(n)) as FormatMix,
     purposeMix: apportion(n, current.purposeMix, { min: PURPOSE_MIN }),
     source,
     ...(reason ? { reason } : {}),
@@ -45,8 +48,9 @@ export function validTarget(t: CadenceTarget): boolean {
     t.postsPerWeek >= CADENCE_BOUNDS.min &&
     t.postsPerWeek <= CADENCE_BOUNDS.max &&
     FORMATS.every((f) => Number.isInteger(t.formatMix[f]) && t.formatMix[f] >= 0) &&
+    Object.values(t.formatMix).every((v) => Number.isInteger(v) && (v ?? 0) >= 0) &&
     PURPOSES.every((p) => Number.isInteger(t.purposeMix[p]) && t.purposeMix[p] >= 0) &&
-    sum(FORMATS.map((f) => t.formatMix[f])) === t.postsPerWeek &&
+    sum(Object.values(t.formatMix).map((v) => v ?? 0)) === t.postsPerWeek &&
     sum(PURPOSES.map((p) => t.purposeMix[p])) === t.postsPerWeek
   );
 }

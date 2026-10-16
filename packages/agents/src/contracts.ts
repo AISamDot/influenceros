@@ -10,7 +10,8 @@
  *   CadencePolicy, RoutingPolicy, scheduler ........... stream D (packages/profit, apps/worker)
  */
 import type { Db } from '@ios/db';
-import type { Actor, CostRef, GateVerdict, JobRow, PostFormat, PostPurpose } from '@ios/core';
+import type { Actor, CoreFormat, CostRef, GateVerdict, JobRow, OptionalFormat, PostFormat, PostPurpose } from '@ios/core';
+import type { FormatPlanService, PromptCompiler, RadarService, WorldService } from './ios5';
 import { LLM_PRICES, type LlmCacheBlock, type ModelTier, type Providers } from '@ios/providers';
 
 // ───────────────────────────── Agents and model routing ─────────────────────────────
@@ -45,8 +46,20 @@ export type AgentName =
   | 'email-writer'
   // <<< stream G agents
   // >>> stream H agents
-  | 'product-builder';
-// <<< stream H agents
+  | 'product-builder'
+  // <<< stream H agents
+  // IOS-5 (docs/IOS-5-CONTRACTS.md): each stream adds members inside its own block only.
+  // >>> stream I agents
+  | 'trend-scout'
+  // <<< stream I agents
+  // >>> stream J agents
+  | 'continuity-keeper'
+  // <<< stream J agents
+  // >>> stream K agents
+  // <<< stream K agents
+  // >>> stream L agents
+  | 'stories-producer';
+// <<< stream L agents
 
 /** Who can call a tool: an agent, the Owner (dashboard action) or the system (jobs, cron). */
 export type Caller = AgentName | 'owner' | 'system';
@@ -93,6 +106,17 @@ export const DEFAULT_ROUTING: Readonly<Record<AgentName, ModelTier>> = {
   // >>> stream H routing
   'product-builder': 'strong',
   // <<< stream H routing
+  // >>> stream I routing
+  'trend-scout': 'standard',
+  // <<< stream I routing
+  // >>> stream J routing
+  'continuity-keeper': 'fast',
+  // <<< stream J routing
+  // >>> stream K routing
+  // <<< stream K routing
+  // >>> stream L routing
+  'stories-producer': 'standard',
+  // <<< stream L routing
 };
 
 /** The studio's own skills in `.claude/skills/<name>/SKILL.md` (stream C writes them). */
@@ -321,15 +345,23 @@ export interface KnowledgeService {
   latestBriefing(personaId: string): Promise<Briefing | null>;
 }
 
+/**
+ * A weekly format mix: every core format has a count (the core-format invariant: the levers keep each ≥ 1); an
+ * optional format (FR-4.3c library) is on when its count is > 0 and off when absent or 0. (IOS-5: was
+ * Record<PostFormat, number>, which the optional formats made impossible to satisfy.)
+ */
+export type FormatMix = Readonly<Record<CoreFormat, number> & Partial<Record<OptionalFormat, number>>>;
+
 /** Weekly posting target for one persona. formatMix and purposeMix each sum to postsPerWeek. */
 export interface CadenceTarget {
   readonly postsPerWeek: number;
-  readonly formatMix: Readonly<Record<PostFormat, number>>;
+  readonly formatMix: FormatMix;
   readonly purposeMix: Readonly<Record<PostPurpose, number>>;
   readonly source: 'default' | 'lever' | 'owner';
   readonly reason?: string;
 }
 
+// >>> stream L default cadence (IOS-5: L moves the studio default to FR-4.3c's still-heavier mix)
 /** 10 posts a week: 3 talking, 3 activity + text, 2 voiceover, 1 static, 1 carousel; ~6 reach / 3 trust / 1 sell. */
 export const DEFAULT_CADENCE: CadenceTarget = {
   postsPerWeek: 10,
@@ -337,6 +369,7 @@ export const DEFAULT_CADENCE: CadenceTarget = {
   purposeMix: { reach: 6, trust: 3, sell: 1 },
   source: 'default',
 };
+// <<< stream L default cadence
 
 /** Cadence lever bounds: trim to 1 a day, winners up to 3 a day. */
 export const CADENCE_BOUNDS = { min: 7, max: 21 } as const;
@@ -367,6 +400,15 @@ export interface StudioServices extends ServiceBase {
   readonly knowledge: KnowledgeService;
   readonly cadence: CadencePolicy;
   readonly routing: RoutingPolicy;
+  // IOS-5 (docs/IOS-5-CONTRACTS.md §5). Each has a null default in defaults.ts until its stream's package is wired.
+  /** Growth Radar + Winner Finder reads (stream I): niche format benchmarks, opportunity evidence, monetisation patterns. */
+  readonly radar: RadarService;
+  /** World Bible, real-time grounding, storyline beats, continuity ledger and the no-repeat engine (stream J). */
+  readonly world: WorldService;
+  /** The production prompt compiler (stream K): five image blocks, five video blocks, camera styles. */
+  readonly prompts: PromptCompiler;
+  /** Per-persona Format Plans (stream L): recommend, read, adopt. */
+  readonly formatPlans: FormatPlanService;
 }
 
 export interface CreateServicesOptions {
@@ -380,7 +422,15 @@ export interface CreateServicesOptions {
   cadence?: (base: ServiceBase) => CadencePolicy;
   routing?: (base: ServiceBase) => RoutingPolicy;
   now?: () => Date;
+  // IOS-5: `services()` returns the finished StudioServices (call it lazily, inside a method, never in the factory).
+  radar?: ServiceFactory<RadarService>;
+  world?: ServiceFactory<WorldService>;
+  prompts?: ServiceFactory<PromptCompiler>;
+  formatPlans?: ServiceFactory<FormatPlanService>;
 }
+
+/** (IOS-5) Builds a cross-stream service. `services` is lazy: the runtime and registry exist only after every factory ran. */
+export type ServiceFactory<T> = (base: ServiceBase, services: () => StudioServices) => T;
 
 // ───────────────────────────── Jobs, schedules, live providers ─────────────────────────────
 

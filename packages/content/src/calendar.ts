@@ -1,4 +1,4 @@
-import { CADENCE_BOUNDS, type CadenceTarget, DEFAULT_CADENCE, type StudioServices, WINNER_CADENCE, WINNER_STATES } from '@ios/agents';
+import { CADENCE_BOUNDS, type CadenceTarget, DEFAULT_CADENCE, type SlotBeat, type StudioServices, WINNER_CADENCE, WINNER_STATES } from '@ios/agents';
 import { type PersonaState, type PostFormat, type PostPurpose, PUBLISHING_STATES, thumbnailUri } from '@ios/core';
 import { json } from '@ios/db';
 import { loadPersonaContext, type PersonaContext } from './persona';
@@ -44,7 +44,8 @@ function apportion<K extends string>(weights: Readonly<Record<K, number>>, keys:
 /** Clamps to CADENCE_BOUNDS (or `cap`, e.g. the windows left this week) and makes both mixes sum to postsPerWeek. */
 export function normaliseCadence(t: CadenceTarget, cap: number = CADENCE_BOUNDS.max): CadenceTarget {
   const n = Math.max(0, Math.min(cap, Math.max(CADENCE_BOUNDS.min, Math.round(t.postsPerWeek)), CADENCE_BOUNDS.max));
-  const formatMix = apportion(t.formatMix, FORMATS, n);
+  // Core formats only until stream L (IOS-5) plans the optional ones (a FormatMix may leave them out).
+  const formatMix = apportion(t.formatMix as Readonly<Record<PostFormat, number>>, FORMATS, n);
   const purposeMix = apportion(t.purposeMix, PURPOSES, n);
   // Every post has a CTA, and every week sells at least once.
   if (n > 0 && purposeMix.sell === 0) {
@@ -167,6 +168,8 @@ interface SlotPlan {
   ctaDelivers: string;
   productId: string | null;
   sell?: SellItem;
+  /** (IOS-5) The storyline beat stream J's WorldService assigned to this slot. */
+  story?: SlotBeat;
 }
 
 const PILLAR_FOR_SELL = 'Products';
@@ -328,6 +331,10 @@ export async function planWeek(services: StudioServices, personaId: string, week
     Object.assign(slot, { title: item.title, ctaKeyword: item.ctaKeyword, ctaDelivers: item.delivers, productId: item.productId, sell: item });
   }
 
+  // (IOS-5) Storyline beats for the week (stream J's WorldService; [] until the persona has a storyline).
+  const beats = await services.world.beatsForWeek({ personaId, weekStart, slots: plans.map((p, index) => ({ index, at: p.at, format: p.format, purpose: p.purpose })) });
+  for (const b of beats) if (plans[b.slotIndex]) plans[b.slotIndex]!.story = b;
+
   // Fresh ideas first (News Desk reactions expire in 24–72 h, so they take the earliest reach/trust slots).
   const ideas = await db.query<{ id: string; title: string; pillar: string | null; format: PostFormat | null; source: Record<string, unknown> | null }>(
     `SELECT id, title, pillar, format, source FROM idea WHERE persona_id = $1 AND status = 'new'
@@ -361,7 +368,7 @@ and voice. Reach posts stop the scroll (relatable, hooks, trends); trust posts t
 Never repeat a recent title. Follow the studio rules.`,
       cached: ctx.cached,
       prompt: `Week of ${isoDate(weekStart)}. Pillars: ${ctx.pillars.map((p) => `${p.name} (e.g. ${p.examples.slice(0, 2).join('; ')})`).join(' | ')}
-Open slots:\n${open.map((p) => `- slot ${p.i}: ${p.format}, ${p.purpose}, pillar ${p.pillar ?? 'any'}`).join('\n')}
+Open slots:\n${open.map((p) => `- slot ${p.i}: ${p.format}, ${p.purpose}, pillar ${p.pillar ?? 'any'}${p.story ? `, storyline beat: ${p.story.beat}` : ''}`).join('\n')}
 Recent titles (don't repeat):\n${recent.slice(0, 30).map((t) => `- ${t}`).join('\n')}${
         briefing?.items.length ? `\nToday's news briefing: ${briefing.items.slice(0, 3).map((b) => b.title).join('; ')}` : ''
       }`,
@@ -417,7 +424,7 @@ Recent titles (don't repeat):\n${recent.slice(0, 30).map((t) => `- ${t}`).join('
           p.ctaKeyword,
           p.productId,
           now,
-          json({ cta_delivers: p.ctaDelivers, cadence_source: target.source, ...(target.reason ? { cadence_reason: target.reason } : {}), ...(p.sell ? { sell_kind: p.sell.kind, beat: p.sell.beat ?? null } : {}) }),
+          json({ cta_delivers: p.ctaDelivers, cadence_source: target.source, ...(target.reason ? { cadence_reason: target.reason } : {}), ...(p.sell ? { sell_kind: p.sell.kind, beat: p.sell.beat ?? null } : {}), ...(p.story ? { story: p.story } : {}) }),
         ],
       );
       ids.push(row.id);

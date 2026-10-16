@@ -1,12 +1,12 @@
-import { type GateCheck, MEDIA_RENDER_JOB, type MediaRenderPayload, type PipelineStage, type QcCheck, type StudioServices } from '@ios/agents';
+import { type ConceptFingerprint, fingerprintOf, type GateCheck, MEDIA_RENDER_JOB, type MediaRenderPayload, type PipelineStage, type QcCheck, type StudioServices } from '@ios/agents';
 import { type CostRef, enqueue, notify, type PostFormat, type PostPurpose, thumbnailUri } from '@ios/core';
 import { json } from '@ios/db';
 import { runGate, saveGateResult } from './gate';
 import { type Hook, type HookLab, type HookType, runHookLab } from './hooks';
 import { loadPersonaContext, type PersonaContext } from './persona';
-import { checkScript, saveQcReport } from './qc';
+import { checkScript, qcPass, qcScore, saveQcReport } from './qc';
 import { type ScriptBrief, type ScriptDraft, SPOKEN, writeScript } from './script';
-import { asString } from './util';
+import { asRecord, asString } from './util';
 
 /**
  * The content pipeline (FR-4, FR-21.1, §3.4): idea → script (hook-lab + Scriptwriter) → Q1 (max 2 maker fix loops)
@@ -131,15 +131,45 @@ async function saveDraft(services: StudioServices, scriptId: string, d: ScriptDr
  * Q1 with the maker's fix loop: grade; on a blocker/major the Scriptwriter revises (at most MAX_FIX_LOOPS times),
  * every pass saved as its own qc_report. Returns the final draft, its grade and the loops used.
  */
+/** All the text the audience sees or hears in a draft (Gate input, world checks, the continuity ledger). */
+export const draftText = (d: ScriptDraft): string =>
+  [d.hook, d.body, d.caption, ...d.onScreenText, ...(d.carousel ?? []).flatMap((x) => [x.title, x.body]), d.hashtags.join(' ')].join('\n');
+
+/**
+ * (IOS-5) Q1 also runs the world checks (stream J's WorldService: grounding fit, continuity contradictions, no-repeat)
+ * when `world` is given. Their failing blocker/major checks fail Q1 and go to the maker's fix loop like any defect.
+ */
 export async function q1WithFixes(
   services: StudioServices,
-  args: { brief: ScriptBrief; draft: ScriptDraft; scriptId: string; costRef?: CostRef; evidenceIds: readonly string[] },
+  args: {
+    brief: ScriptBrief;
+    draft: ScriptDraft;
+    scriptId: string;
+    costRef?: CostRef;
+    evidenceIds: readonly string[];
+    world?: { studioId: string; at: Date; fingerprint: (d: ScriptDraft) => ConceptFingerprint };
+  },
 ): Promise<{ draft: ScriptDraft; grade: ReturnType<typeof checkScript>; loops: number; reportIds: string[] }> {
   const { brief } = args;
   let draft = args.draft;
   const reportIds: string[] = [];
   for (let loop = 0; ; loop++) {
-    const grade = checkScript(draft, { format: brief.format, expectedKeyword: brief.ctaKeyword, ctx: brief.ctx, evidenceIds: args.evidenceIds });
+    const base = checkScript(draft, { format: brief.format, expectedKeyword: brief.ctaKeyword, ctx: brief.ctx, evidenceIds: args.evidenceIds });
+    const worldChecks = args.world
+      ? await services.world.checkContent({
+          studioId: args.world.studioId,
+          personaId: brief.ctx.persona.id,
+          subject: { type: 'script', id: args.scriptId },
+          text: draftText(draft),
+          format: brief.format,
+          at: args.world.at,
+          fingerprint: args.world.fingerprint(draft),
+          visualBrief: draft.visualBrief,
+        })
+      : [];
+    const grade = worldChecks.length
+      ? { ...base, checks: [...base.checks, ...worldChecks], pass: base.pass && qcPass(worldChecks), score: qcScore([...base.checks, ...worldChecks]) }
+      : base;
     reportIds.push(
       await saveQcReport(services, {
         personaId: brief.ctx.persona.id,
@@ -215,6 +245,9 @@ export async function processSlot(services: StudioServices, slotId: string): Pro
   const ctaDelivers = asString(slot.meta?.cta_delivers, ctx.keywords.find((k) => k.keyword === ctaKeyword)?.delivers ?? 'the free guide');
   const product = slot.product_id ? await db.maybeOne<{ name: string }>('SELECT name FROM product WHERE id = $1', [slot.product_id]) : null;
   const knowledge = await services.knowledge.retrieve({ studioId, niche: ctx.persona.niche, query: `${slot.title} ${slot.pillar ?? ''}`.trim(), k: 4 });
+  // (IOS-5) Grounding for the moment it goes out and the slot's storyline beat (stream J), carried into the script brief.
+  const grounding = await services.world.grounding(slot.persona_id, slot.slot_at);
+  const beat = asString(asRecord(slot.meta?.story).beat) || null;
   const evidenceIds = knowledge.map((k) => k.id);
 
   // ── idea ──
@@ -244,6 +277,8 @@ export async function processSlot(services: StudioServices, slotId: string): Pro
     hook: shipped,
     variants,
     knowledge,
+    grounding,
+    beat,
   });
   if (!script || slot.status === 'planned') {
     const past = await db.query<{ hook: string; type: HookType | null }>(
@@ -300,7 +335,15 @@ export async function processSlot(services: StudioServices, slotId: string): Pro
   if (slot.status === 'scripted' || slot.status === 'q1') {
     await setStatus(services, slotId, 'q1');
     await db.query(`UPDATE script SET status = 'qc' WHERE id = $1`, [script.id]);
-    const q1 = await q1WithFixes(services, { brief: scriptBrief, draft, scriptId: script.id, costRef, evidenceIds });
+    const shipped = lab.shipped;
+    const q1 = await q1WithFixes(services, {
+      brief: scriptBrief,
+      draft,
+      scriptId: script.id,
+      costRef,
+      evidenceIds,
+      world: { studioId, at: slot.slot_at, fingerprint: (d) => fingerprintOf({ title: slot.title, hookType: shipped.type, pillar: slot.pillar, niche: ctx.persona.niche, format: slot.format, hook: d.hook }) },
+    });
     draft = q1.draft;
     const evidence = evidenceIds.filter((id) => draft.claims.some((c) => c.evidenceId === id));
     await saveDraft(services, script.id, draft, {
@@ -324,7 +367,7 @@ export async function processSlot(services: StudioServices, slotId: string): Pro
   }
 
   // ── Compliance Gate (pre-render) ──
-  const text = [draft.hook, draft.body, draft.caption, ...draft.onScreenText, ...(draft.carousel ?? []).flatMap((s) => [s.title, s.body]), draft.hashtags.join(' ')].join('\n');
+  const text = draftText(draft);
   const gate = await runGate(services, {
     studioId,
     personaId: slot.persona_id,
@@ -342,6 +385,15 @@ export async function processSlot(services: StudioServices, slotId: string): Pro
     return done('blocked', { scriptId: script.id, verdict: 'red', q1Pass: true, blockReason: reason });
   }
   await db.query(`UPDATE script SET status = 'approved', meta = meta || $2::jsonb WHERE id = $1`, [script.id, json({ gate: gate.verdict })]);
+  // (IOS-5) The approved script's facts go to the continuity ledger and its fingerprint to the no-repeat history.
+  await services.world.recordApproved({
+    studioId,
+    personaId: slot.persona_id,
+    subject: { type: 'script', id: script.id },
+    text,
+    at: slot.slot_at,
+    fingerprint: fingerprintOf({ title: slot.title, hookType: lab.shipped.type, pillar: slot.pillar, niche: ctx.persona.niche, format: slot.format, hook: draft.hook }),
+  });
 
   // ── queued for media (IOS-3 registers the media.render handler) ──
   let mediaJobId = await existingMediaJob(services, script.id);

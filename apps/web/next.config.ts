@@ -14,14 +14,18 @@ const config: NextConfig = {
     '@ios/core',
     '@ios/db',
     '@ios/distribution',
+    '@ios/formats',
     '@ios/generator',
     '@ios/knowledge',
     '@ios/media',
+    '@ios/production',
     '@ios/products',
     '@ios/profit',
     '@ios/providers',
+    '@ios/radar',
     '@ios/secrets',
     '@ios/wiring',
+    '@ios/world',
   ],
   // Native / WASM packages load their own files at runtime.
   serverExternalPackages: [
@@ -51,6 +55,14 @@ const config: NextConfig = {
     // <<< stream G server externals
     // >>> stream H server externals
     // <<< stream H server externals
+    // >>> stream I server externals
+    // <<< stream I server externals
+    // >>> stream J server externals
+    // <<< stream J server externals
+    // >>> stream K server externals
+    // <<< stream K server externals
+    // >>> stream L server externals
+    // <<< stream L server externals
   ],
   outputFileTracingRoot: join(here, '..', '..'),
   turbopack: { root: join(here, '..', '..') },

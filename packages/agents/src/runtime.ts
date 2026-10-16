@@ -14,7 +14,7 @@ import {
   type ToolCallRecord,
   type ToolDef,
 } from './contracts';
-import { defaultCadence, defaultRouting, nullKnowledge } from './defaults';
+import { basicPromptCompiler, defaultCadence, defaultRouting, nullFormatPlans, nullKnowledge, nullRadar, nullWorld } from './defaults';
 import { createAgentSdkEngine, loadAgentSdk } from './live/agent-sdk-engine';
 import { type AnthropicLlm, EFFORT, isAnthropicLlm } from './live/anthropic';
 import { AgentOutputError, type Engine, type EngineResult, type EngineUsage, errorMessage } from './live/engine';
@@ -74,7 +74,17 @@ export function createServices(
     cadence: (opts.cadence ?? defaultCadence)(base),
     routing: (opts.routing ?? defaultRouting)(base),
     runtime: undefined as unknown as AgentRuntime,
+    radar: undefined as unknown as StudioServices['radar'],
+    world: undefined as unknown as StudioServices['world'],
+    prompts: undefined as unknown as StudioServices['prompts'],
+    formatPlans: undefined as unknown as StudioServices['formatPlans'],
   };
+  // IOS-5 services get the finished services lazily (docs/IOS-5-CONTRACTS.md §5).
+  const lazy = () => services as StudioServices;
+  services.radar = (opts.radar ?? nullRadar)(base, lazy);
+  services.world = (opts.world ?? nullWorld)(base, lazy);
+  services.prompts = (opts.prompts ?? basicPromptCompiler)(base, lazy);
+  services.formatPlans = (opts.formatPlans ?? nullFormatPlans)(base, lazy);
   const mode = opts.mode ?? 'fake';
   const llm = base.providers.llm;
   if (opts.runtime) services.runtime = opts.runtime(services);

@@ -9,7 +9,7 @@ import { allJobs, allSchedules, allTools, createStudioServices, MODULES, provide
  */
 describe('wiring', () => {
   it('composes every package without duplicate tools, job kinds or schedules', () => {
-    expect(Object.keys(MODULES).sort()).toEqual(['agents', 'commerce', 'content', 'distribution', 'generator', 'knowledge', 'media', 'products', 'profit']);
+    expect(Object.keys(MODULES).sort()).toEqual(['agents', 'commerce', 'content', 'distribution', 'formats', 'generator', 'knowledge', 'media', 'production', 'products', 'profit', 'radar', 'world']);
     expect(() => allTools()).not.toThrow();
     expect(() => allJobs()).not.toThrow();
     expect(() => allSchedules()).not.toThrow();
@@ -26,6 +26,9 @@ describe('wiring', () => {
     // IOS-3/4 members exist on the fakes (live overlays come from the stream packages).
     expect(typeof p.audience.ensureAudience).toBe('function');
     expect(typeof p.storage.put).toBe('function');
+    // IOS-5 members.
+    expect(p.weather.name).toBe('fake-open-meteo');
+    expect(p.pinterest.name).toBe('fake-pinterest');
   });
 
   it('builds studio services in fake mode', async () => {
@@ -33,6 +36,8 @@ describe('wiring', () => {
     const s = createStudioServices(db, { mode: 'fake', providers: resolveProviders(providerEnv({}, new MemoryKeyring())) });
     expect(s.runtime.mode).toBe('fake');
     expect(s.tools.list().length).toBe(allTools().length);
+    // IOS-5 services are composed (stubs until each stream lands).
+    for (const k of ['radar', 'world', 'prompts', 'formatPlans'] as const) expect(s[k]).toBeTruthy();
     await db.close();
   });
 });

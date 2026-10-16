@@ -195,7 +195,7 @@ export function checkScript(
 /** Writes a qc_report and mirrors each failed check as a qc_defect. */
 export async function saveQcReport(
   services: StudioServices,
-  r: { personaId: string; subjectType: 'script' | 'asset' | 'post' | 'product'; subjectId: string; stage: 'Q1' | 'Q2' | 'Q3' | 'Q4' | 'QP'; pass: boolean; score: number; checks: readonly QcCheck[]; extra?: Record<string, unknown> },
+  r: { personaId: string; subjectType: 'script' | 'asset' | 'post' | 'product' | 'story_frame'; subjectId: string; stage: 'Q1' | 'Q2' | 'Q3' | 'Q4' | 'QP'; pass: boolean; score: number; checks: readonly QcCheck[]; extra?: Record<string, unknown> },
 ): Promise<string> {
   return services.db.transaction(async (tx) => {
     const row = await tx.one<{ id: string }>(

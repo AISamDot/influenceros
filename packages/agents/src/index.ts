@@ -11,6 +11,7 @@ import { A_TOOLS } from './tools';
  */
 export * from './contracts';
 export * from './ios34';
+export * from './ios5';
 export * from './defaults';
 export { createToolRegistry, ownerAsked } from './registry';
 export { createFakeRuntime, createLiveRuntime, createServices, pickEngine, RUN_CAP_USD, runAgent, type RunOptions, type StudioRuntime } from './runtime';

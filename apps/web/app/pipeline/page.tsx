@@ -9,6 +9,7 @@ import { PipelineCard } from '@/components/pipeline-card';
 import { SubmitButton } from '@/components/submit-button';
 import { shortDate } from '@/lib/format';
 import { studioContext } from '@/lib/server';
+import { StoriesLane } from '@/components/stories-lane';
 import { requireOwnerPage } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -155,6 +156,8 @@ export default async function Pipeline({ searchParams }: { searchParams: Promise
           </div>
         </div>
       )}
+      {/* IOS-5: the Stories lane (stream L, docs/IOS-5-CONTRACTS.md §4). */}
+      <StoriesLane db={db} studioId={studio.id} personaId={selected?.id ?? null} />
     </div>
   );
 }

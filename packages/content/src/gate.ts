@@ -589,7 +589,7 @@ export async function runGate(
 
 export async function saveGateResult(
   services: StudioServices,
-  r: { personaId: string; subjectType: 'script' | 'asset' | 'post' | 'product' | 'reply'; subjectId: string; stage: 'pre_render' | 'pre_publish'; verdict: GateVerdict; checks: readonly GateCheck[] },
+  r: { personaId: string; subjectType: 'script' | 'asset' | 'post' | 'product' | 'reply' | 'story_frame'; subjectId: string; stage: 'pre_render' | 'pre_publish'; verdict: GateVerdict; checks: readonly GateCheck[] },
 ): Promise<string> {
   const row = await services.db.one<{ id: string }>(
     `INSERT INTO gate_result (persona_id, subject_type, subject_id, stage, verdict, checks) VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING id`,

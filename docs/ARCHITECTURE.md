@@ -253,3 +253,28 @@ packages/generator   Draft model, 7-step generator, scorecard + distinctness, la
 - **Chat.** `/api/generator/<draft>/chat?step=N` (same contract as the chat API; the dashboard's ChatPanel drives it). Generator chat runs are untrusted (drafts hold outside evidence), so `generator.revise_step|pick_option|regenerate_step|mix_concepts` (mutating, with `ownerIntent`) run only when the Owner's message asks; questions and background runs are refused by the registry. Without a key the Studio Manager maps instructions itself ("combine A's look with B's mechanic", "make her older and drier", "call him …", "pick B", "regenerate", "$19") through the same gated tool.
 - **Launch.** `launchDraft` refuses any actor but the Owner; `generator.launch` is `ownerOnly`. The draft becomes a LaunchPersona (all 16 Appendix A sections + a palette table, the first fortnight as 20 slots in the 10-a-week mix, the product ladder as ideas, handles as pending accounts, the niche's Field Brain seed) through `importLaunchPersona`, then the Owner's decision on its launch card moves it to SETUP and `knowledge.build` is queued.
 - **Dashboard.** `/generator` (start from evidence or an idea; drafts in progress), `/generator/[draftId]` (stepper, step panels with pick/edit/mix/swap/regenerate, chat, version history, Approve launch with a confirmation tick), `/archive` (archived documents with Restore, archived personas, archived drafts), persona page archive banner/panel, studio wall empty state, Approvals routes Owner-only launch cards to the generator review.
+
+## IOS-5 (growth radar, world, production playbook, formats + stories)
+Built against `docs/IOS-5-CONTRACTS.md` (four parallel streams I–L).
+```
+packages/radar        Apify scrapers, tracked accounts + weekly snapshots, outlier scoring, trend clustering, Viral Remix (stream I).
+packages/world        World Bible, real-time grounding (Open-Meteo), storyline, continuity ledger, no-repeat engine, Pinterest (stream J).
+packages/production   Prompt compiler, character sheet, BOPA look pack, location lock, camera styles, niche filter, hook templates (stream K).
+packages/formats      Per-persona Format Plans and the Stories engine (stream L).
+```
+- **Cross-stream services** live on `StudioServices` (`packages/agents/src/ios5.ts`): `radar` (I), `world` (J), `prompts` (K) and `formatPlans` (L). Each has a null / basic default in `defaults.ts` and is composed by `@ios/wiring` from the stream's `create*` factory, which gets the finished services lazily.
+- **Formats.** `PostFormat` adds `photo_dump`, `text_note`, `facecam_screen`, `reply_comment`, `news_greenscreen` and `meme` as optional formats (migration `0016_ios5_formats.sql`), each with a script shape (`FORMAT_SHAPE`). A `FormatMix` always has the five core formats; optional formats are on when their count is > 0.
+- **Hooks already in place:** the calendar asks `world.beatsForWeek` (beats in `calendar_slot.meta.story`); Q1 runs `world.checkContent` with the slot's concept fingerprint; an approved script and a sent community reply go to `world.recordApproved`; Persona Generator step 1 merges `radar.opportunityEvidence`, step 6 drafts `formatPlans.recommend` and `world.draftWorld` into the draft (`setDraftExtension` edits them), and the Owner's launch adopts both.
+- **Providers.** New `weather` (Open-Meteo) and `pinterest` (API v5) members (J owns the live adapters); `research.runActor` takes `maxItems` and returns `costUsd` (I owns the live Apify adapter; `FakeApify.fixture()` serves test fixtures); `publish` gains optional `storyCapabilities` / `fetchStoryMetrics` and `kind: 'story'` (L).
+
+<!-- >>> stream I architecture -->
+<!-- <<< stream I architecture -->
+
+<!-- >>> stream J architecture -->
+<!-- <<< stream J architecture -->
+
+<!-- >>> stream K architecture -->
+<!-- <<< stream K architecture -->
+
+<!-- >>> stream L architecture -->
+<!-- <<< stream L architecture -->

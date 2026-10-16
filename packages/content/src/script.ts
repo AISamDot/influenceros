@@ -1,5 +1,5 @@
-import type { KnowledgeHit, QcCheck, StudioServices } from '@ios/agents';
-import type { CostRef, PostFormat, PostPurpose } from '@ios/core';
+import type { Grounding, KnowledgeHit, QcCheck, StudioServices } from '@ios/agents';
+import { type CostRef, type PostFormat, type PostPurpose, scriptShape } from '@ios/core';
 import type { Hook } from './hooks';
 import { shortenHook, topicOf } from './hooks';
 import type { PersonaContext } from './persona';
@@ -36,6 +36,10 @@ export interface ScriptBrief {
   readonly hook: Hook;
   readonly variants: readonly Hook[];
   readonly knowledge: readonly KnowledgeHit[];
+  /** (IOS-5) Real-time grounding for when the post goes out (stream J's WorldService); null without a World Bible. */
+  readonly grounding?: Grounding | null;
+  /** (IOS-5) The storyline beat this slot carries (calendar_slot.meta.story), if any. */
+  readonly beat?: string | null;
 }
 
 export const SPOKEN: readonly PostFormat[] = ['talking', 'voiceover'];
@@ -87,11 +91,13 @@ function hashtagsFor(ctx: PersonaContext, pillar: string | null): string[] {
 }
 
 export function visualBrief(ctx: PersonaContext, format: PostFormat, title: string): string {
+  const shape = scriptShape(format);
+  if (shape !== format) return `${FORMAT_LABEL[format]}: ${visualBrief(ctx, shape, title)}`;
   const setting = pick(ctx.look.settings.length ? ctx.look.settings : ['a bright home office'], `${ctx.persona.id}:${title}:set`);
   const outfit = ctx.look.outfits.length ? `, ${lowerFirst(pick(ctx.look.outfits, `${ctx.persona.id}:${title}:fit`))}` : '';
   const who = `${ctx.persona.name} (same face as the look pack)`;
   const rules = 'No logos, brands, real people or celebrity lookalikes; no on-image text unless listed. AI-generated character: the post carries the platform AI label.';
-  switch (format) {
+  switch (shape) {
     case 'talking':
       return `Talking reel, 9:16, about 30 s. ${who}, chest-up in ${lower(setting)}${outfit}. ${ctx.look.stylisation}. Natural gestures, eye contact. ${rules}`;
     case 'voiceover':
@@ -105,6 +111,21 @@ export function visualBrief(ctx: PersonaContext, format: PostFormat, title: stri
   }
 }
 const lower = (s: string) => lowerFirst(s);
+const FORMAT_LABEL: Readonly<Record<PostFormat, string>> = {
+  talking: 'Talking reel',
+  activity_text: 'Activity + on-screen text',
+  voiceover: 'Voiceover reel',
+  static: 'Static image',
+  carousel: 'Carousel',
+  product_in_hand: 'Product in hand (our own product as a second reference)',
+  trend_reenactment: 'Trend reenactment (motion only)',
+  photo_dump: 'Photo dump (5–10 casual stills, 4:5 or 1:1)',
+  text_note: 'Text note / quote card',
+  facecam_screen: 'Facecam over screen (persona in a corner)',
+  reply_comment: 'Reply to a comment (comment overlay, handle anonymised)',
+  news_greenscreen: 'News green-screen (headline card, no real outlet logo)',
+  meme: 'Meme / relatable text post',
+};
 const slideText = (s: { title: string; body: string }) => `${s.title}${/[.!?:]$/.test(s.title) ? '' : ':'} ${s.body}`;
 
 function stepsFor(ctx: PersonaContext, title: string, pillar: string | null): string[] {
@@ -285,6 +306,15 @@ const FORMAT_RULES: Record<PostFormat, string> = {
   activity_text: 'Activity + on-screen text, 6–10 s loop: 3–5 on-screen lines of at most 8 words, first line is the hook, last line is the CTA. No voice.',
   static: 'Static image + caption: one image line (the hook, at most 10 words); the caption carries the value and ends with the CTA.',
   carousel: 'Carousel, 6–8 slides: slide 1 is the hook, then one idea per slide, the last slide is the CTA.',
+  // Optional formats (FR-4.3c library). Written in their script shape (FORMAT_SHAPE) until stream K gives each its own rules.
+  product_in_hand: 'Product in hand, 6–10 s loop: the persona holds or uses our own product; 3–5 on-screen lines of at most 8 words, first line is the hook, last line is the CTA. No voice.',
+  trend_reenactment: 'Trend reenactment, 6–10 s: the persona performs a trending movement (motion only, never the original audio); 3–5 on-screen lines, first line is the hook, last line is the CTA. No voice.',
+  photo_dump: 'Photo dump, 5–10 casual camera-roll stills from the week: slide 1 is the hook line, then one short caption per photo, the last slide is the CTA.',
+  text_note: 'Text note / quote card: one note or quote of at most 25 words on a plain card (the hook); the caption carries the value and ends with the CTA.',
+  facecam_screen: 'Facecam over screen, 15–30 s spoken: 40–90 words while a screen recording or slides show the steps. The body is exactly what the persona says, starting with the hook.',
+  reply_comment: 'Reply to a comment, 15–30 s spoken: 40–90 words answering the top comment (shown as an overlay, handle anonymised), starting with the hook.',
+  news_greenscreen: 'News green-screen, 15–30 s spoken: 40–90 words reacting to a News Desk headline card (never a real outlet logo), starting with the hook.',
+  meme: 'Meme / relatable text post: one relatable line of at most 15 words (the hook); the caption ends with the CTA.',
 };
 
 const SCRIPT_SYSTEM = `You are the Scriptwriter. Write one short-form post for the persona, in their voice, English only, written for the ear:
@@ -318,7 +348,9 @@ export async function writeScript(
     skills: b.format === 'carousel' ? ['hook-lab', 'carousel-designer'] : ['hook-lab', 'video-prompt-pack'],
     prompt: `Idea: ${b.title}\nPillar: ${b.pillar ?? 'n/a'}\nPurpose: ${b.purpose}${b.productName ? ` (product: ${b.productName})` : ''}\nFormat: ${FORMAT_RULES[b.format]}
 Hook (ship this): ${b.hook.text}\nA/B variants (for reference): ${b.variants.map((v) => v.text).join(' | ')}
-CTA keyword: ${b.ctaKeyword} (sends: ${b.ctaDelivers || 'the free guide'})${knowledge}${revise}`,
+CTA keyword: ${b.ctaKeyword} (sends: ${b.ctaDelivers || 'the free guide'})${b.beat ? `\nStoryline beat to carry: ${b.beat}` : ''}${
+      b.grounding ? `\nGrounding (the persona's real local moment; wardrobe, light and topical references must match): ${b.grounding.block}` : ''
+    }${knowledge}${revise}`,
     maxTokens: 4000,
     jsonSchema: SCRIPT_SCHEMA,
     parse: parseScriptJson,

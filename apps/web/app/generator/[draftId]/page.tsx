@@ -20,8 +20,11 @@ import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { ChatPanel } from '@/components/chat-panel';
 import { Flash } from '@/components/flash';
+import { FormatsGeneratorPanel } from '@/components/formats-generator-panel';
 import { IconCheck, IconFlag } from '@/components/icons';
+import { RadarGeneratorPanel } from '@/components/radar-generator-panel';
 import { SubmitButton } from '@/components/submit-button';
+import { WorldGeneratorPanel } from '@/components/world-generator-panel';
 import { requireOwnerPage } from '@/lib/auth';
 import { relative, usd } from '@/lib/format';
 import { getServices } from '@/lib/services';
@@ -937,6 +940,10 @@ export default async function DraftPage({ params, searchParams }: Props) {
           ) : (
             view[step]
           )}
+          {/* IOS-5 panels: each stream fills only its own component (docs/IOS-5-CONTRACTS.md §4). */}
+          {step === 1 ? <RadarGeneratorPanel draft={d} studioId={d.studio_id} /> : null}
+          {step === 6 ? <FormatsGeneratorPanel draft={d} studioId={d.studio_id} /> : null}
+          {step === 6 ? <WorldGeneratorPanel draft={d} studioId={d.studio_id} /> : null}
         </section>
         {/* On a phone the chat sits below the step: a sticky shortcut jumps to it. */}
         <a

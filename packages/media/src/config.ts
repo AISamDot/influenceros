@@ -66,6 +66,15 @@ export const FORMAT_SPEC: Readonly<Record<PostFormat, { minS: number; maxS: numb
   voiceover: { minS: 12, maxS: 60, kind: 'video' },
   static: { minS: 0, maxS: 0, kind: 'image' },
   carousel: { minS: 0, maxS: 0, kind: 'carousel' },
+  // Optional formats (FR-4.3c). Stream K (IOS-5) builds their render templates; these are the export targets.
+  product_in_hand: { minS: 6, maxS: 10, kind: 'video' },
+  trend_reenactment: { minS: 6, maxS: 10, kind: 'video' },
+  photo_dump: { minS: 0, maxS: 0, kind: 'carousel' },
+  text_note: { minS: 0, maxS: 0, kind: 'image' },
+  facecam_screen: { minS: 12, maxS: 60, kind: 'video' },
+  reply_comment: { minS: 12, maxS: 60, kind: 'video' },
+  news_greenscreen: { minS: 12, maxS: 60, kind: 'video' },
+  meme: { minS: 0, maxS: 0, kind: 'image' },
 };
 export const ACTIVITY_LOOP_S = 8;
 export const CAROUSEL_SLIDES = { min: 6, max: 8 } as const;

@@ -64,6 +64,12 @@ const FORMAT_GLYPH: Record<PostFormat, string> = {
   carousel: '<rect x="100" y="150" width="100" height="120" rx="12" fill="#fff" opacity=".5"/><rect x="70" y="165" width="100" height="120" rx="12" fill="#fff"/>',
   product_in_hand: '<rect x="105" y="150" width="70" height="90" rx="8" fill="#fff"/><path d="M80 290 c0-30 20-50 45-50 h40" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round"/>',
   trend_reenactment: '<circle cx="135" cy="160" r="20" fill="#fff"/><path d="M135 185 v55 M135 200 l-40 -25 M135 200 l40 20 M135 240 l-30 45 M135 240 l35 40" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round"/>',
+  photo_dump: '<rect x="70" y="150" width="60" height="60" rx="6" fill="#fff"/><rect x="140" y="150" width="60" height="60" rx="6" fill="#fff" opacity=".7"/><rect x="70" y="220" width="60" height="60" rx="6" fill="#fff" opacity=".7"/><rect x="140" y="220" width="60" height="60" rx="6" fill="#fff"/>',
+  text_note: '<rect x="75" y="150" width="120" height="130" rx="10" fill="none" stroke="#fff" stroke-width="10"/><rect x="95" y="180" width="80" height="9" rx="4" fill="#fff"/><rect x="95" y="205" width="64" height="9" rx="4" fill="#fff"/><rect x="95" y="230" width="72" height="9" rx="4" fill="#fff"/>',
+  facecam_screen: '<rect x="65" y="150" width="140" height="100" rx="8" fill="none" stroke="#fff" stroke-width="10"/><circle cx="175" cy="265" r="24" fill="#fff"/>',
+  reply_comment: '<path d="M70 160 h130 v70 h-80 l-30 25 v-25 h-20 Z" fill="none" stroke="#fff" stroke-width="10" stroke-linejoin="round"/><circle cx="160" cy="280" r="16" fill="#fff"/>',
+  news_greenscreen: '<rect x="65" y="150" width="140" height="60" rx="6" fill="#fff"/><circle cx="135" cy="255" r="22" fill="none" stroke="#fff" stroke-width="10"/>',
+  meme: '<rect x="75" y="145" width="120" height="140" rx="10" fill="none" stroke="#fff" stroke-width="10"/><circle cx="115" cy="205" r="7" fill="#fff"/><circle cx="155" cy="205" r="7" fill="#fff"/><path d="M110 240 q25 20 50 0" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round"/>',
 };
 
 function wrap(text: string, max: number, lines: number): string[] {

@@ -143,8 +143,8 @@ export interface PublishRequest {
   /** Stable per post: a retried publish with the same key must not create a second post. */
   readonly idempotencyKey?: string;
   // (IOS-4, additive)
-  /** What the media is. Defaults to 'video'. */
-  readonly kind?: 'video' | 'image' | 'carousel';
+  /** What the media is. Defaults to 'video'. (IOS-5 stream L: 'story', one frame, where `storyCapabilities` says so.) */
+  readonly kind?: 'video' | 'image' | 'carousel' | 'story';
   /** YouTube Shorts title; ignored elsewhere. */
   readonly title?: string;
   readonly coverUrl?: string;
@@ -221,6 +221,25 @@ export interface PublishProvider {
   listAccounts(): Promise<PublishAccount[]>;
   verifyWebhook(rawBody: string, signature: string): boolean;
   parseWebhook(rawBody: string): DistributionEvent[];
+  // (IOS-5 stream L, additive and optional: an adapter without them has no story support)
+  /** Which platforms take Stories through this vendor's API right now (a capability flag per platform). */
+  storyCapabilities?(): Promise<StoryCapability[]>;
+  /** Story frame metrics (reach, replies, taps forward and back, exits) once the frame is live. */
+  fetchStoryMetrics?(req: { externalId: string; platform: Platform }): Promise<StoryMetrics>;
+}
+/** (IOS-5) Story support per platform through the publishing vendor. */
+export interface StoryCapability {
+  readonly platform: Platform;
+  readonly stories: boolean;
+  readonly note?: string;
+}
+/** (IOS-5) Cumulative metrics for one story frame. */
+export interface StoryMetrics {
+  readonly reach: number;
+  readonly replies: number;
+  readonly tapsForward: number;
+  readonly tapsBack: number;
+  readonly exits: number;
 }
 
 // ─── Store (Lemon Squeezy) ───
@@ -344,7 +363,12 @@ export interface AudienceProvider {
 // ─── Research (Apify) ───
 export interface ResearchProvider {
   readonly name: string;
-  runActor(req: { actor: string; input: Record<string, unknown> }): Promise<{ runId: string; items: unknown[] }>;
+  /**
+   * Runs one Apify actor on public data and returns its dataset items. (IOS-5, additive) `maxItems` caps the
+   * pay-per-result spend; `costUsd` is what the run cost (callers wrap it in core `metered()`, stream I's weekly cap).
+   * Items are untrusted third-party data.
+   */
+  runActor(req: { actor: string; input: Record<string, unknown>; maxItems?: number; timeoutS?: number }): Promise<{ runId: string; items: unknown[]; costUsd?: number }>;
   topPosts(req: { niche: string; platform: Platform; limit?: number }): Promise<
     Array<{ url: string; hook: string; format: string; views: number; postedAt: Date }>
   >;
@@ -461,6 +485,62 @@ export interface MediaStore {
   url(key: string): string;
 }
 
+// ─── IOS-5 (docs/IOS-5-CONTRACTS.md): weather for real-time grounding, Pinterest (stream J owns both live adapters) ───
+
+/** Current conditions and today's sun times at a place (Open-Meteo: no key). */
+export interface WeatherNow {
+  readonly at: Date;
+  readonly tempC: number;
+  /** WMO weather code. */
+  readonly code: number;
+  readonly summary: string;
+  readonly precipitationMm: number;
+  readonly cloudCoverPct: number | null;
+  readonly isDay: boolean;
+  /** ISO local times, when known. */
+  readonly sunrise: string | null;
+  readonly sunset: string | null;
+}
+export interface GeoPlace {
+  readonly name: string;
+  readonly region: string | null;
+  readonly country: string;
+  readonly lat: number;
+  readonly lon: number;
+  readonly timezone: string;
+}
+export interface WeatherProvider {
+  readonly name: string;
+  current(req: { lat: number; lon: number; timezone: string }): Promise<WeatherNow>;
+  geocode(req: { name: string; country?: string }): Promise<GeoPlace[]>;
+}
+
+/** A pin used as mood / format inspiration only (never a face or identity reference). */
+export interface InspirationPin {
+  readonly id: string;
+  readonly url: string;
+  readonly imageUrl: string | null;
+  readonly title: string;
+  readonly description: string;
+  readonly board: string | null;
+  readonly source: 'pinterest-api' | 'apify';
+}
+export interface PinterestBoard {
+  readonly id: string;
+  readonly name: string;
+  readonly privacy: 'PUBLIC' | 'PROTECTED' | 'SECRET';
+}
+/** Pinterest API v5 (OAuth token; pending its key). Publishing boards and pins for products and carousels. */
+export interface PinterestProvider {
+  readonly name: string;
+  listBoards(): Promise<PinterestBoard[]>;
+  createBoard(req: { name: string; description?: string; privacy?: PinterestBoard['privacy'] }): Promise<PinterestBoard>;
+  /** Creates a pin. AI disclosure goes in the description; `link` is the persona site or short link. */
+  createPin(req: { boardId: string; title: string; description: string; link?: string; mediaUrl: string; altText?: string }): Promise<{ id: string; url: string }>;
+  /** Pin search where the API allows it; `supported: false` means use the Apify fallback (stream J). */
+  searchPins(req: { query: string; limit?: number }): Promise<{ supported: boolean; pins: InspirationPin[] }>;
+}
+
 export interface Providers {
   readonly llm: LlmProvider;
   readonly imageVideo: ImageVideoProvider;
@@ -481,4 +561,9 @@ export interface Providers {
   readonly audience: AudienceProvider;
   /** Media and product file storage (stream E owns the live member: local disk on the Mac). */
   readonly storage: MediaStore;
+  // IOS-5 (docs/IOS-5-CONTRACTS.md)
+  /** Local weather and geocoding for real-time grounding (Open-Meteo; stream J owns the live member). */
+  readonly weather: WeatherProvider;
+  /** Pinterest API v5: boards and pins for products and carousels, inspiration search (stream J owns the live member). */
+  readonly pinterest: PinterestProvider;
 }

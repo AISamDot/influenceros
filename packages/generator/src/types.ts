@@ -1,3 +1,5 @@
+import type { FormatPlan, OpportunityEvidence, WorldDraft } from '@ios/agents';
+
 /**
  * The Persona Generator's draft model (PRD §3.12). A draft holds seven steps; each step keeps the options the
  * Studio Manager drafted (`options`, regenerated as `generation` goes up) and what the Owner picked or edited
@@ -217,7 +219,18 @@ export interface DraftState {
   voice: StepState<VoicePreview>;
   content: StepState<ContentPlanDraft>;
   review: StepState<ReviewState>;
+  // IOS-5 extensions (docs/IOS-5-CONTRACTS.md §5.5). Optional: older drafts don't have them. Each is filled through
+  // its stream's service (StudioServices) and edited with `setDraftExtension`; the stream's own panel renders it.
+  /** Stream I: Growth Radar evidence attached to step 1 (also merged into each option's evidence with flag 'S'). */
+  radar?: { evidence: OpportunityEvidence[]; at: string } | null;
+  /** Stream J: the World Bible and ~12-week storyline drafted in step 6, adopted at launch. */
+  world?: WorldDraft | null;
+  /** Stream L: the Format Plan the Studio Manager recommends in step 6, approved with the launch. */
+  formatPlan?: FormatPlan | null;
 }
+
+/** The IOS-5 draft extensions the Owner (or the owning stream's chat tool) can replace. */
+export type DraftExtensionKey = 'world' | 'formatPlan';
 
 export interface DraftRow {
   id: string;

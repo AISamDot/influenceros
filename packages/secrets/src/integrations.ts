@@ -30,10 +30,21 @@ export const INTEGRATIONS: readonly IntegrationDef[] = [
   // >>> stream G integrations
   { id: 'lemonsqueezy', name: 'Lemon Squeezy', purpose: 'Stores, products (read-only), checkouts, discount codes, order and subscription webhooks', secrets: ['lemonsqueezy.api_key', 'lemonsqueezy.webhook_secret'], liveAdapter: true, milestone: 'IOS-4', kind: 'provider' },
   // <<< stream G integrations
+  // IOS-5 (docs/IOS-5-CONTRACTS.md): each stream edits only its own entries.
+  // >>> stream I integrations
+  { id: 'apify', name: 'Apify', purpose: 'Growth Radar and Winner Finder scrapers (public data, low volume, weekly cap)', secrets: ['apify.token'], liveAdapter: false, milestone: 'IOS-5', kind: 'provider' },
+  // <<< stream I integrations
+  // >>> stream J integrations
+  { id: 'open-meteo', name: 'Open-Meteo', purpose: 'Local weather and sun times for real-time grounding (no key)', secrets: [], liveAdapter: false, milestone: 'IOS-5', kind: 'provider' },
+  { id: 'pinterest', name: 'Pinterest', purpose: 'Boards and pins for products and carousels; inspiration search (mood only)', secrets: ['pinterest.access_token'], liveAdapter: false, milestone: 'IOS-5', kind: 'provider' },
+  // <<< stream J integrations
+  // >>> stream K integrations
+  // <<< stream K integrations
+  // >>> stream L integrations
+  // <<< stream L integrations
   { id: 'resend', name: 'Resend', purpose: 'Owner sign-in links (IOS-2); email lists, sequences and the daily digest', secrets: ['resend.api_key'], liveAdapter: true, milestone: 'IOS-2', kind: 'provider' },
   { id: 'google-sheets', name: 'Google Sheets', purpose: 'Product Builder spreadsheet templates', secrets: ['google.sheets_token'], liveAdapter: true, milestone: 'IOS-4', kind: 'provider' },
   { id: 'notion', name: 'Notion', purpose: 'Product Builder Notion templates', secrets: ['notion.api_key', 'notion.template_parent_id'], liveAdapter: true, milestone: 'IOS-4', kind: 'provider' },
-  { id: 'apify', name: 'Apify', purpose: 'Trend and competitor research scrapers', secrets: ['apify.token'], liveAdapter: false, milestone: 'IOS-2', kind: 'provider' },
   { id: 'pixabay', name: 'Pixabay', purpose: 'Royalty-free B-roll and music', secrets: ['pixabay.api_key'], liveAdapter: false, milestone: 'IOS-3', kind: 'provider' },
   { id: 'discord', name: 'Discord', purpose: 'Membership community access', secrets: ['discord.bot_token'], liveAdapter: false, milestone: 'Phase 1', kind: 'provider' },
   { id: 'vercel', name: 'Vercel', purpose: 'Dashboard, API and cron hosting', secrets: ['vercel.token'], liveAdapter: false, milestone: 'IOS-5', kind: 'infra' },

@@ -1,5 +1,5 @@
-import { type AgentName, CADENCE_BOUNDS, type CadenceTarget, DEFAULT_ROUTING } from '@ios/agents';
-import { audit, getSettings, personaCaps } from '@ios/core';
+import { type AgentName, CADENCE_BOUNDS, type CadenceTarget, DEFAULT_ROUTING, type FormatMix } from '@ios/agents';
+import { audit, getSettings, personaCaps, type PostFormat } from '@ios/core';
 import { type Db, json } from '@ios/db';
 import { LLM_PRICES, type ModelTier } from '@ios/providers';
 import { aggregate, type Facts, isSyntheticRow, loadFacts } from './pnl';
@@ -179,16 +179,17 @@ export async function planFormatMix(
   const effectiveFrom = addDays(mondayOf(now), 7);
   const current = opts.current ?? (await cadenceTarget(inp.db, personaId, effectiveFrom));
   const bounds = formatBounds(current.postsPerWeek);
-  const best = sorted.find((r) => current.formatMix[r.format!] < bounds.max[r.format!]);
-  const worst = [...sorted].reverse().find((r) => r !== best && current.formatMix[r.format!] > bounds.min[r.format!]);
+  const count = (f: PostFormat) => current.formatMix[f] ?? 0;
+  const best = sorted.find((r) => count(r.format!) < (bounds.max[r.format!] ?? 0));
+  const worst = [...sorted].reverse().find((r) => r !== best && count(r.format!) > (bounds.min[r.format!] ?? 0));
   if (!best || !worst || ppp(best) <= ppp(worst)) return null;
   const gap = ppp(best) - ppp(worst);
   if (gap < Math.max(100, 0.25 * Math.abs(ppp(best)))) return null;
-  const mix = { ...current.formatMix };
-  mix[best.format!] += 1;
-  mix[worst.format!] -= 1;
+  const mix: Record<string, number> = { ...current.formatMix };
+  mix[best.format!] = (mix[best.format!] ?? 0) + 1;
+  mix[worst.format!] = (mix[worst.format!] ?? 0) - 1;
   const reason = `${p.name}: ${best.label} makes ${usd(ppp(best))} profit per post vs ${usd(ppp(worst))} for ${worst.label} (last ${settings.formatWindowDays} days): moving one weekly slot to ${best.label}.`;
-  const target: CadenceTarget = { ...current, formatMix: mix, source: 'lever', reason };
+  const target: CadenceTarget = { ...current, formatMix: mix as FormatMix, source: 'lever', reason };
   return {
     lever: 'format_mix',
     personaId,

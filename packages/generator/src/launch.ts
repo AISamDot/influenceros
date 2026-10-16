@@ -278,6 +278,9 @@ export async function launchDraft(services: StudioServices, draftId: string, ctx
         );
       }
     }
+    // (IOS-5) The approved Format Plan (stream L) and World Bible + storyline (stream J) go live with the launch.
+    if (cur.state.formatPlan) await services.formatPlans.adoptPlan(tx, { personaId: personaId!, studioId: cur.studio_id, plan: cur.state.formatPlan, actor: ctx.actor });
+    if (cur.state.world) await services.world.adoptWorld(tx, { personaId: personaId!, studioId: cur.studio_id, draft: cur.state.world, actor: ctx.actor });
     const card = await tx.maybeOne<ApprovalRow>(`SELECT * FROM approval WHERE persona_id = $1 AND kind = 'persona_launch' AND status = 'pending'`, [personaId]);
     if (!card) throw new DraftError('no pending launch card for this persona');
     const approval = await decide(tx, { approvalId: card.id, decision: 'approve', actor: ctx.actor, payloadHash: payloadHash(card.payload), note: `Approved in the Persona Generator (draft v${cur.version})` });

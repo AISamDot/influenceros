@@ -22,6 +22,14 @@ export const FORMAT_LABELS: Readonly<Record<PostFormat, string>> = {
   voiceover: 'Voiceover',
   static: 'Static',
   carousel: 'Carousel',
+  product_in_hand: 'Product in hand',
+  trend_reenactment: 'Trend reenactment',
+  photo_dump: 'Photo dump',
+  text_note: 'Text note',
+  facecam_screen: 'Facecam + screen',
+  reply_comment: 'Reply to comment',
+  news_greenscreen: 'News green-screen',
+  meme: 'Meme',
 };
 const PLATFORM_LABELS: Readonly<Record<string, string>> = { tiktok: 'TikTok', instagram: 'Instagram', youtube: 'YouTube', pinterest: 'Pinterest' };
 
