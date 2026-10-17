@@ -62,6 +62,13 @@ interface AccountRow {
   status: string;
 }
 
+/** A TikTok slideshow handed over by the render: one stored vertical video, or nothing. */
+function slideshowOf(raw: unknown): RenderedMedia | null {
+  const m = asRecord(raw);
+  if (m.kind !== 'video' || !asString(m.storageKey) || !asString(m.url)) return null;
+  return m as unknown as RenderedMedia;
+}
+
 /** Validates the payload E enqueued (it crossed a process boundary as JSON). */
 export function parsePreparePayload(raw: Record<string, unknown>): PublishPreparePayload {
   const p = asRecord(raw);
@@ -83,6 +90,7 @@ export function parsePreparePayload(raw: Record<string, unknown>): PublishPrepar
     aiGenerated: true,
     q4ReportId: asString(p.q4ReportId),
     ...(p.trendingSound === true ? { trendingSound: true } : {}),
+    ...(slideshowOf(p.tiktokSlideshow) ? { tiktokSlideshow: slideshowOf(p.tiktokSlideshow)! } : {}),
     ...(asRecord(p.qcOverride).approvalId && UUID_RE.test(asString(asRecord(p.qcOverride).approvalId))
       ? { qcOverride: { approvalId: asString(asRecord(p.qcOverride).approvalId), reason: asString(asRecord(p.qcOverride).reason), stage: asString(asRecord(p.qcOverride).stage) } }
       : {}),
@@ -159,7 +167,8 @@ export async function preparePublish(services: StudioServices, payload: PublishP
     return { slotId: slot.id, posts: existingPosts.map((p) => ({ postId: p.id, platform: p.platform, status: p.status })), skipped: [], slotStatus: slot.status };
   }
 
-  const targets = targetPlatforms(format, new Date(slot.started_at), now);
+  const slideshow = !isVideoFormat(format) ? (payload.tiktokSlideshow ?? null) : null;
+  const targets = targetPlatforms(format, new Date(slot.started_at), now, { slideshow: !!slideshow });
   const accounts = await db.query<AccountRow>(
     `SELECT id, platform, handle, status FROM account WHERE persona_id = $1 AND platform = ANY($2::text[]) AND status = 'active' ORDER BY created_at`,
     [slot.persona_id, targets],
@@ -191,11 +200,17 @@ export async function preparePublish(services: StudioServices, payload: PublishP
     let post = existingPosts.find((p) => p.platform === platform);
     if (!post) {
       const caption = platformCaption(platform, payload.caption, payload.hashtags);
-      const draftInbox = payload.trendingSound === true && platform === 'tiktok' && kind === 'video';
+      // Stills reach TikTok as the slideshow video (a TikTok photo post can't carry the AI disclosure).
+      const asSlideshow = platform === 'tiktok' && !!slideshow;
+      const postMedia = asSlideshow ? [slideshow!] : payload.media;
+      // Never an inbox draft: a TikTok draft drops the AI disclosure. Trending-sound posts publish directly; the Sound
+      // Engine attaches a licensed track (musicSoundInfo) to them.
       const meta = {
-        kind,
+        kind: asSlideshow ? 'video' : kind,
+        ...(asSlideshow ? { slideshow: true } : {}),
+        ...(payload.trendingSound === true && platform === 'tiktok' && kind === 'video' ? { trending_sound: true } : {}),
         title: platform === 'youtube' ? shortsTitle(payload.caption, slot.title) : null,
-        mode: draftInbox ? 'draft_inbox' : 'publish',
+        mode: 'publish',
         platform_options: aiPlatformOptions(platform),
         cover_url: payload.cover?.url ?? null,
         cover_storage_key: payload.cover?.storageKey ?? null,
@@ -203,7 +218,7 @@ export async function preparePublish(services: StudioServices, payload: PublishP
         cta_keyword: payload.ctaKeyword || slot.cta_keyword || null,
         source: 'publish.prepare',
       };
-      const media = payload.media.map((m) => ({
+      const media = postMedia.map((m) => ({
         url: m.url,
         storage_key: m.storageKey,
         asset_id: m.assetId,
@@ -341,9 +356,11 @@ export async function postQ4(services: StudioServices, postId: string, q4opts: {
   add('ai_flag', post.ai_flag === true && opts[flagField] === true, 'blocker', post.ai_flag && opts[flagField] === true ? `AI flag on (${flagField}).` : `AI flag missing (${flagField} must be true).`);
 
   const media = post.media ?? [];
-  const video = isVideoFormat(post.format);
+  // A TikTok slideshow is a still slot published as one vertical video: it is checked as a video.
+  const slideshow = post.meta?.slideshow === true;
+  const video = isVideoFormat(post.format) || slideshow;
   const count = media.length;
-  const slides = isSlideFormat(post.format);
+  const slides = isSlideFormat(post.format) && !slideshow;
   const countOk = !slides ? count === 1 : count >= CAROUSEL_SLIDES.min && count <= CAROUSEL_SLIDES.max;
   add('media_count', countOk, 'blocker', countOk ? `${count} media file(s).` : `${post.format} needs ${!slides ? '1 file' : `${CAROUSEL_SLIDES.min}–${CAROUSEL_SLIDES.max} slides`}, got ${count}.`);
   const size = slides ? EXPORT_SIZE.carousel : EXPORT_SIZE.vertical;
@@ -464,17 +481,6 @@ export async function publishOne(services: StudioServices, postId: string): Prom
     const res = await publishPost(db, services.providers.publish, postId, SYSTEM_PUBLISHER);
     await db.query(`UPDATE post SET meta = meta - 'blocked_reason' - 'blocked_at' WHERE id = $1`, [postId]);
     if (res.status === 'live') await syncLiveSlots(services);
-    if (res.status === 'verifying' && post.meta?.mode === 'draft_inbox') {
-      await notify(db, {
-        studioId: post.studio_id,
-        personaId: post.persona_id,
-        kind: 'publish',
-        severity: 'info',
-        title: `Draft in the ${post.platform} inbox: add the trending sound and post it`,
-        body: 'This post was sent as an app-inbox draft so a trending sound can be added. It carries the AI flag.',
-        link: '/pipeline',
-      });
-    }
     return { status: res.status, postId, url: res.url, externalId: res.externalId };
   } catch (err) {
     if (err instanceof PublishBlockedError) {

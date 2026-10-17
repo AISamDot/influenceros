@@ -55,7 +55,7 @@ export async function slot(ctx: Ctx, personaId: string, format: PostFormat = 'ta
   );
 }
 
-async function stored(ctx: Ctx, key: string, kind: 'video' | 'image', width: number, height: number, durationS: number | null): Promise<RenderedMedia> {
+export async function stored(ctx: Ctx, key: string, kind: 'video' | 'image', width: number, height: number, durationS: number | null): Promise<RenderedMedia> {
   const contentType = kind === 'video' ? 'video/mp4' : 'image/jpeg';
   const o = await ctx.providers.storage.put({ key, data: `fake ${kind} bytes`, contentType });
   return { assetId: '00000000-0000-4000-8000-000000000001', kind, storageKey: key, url: o.url, contentType, width, height, durationS };

@@ -1,8 +1,10 @@
 import { PUBLISH_PREPARE_JOB } from '@ios/agents';
 import { DeferJob, decide, OWNER, recoverPublishing, setKillSwitch, sweepAutoApprovals } from '@ios/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { enqueueDuePosts, jobs, PREPARE_DEAD_LIMIT, preparePublish, publishOne, sweepStuckPrepares } from '../src';
-import { account, type Ctx, persona, preparePayload, setup, slot, status } from './helpers';
+import { enqueueDuePosts, jobs, parsePreparePayload, PREPARE_DEAD_LIMIT, preparePublish, publishOne, sweepStuckPrepares } from '../src';
+import { account, type Ctx, persona, preparePayload, setup, slot, status, stored } from './helpers';
+
+const UUID = '00000000-0000-4000-8000-0000000000aa';
 
 let ctx: Ctx;
 beforeEach(async () => {
@@ -187,27 +189,62 @@ describe('publish.post', () => {
     expect((await posts(s.id)).map((r) => r.status)).toEqual(['live', 'live']);
   });
 
-  it('sends a trending-sound post to the TikTok inbox as a draft; it is not failed while it waits, and goes live once posted', async () => {
+  it('publishes a trending-sound post to TikTok directly with the AI flag, never as an inbox draft (a draft drops the disclosure)', async () => {
     const { s } = await ready({ trendingSound: true });
     const tt = (await posts(s.id)).find((r) => r.platform === 'tiktok')!;
-    expect(tt.meta.mode).toBe('draft_inbox');
+    expect(tt.meta.mode).toBe('publish');
+    expect(tt.meta.trending_sound).toBe(true);
     expect((await posts(s.id)).find((r) => r.platform === 'instagram')!.meta.mode).toBe('publish');
     await approveAll(s.id);
     const res = await publishOne(ctx.svc, tt.id);
-    expect(res.status).toBe('verifying');
+    expect(res.status).toBe('live');
     const call = ctx.providers.publish.callsTo('publish')[0]!.args as Record<string, unknown>;
-    expect(call).toMatchObject({ mode: 'draft_inbox', aiLabel: true });
-    expect(await status(ctx, 'post', tt.id)).toBe('publishing');
+    expect(call).toMatchObject({ mode: 'publish', aiLabel: true, kind: 'video' });
     const n = await ctx.db.one<{ n: number }>(`SELECT count(*)::int AS n FROM notification WHERE title LIKE 'Draft in the tiktok inbox%'`);
-    expect(n.n).toBe(1);
+    expect(n.n).toBe(0);
+  });
+});
 
-    // Recovery keeps checking past maxAttempts while the draft is younger than 72 h.
-    const soon = new Date(Date.now() + 60 * 60_000);
-    for (let i = 0; i < 4; i++) await recoverPublishing(ctx.db, ctx.providers.publish, { now: soon, maxAttempts: 2 });
-    expect(await status(ctx, 'post', tt.id)).toBe('publishing');
-    const ext = (await ctx.db.one<{ external_id: string }>('SELECT external_id FROM post WHERE id = $1', [tt.id])).external_id;
-    ctx.providers.publish.completeDraft(ext);
-    expect((await recoverPublishing(ctx.db, ctx.providers.publish, { now: soon })).live).toEqual([tt.id]);
+describe('TikTok stills as a slideshow video (Zernio: no AI disclosure on TikTok photo posts)', () => {
+  async function stillSlot(format: 'carousel' | 'static', withSlideshow: boolean) {
+    const p = await persona(ctx);
+    await account(ctx, p.id, 'tiktok');
+    await account(ctx, p.id, 'instagram');
+    const s = await slot(ctx, p.id, format);
+    const payload = await preparePayload(ctx, p.id, s.id, format);
+    const slideshow = withSlideshow ? await stored(ctx, `media/${p.id}/${s.id}/slideshow.mp4`, 'video', 1080, 1920, format === 'carousel' ? 18 : 6) : null;
+    const res = await preparePublish(ctx.svc, { ...payload, ...(slideshow ? { tiktokSlideshow: slideshow } : {}) });
+    return { p, s, res, slideshow };
+  }
+
+  it('a carousel goes to Instagram as photos and to TikTok as the slideshow video, AI flag on, Q4 as a video', async () => {
+    const { s, res, slideshow } = await stillSlot('carousel', true);
+    expect(res.skipped).toEqual([]);
+    const rows = await posts(s.id);
+    const tt = rows.find((r) => r.platform === 'tiktok')!;
+    const ig = rows.find((r) => r.platform === 'instagram')!;
+    expect(tt.meta).toMatchObject({ kind: 'video', slideshow: true, mode: 'publish', platform_options: { video_made_with_ai: true } });
+    expect(tt.status).toBe('awaiting_approval');
+    expect(ig.meta).toMatchObject({ kind: 'carousel' });
+    expect(ig.meta.slideshow).toBeUndefined();
+    const media = (await ctx.db.one<{ media: Array<{ storage_key: string; kind: string }>; format: string }>('SELECT media, format FROM post WHERE id = $1', [tt.id]));
+    expect(media.format).toBe('carousel');
+    expect(media.media).toEqual([expect.objectContaining({ storage_key: slideshow!.storageKey, kind: 'video' })]);
+    await approveAll(s.id);
+    expect((await publishOne(ctx.svc, tt.id)).status).toBe('live');
+    const call = ctx.providers.publish.callsTo('publish').map((c) => c.args as Record<string, unknown>).find((a) => a.platform === 'tiktok')!;
+    expect(call).toMatchObject({ kind: 'video', aiLabel: true, mode: 'publish' });
+    expect(call.mediaUrls as string[]).toHaveLength(1);
+  });
+
+  it('without a slideshow, stills skip TikTok rather than post a photo without disclosure', async () => {
+    const { s } = await stillSlot('static', false);
+    expect((await posts(s.id)).map((r) => r.platform)).toEqual(['instagram']);
+  });
+
+  it('ignores a malformed slideshow (not a stored video) in the payload', () => {
+    expect(parsePreparePayload({ slotId: UUID, personaId: UUID, aiGenerated: true, tiktokSlideshow: { kind: 'image', storageKey: 'k', url: 'u' } }).tiktokSlideshow).toBeUndefined();
+    expect(parsePreparePayload({ slotId: UUID, personaId: UUID, aiGenerated: true, tiktokSlideshow: { kind: 'video', storageKey: 'k', url: 'https://u' } }).tiktokSlideshow).toMatchObject({ kind: 'video' });
   });
 });
 

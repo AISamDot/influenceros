@@ -29,15 +29,27 @@ export function mediaKind(format: PostFormat): 'video' | 'image' | 'carousel' {
 /**
  * Where a format goes.
  * - Video: TikTok, Instagram (Reel), and YouTube Shorts once the persona is 30 days old.
- * - Static and carousel: Instagram only. TikTok refuses the AI flag on direct photo posts (it can only be set from
- *   the app on a draft), and every post must carry the flag, so photo posts skip TikTok rather than post unlabelled
- *   or wait on a manual step. YouTube Shorts is video only.
+ * - Static and carousel: Instagram as photos. TikTok rejects the AI disclosure (videoMadeWithAi) on direct photo posts
+ *   from TikTok-for-Business accounts, and a TikTok draft drops it too, so a TikTok photo post is never sent. Instead,
+ *   when the render hands over a slideshow (the stills as a short vertical video, `tiktokSlideshow`), TikTok gets that
+ *   video with the AI flag on: automatic, no manual step. Without one, stills skip TikTok. YouTube Shorts is video only.
  */
-export function targetPlatforms(format: PostFormat, personaStartedAt: Date, now: Date): Platform[] {
-  if (!isVideoFormat(format)) return ['instagram'];
+export function targetPlatforms(format: PostFormat, personaStartedAt: Date, now: Date, opts: { slideshow?: boolean } = {}): Platform[] {
+  if (!isVideoFormat(format)) return opts.slideshow ? ['tiktok', 'instagram'] : ['instagram'];
   const day30 = now.getTime() - personaStartedAt.getTime() >= YOUTUBE_FROM_DAY * DAY_MS;
   return day30 ? ['tiktok', 'instagram', 'youtube'] : ['tiktok', 'instagram'];
 }
+
+/**
+ * (Zernio) Platforms the adapter can map beyond the studio's own list. Facebook (Pages: feed, Reels via contentType
+ * 'reel', Stories via contentType 'story') is mapped but OFF by default: it joins with the day-30 rollout (FR-4.3d)
+ * only when the Owner switches it on. FacebookPlatformData has no AI-label field, so Facebook's label is Meta-side
+ * ("AI info", applied by Meta from the C2PA/IPTC provenance in the file or its own detection); the adapter never
+ * claims a Facebook post is labelled (verify reports aiLabel false = unknown, and the Owner checks it).
+ */
+export const ZERNIO_EXTRA_PLATFORMS = ['facebook'] as const;
+export type ZernioExtraPlatform = (typeof ZERNIO_EXTRA_PLATFORMS)[number];
+export const FACEBOOK_ROLLOUT = { enabledByDefault: false, fromDay: YOUTUBE_FROM_DAY, aiLabel: 'meta_side' } as const;
 
 /** Staggered posting (FR-7.3): the same slot goes out a few minutes apart per platform, never in one burst. */
 export const PLATFORM_OFFSET_MIN: Readonly<Record<Platform, number>> = { tiktok: 0, instagram: 7, youtube: 13, pinterest: 19 };
@@ -77,9 +89,10 @@ export function aiPlatformOptions(platform: Platform): Record<string, unknown> {
 
 /**
  * Story support through Zernio's API, per platform (a capability flag each; the Stories engine publishes a frame only
- * where it is on). Instagram Stories go through the Graph API as an image post with `contentType: 'story'`. TikTok's
- * Content Posting API and YouTube have no Stories endpoint, and Pinterest has none we use. Facebook Stories are
- * supported by Zernio but the studio has no Facebook accounts yet. Checked again with the first live key.
+ * where it is on). Checked against the OpenAPI spec (1.290): Instagram Stories are a post with one media item and
+ * platformSpecificData.contentType 'story' (no caption; isAiGenerated applies to Stories); TikTokPlatformData,
+ * YouTubePlatformData and PinterestPlatformData have no story type. Facebook Page Stories (contentType 'story') are
+ * mapped in the adapter but Facebook is off by default (FACEBOOK_ROLLOUT).
  */
 export const ZERNIO_STORY_SUPPORT: readonly StoryCapability[] = [
   { platform: 'instagram', stories: true, note: 'image story via contentType "story"; link and poll stickers are not available through the API' },

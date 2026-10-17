@@ -23,7 +23,7 @@ These are the IOS-2 rules (`docs/IOS-2-CONTRACTS.md` §1) plus the owner's IOS-3
 - **Killing or retiring a persona always needs the Owner's explicit approval.** So do spending above caps, disclosure or legal text changes, and creating platform accounts. Agents only ever propose these.
 - **The Compliance Gate checks legal/platform lines only** (`@ios/content` `runGate` / `gatePost` / `gateReply`). Red never ships.
 - **AI disclosure is the platform minimum:**
-  - Every post sets the platform AI flag to **true**, always: TikTok AIGC / `video_made_with_ai`, Instagram `is_ai_generated`, YouTube `containsSyntheticMedia` (`AI_FLAG_FIELDS` in `@ios/providers`).
+  - Every post sets the platform AI flag to **true**, always (`AI_FLAG_FIELDS` in `@ios/providers` are the studio's names; the Zernio adapter sends the vendor's, inside `platforms[].platformSpecificData`: TikTok `videoMadeWithAi`, Instagram/Pinterest `isAiGenerated`, YouTube `containsSyntheticMedia`). A post type that can't carry the flag through the API is never sent (TikTok photo posts and TikTok drafts); Facebook has no API field (Meta-side labelling) and is off by default.
   - The platform AI **profile** label is tracked per account (`account.ai_label_ok`).
   - Agents and community replies **never deny being AI**.
   - There's no bio line and no watermark.

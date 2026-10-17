@@ -123,8 +123,10 @@ export interface VoiceProvider {
 
 // ─── Publishing (Zernio) ───
 /**
- * The platform's post-level AI flag field, always set true (IOS-3/4 owner rule). TikTok AIGC is sent as
- * `video_made_with_ai` through Zernio; Instagram `is_ai_generated`; YouTube `containsSyntheticMedia`.
+ * The platform's post-level AI flag field, always set true (IOS-3/4 owner rule). These are the studio's contract names
+ * (stored in post.meta.platform_options and checked by post Q4). The Zernio adapter maps them to the vendor's names
+ * (OpenAPI 1.290): TikTok `videoMadeWithAi`, Instagram/Pinterest `isAiGenerated`, YouTube `containsSyntheticMedia`,
+ * all inside platforms[].platformSpecificData.
  */
 export const AI_FLAG_FIELDS: Readonly<Record<Platform, string>> = {
   tiktok: 'video_made_with_ai',
@@ -148,7 +150,10 @@ export interface PublishRequest {
   /** YouTube Shorts title; ignored elsewhere. */
   readonly title?: string;
   readonly coverUrl?: string;
-  /** 'draft_inbox' sends a TikTok/Instagram draft to the app inbox (trending-sound posts); default 'publish'. */
+  /**
+   * 'draft_inbox' sends a draft to the app inbox; default 'publish'. The live Zernio adapter refuses it: a TikTok draft
+   * drops every post_info field, the AI disclosure included, and the other platforms have no inbox drafts.
+   */
   readonly mode?: 'publish' | 'draft_inbox';
   /** Extra platform fields the adapter passes through (never used to switch the AI flag off). */
   readonly platformOptions?: Readonly<Record<string, unknown>>;
@@ -189,6 +194,70 @@ export interface PublishAccount {
   readonly handle: string;
   /** The platform AI profile label, when the vendor can read it; null = unknown. */
   readonly aiProfileLabel: boolean | null;
+  /**
+   * (Zernio, additive) Instagram only: how the account was connected. 'facebook_login' is required for the Instagram
+   * audio catalog (Reels sounds) and paid-partnership labels; 'instagram_login' accounts must be reconnected in Zernio
+   * choosing the Facebook option. Absent for other platforms or when unknown.
+   */
+  readonly loginMethod?: 'facebook_login' | 'instagram_login';
+}
+
+// (Zernio OpenAPI 1.290, additive) Read-only catalogs and insights for the Sound Engine and the audience-time
+// scheduler (round 7). Each is optional on PublishProvider: a vendor without them has no such data.
+
+/** One asset from Instagram's audio catalog (licensed music or an original sound). */
+export interface InstagramAudio {
+  /** Pass as platformSpecificData.audioConfiguration.audioId on a Reel. */
+  readonly audioId: string;
+  readonly title: string | null;
+  readonly audioType: 'music' | 'original_sound' | null;
+  readonly durationMs: number | null;
+  readonly artist: string | null;
+  readonly creator: string | null;
+  /** Temporary preview URL (Meta expires it after ~1.5 days). */
+  readonly previewUrl: string | null;
+  readonly isAdsEligible: boolean | null;
+}
+/** One trending track of TikTok's Commercial Music Library. */
+export interface TikTokCommercialTrack {
+  /** The full track's song clip id (publishes, but may show "not available in your country"). */
+  readonly id: string;
+  /** The trending excerpt's id: what to send as musicSoundInfo.musicSoundId. Null when TikTok gives no clip. */
+  readonly clipId: string | null;
+  readonly name: string;
+  readonly artist: string | null;
+  readonly durationS: number | null;
+  readonly rank: number | null;
+  readonly genres: readonly string[];
+  readonly previewUrl: string | null;
+}
+/** Instagram followers online per hour, one entry per day Meta has data for (oldest first). */
+export interface OnlineFollowersDay {
+  readonly endTime: string;
+  /** Hour "0"…"23" (Meta does not document the timezone) → followers online. */
+  readonly hours: Readonly<Record<string, number>>;
+}
+/** A best-time slot from the vendor's historical engagement. */
+export interface BestTimeSlot {
+  /** 0 = Monday … 6 = Sunday. */
+  readonly dayOfWeek: number;
+  /** UTC hour 0–23. */
+  readonly hour: number;
+  readonly avgEngagement: number;
+  readonly postCount: number;
+}
+/** Connection health of one vendor account. */
+export interface AccountHealth {
+  readonly accountRef: string;
+  readonly platform: string;
+  readonly handle: string | null;
+  readonly status: 'healthy' | 'warning' | 'error' | 'unknown';
+  readonly canPost: boolean | null;
+  readonly canFetchAnalytics: boolean | null;
+  readonly tokenValid: boolean | null;
+  readonly needsReconnect: boolean;
+  readonly issues: readonly string[];
+  readonly recommendations: readonly string[];
 }
 /** (IOS-4) Webhook events from the publishing vendor. */
 export type DistributionEvent =
@@ -226,6 +295,19 @@ export interface PublishProvider {
   storyCapabilities?(): Promise<StoryCapability[]>;
   /** Story frame metrics (reach, replies, taps forward and back, exits) once the frame is live. */
   fetchStoryMetrics?(req: { externalId: string; platform: Platform }): Promise<StoryMetrics>;
+  // (Zernio OpenAPI 1.290, additive and optional, read-only: Sound Engine and audience-time scheduler, round 7)
+  /** Instagram audio catalog search; without `q` the trending list. Facebook-Login Instagram accounts only. */
+  searchInstagramAudio?(accountRef: string, req: { audioType: 'music' | 'original_sound'; q?: string }): Promise<InstagramAudio[]>;
+  /** One Instagram audio asset (re-validate a stored id, refresh its preview URL); null when it is gone. */
+  getInstagramAudio?(accountRef: string, audioId: string): Promise<InstagramAudio | null>;
+  /** TikTok Commercial Music Library: the 100 trending tracks (TikTok for Business accounts). */
+  listTikTokCommercialMusic?(accountRef: string, req?: { countryCode?: string }): Promise<TikTokCommercialTrack[]>;
+  /** Instagram followers online per hour over the last 30 days (≥ 100 followers). */
+  instagramOnlineFollowers?(accountRef: string): Promise<OnlineFollowersDay[]>;
+  /** Best posting slots from historical engagement (UTC). */
+  bestTime?(req?: { platform?: Platform; accountRef?: string; profileId?: string }): Promise<BestTimeSlot[]>;
+  /** Health of one account, or of every account when `accountRef` is omitted. */
+  accountHealth?(accountRef?: string): Promise<AccountHealth[]>;
 }
 /** (IOS-5) Story support per platform through the publishing vendor. */
 export interface StoryCapability {

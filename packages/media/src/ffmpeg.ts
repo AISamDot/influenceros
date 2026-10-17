@@ -184,7 +184,11 @@ export function videoArgs(comp: VideoComposition, layers: readonly string[], out
   const parts: string[] = [];
   comp.segments.forEach((s, i) => {
     const frames = Math.max(1, Math.round(s.durationS * fps));
-    const fit = `scale=${W}:${H}:force_original_aspect_ratio=increase:flags=lanczos,crop=${W}:${H}`;
+    const pad = /^#[0-9a-f]{6}$/i.test(s.padColor ?? '') ? `0x${s.padColor!.slice(1)}` : 'black';
+    const fit =
+      s.fit === 'contain'
+        ? `scale=${W}:${H}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=${pad}`
+        : `scale=${W}:${H}:force_original_aspect_ratio=increase:flags=lanczos,crop=${W}:${H}`;
     const motion =
       s.kind === 'image' && s.motion === 'push'
         ? `scale=${Math.round(W * 1.15)}:-2:flags=lanczos,zoompan=z='min(zoom+0.0006,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${W}x${H}:fps=${fps},`

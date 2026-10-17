@@ -15,6 +15,7 @@ export {
   AI_LABEL_STEPS,
   BIO_MAX,
   enqueueSync,
+  INSTAGRAM_LOGIN_WARNING,
   type SetupSheet,
   type SetupSheetRow,
   SETUP_PLATFORMS,
@@ -70,7 +71,24 @@ export {
   type PublishOutcome,
   syncLiveSlots,
 } from './publishing';
-export { assertAiFlagOptions, buildPostBody, parseZernioEvent, ROUTES as ZERNIO_ROUTES, ZERNIO_AI_FIELD, ZERNIO_BASE_URL, ZernioError, ZernioPublisher } from './zernio';
+export {
+  assertAiFlagOptions,
+  buildPostBody,
+  DEFAULT_ZERNIO_PLATFORMS,
+  echoedAiFlag,
+  instagramAudioOptions,
+  parseZernioEvent,
+  ROUTES as ZERNIO_ROUTES,
+  TIKTOK_ORIGINAL_SOUND_VOLUME,
+  tiktokMusicOptions,
+  ZERNIO_AI_FIELD,
+  ZERNIO_BASE_URL,
+  ZernioError,
+  type ZernioPlatform,
+  ZernioPublisher,
+  type ZernioPublishRequest,
+  type ZernioSnapshot,
+} from './zernio';
 export { JOB as DISTRIBUTION_JOBS, PREPARE_DEAD_LIMIT, sweepStuckPrepares } from './jobs';
 export { F_TOOLS } from './tools';
 export { fenceUntrusted } from './util';

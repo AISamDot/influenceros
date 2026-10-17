@@ -45,7 +45,8 @@ export async function POST(req: Request) {
       }
       case 'sync': {
         const r = await syncAccounts(services);
-        return done(`synced: ${r.linked.length} linked, ${r.unmatched.length} unmatched in Zernio`, { ...r });
+        const warn = r.warnings.length ? `; ${r.warnings.length} Instagram account${r.warnings.length === 1 ? '' : 's'} need${r.warnings.length === 1 ? 's' : ''} Facebook Login in Zernio` : '';
+        return done(`synced: ${r.linked.length} linked, ${r.unmatched.length} unmatched in Zernio${warn}`, { ...r });
       }
       default:
         return fail('unknown action');

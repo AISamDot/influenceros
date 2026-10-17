@@ -2,7 +2,7 @@ import { personaSiteUrl } from '@ios/agents';
 import { gatePost } from '@ios/content';
 import { OWNER } from '@ios/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { accountSetupSheet, BIO_MAX, syncAccounts, updateAccount, upsertAccount } from '../src';
+import { accountSetupSheet, BIO_MAX, INSTAGRAM_LOGIN_WARNING, syncAccounts, updateAccount, upsertAccount } from '../src';
 import { type Ctx, persona, setup } from './helpers';
 
 let ctx: Ctx;
@@ -64,6 +64,23 @@ describe('Settings → Accounts', () => {
     expect(row).toEqual({ status: 'active', ai_label_ok: true, token_ref: 'zr_ig_1' });
     // Idempotent.
     expect((await syncAccounts(ctx.svc)).linked).toEqual([]);
+  });
+
+  it('warns on Settings → Accounts when Instagram is connected in Zernio without Facebook Login, and clears it once fixed', async () => {
+    const p = await persona(ctx);
+    const id = await upsertAccount(ctx.svc, { personaId: p.id, platform: 'instagram', handle: 'maya.money', actor: OWNER });
+    ctx.providers.publish.accounts.push({ accountRef: 'zr_ig_1', platform: 'instagram', handle: 'maya.money', aiProfileLabel: null, loginMethod: 'instagram_login' });
+    const res = await syncAccounts(ctx.svc);
+    expect(res.linked).toEqual([id]);
+    expect(res.warnings).toEqual([{ accountId: id, platform: 'instagram', handle: 'maya.money', warning: INSTAGRAM_LOGIN_WARNING }]);
+    const ig = (await accountSetupSheet(ctx.db, p.id, ctx.clock.now)).rows.find((r) => r.platform === 'instagram')!;
+    expect(ig.warning).toMatch(/Facebook Login/);
+    expect(ig.aiLabelSteps.join(' ')).toMatch(/Facebook Login option/);
+    // The Owner reconnects with Facebook Login: the next sync records it and the warning goes.
+    ctx.providers.publish.accounts.splice(0, 1, { accountRef: 'zr_ig_1', platform: 'instagram', handle: 'maya.money', aiProfileLabel: null, loginMethod: 'facebook_login' });
+    expect((await syncAccounts(ctx.svc)).warnings).toEqual([]);
+    expect((await accountSetupSheet(ctx.db, p.id, ctx.clock.now)).rows.find((r) => r.platform === 'instagram')!.warning).toBeNull();
+    expect((await ctx.db.one<{ meta: Record<string, unknown> }>('SELECT meta FROM account WHERE id = $1', [id])).meta.login_method).toBe('facebook_login');
   });
 
   it('the Gate ambers a post whose account has no platform AI profile label', async () => {

@@ -1,7 +1,9 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { MemoryMediaStore } from './storage';
 import {
+  type AccountHealth,
   type AudienceProvider,
+  type BestTimeSlot,
   type DistributionEvent,
   type DmMessage,
   EMBEDDING_DIM,
@@ -14,6 +16,7 @@ import {
   type GeoPlace,
   type HiggsfieldOperation,
   type InspirationPin,
+  type InstagramAudio,
   type ImageVideoProvider,
   type LlmProvider,
   type LlmRequest,
@@ -22,6 +25,7 @@ import {
   type MediaResolution,
   type MediaResult,
   type ModelTier,
+  type OnlineFollowersDay,
   type PinterestBoard,
   type PinterestProvider,
   type Platform,
@@ -39,6 +43,7 @@ import {
   type StoryCapability,
   type StoryMetrics,
   type TalkingProvider,
+  type TikTokCommercialTrack,
   type TopicResearch,
   type TranscribeProvider,
   type VoiceProvider,
@@ -395,6 +400,54 @@ export class FakeZernio extends Recorder implements PublishProvider {
     this.record('listAccounts', {});
     return [...this.accounts];
   }
+  // (Zernio OpenAPI 1.290) Read-only catalogs and insights, deterministic from the inputs.
+  async searchInstagramAudio(accountRef: string, req: { audioType: 'music' | 'original_sound'; q?: string }): Promise<InstagramAudio[]> {
+    this.record('searchInstagramAudio', { accountRef, ...req });
+    const seed = `${req.audioType}:${req.q ?? 'trending'}`;
+    return [1, 2, 3].map((i) => fakeIgAudio(`${seed}:${i}`, req.audioType, req.q ? `${req.q} ${i}` : `Trending ${i}`));
+  }
+  async getInstagramAudio(accountRef: string, audioId: string): Promise<InstagramAudio | null> {
+    this.record('getInstagramAudio', { accountRef, audioId });
+    return /^\d{1,30}$/.test(audioId) ? { ...fakeIgAudio(audioId, 'music', `Track ${audioId.slice(-4)}`), audioId } : null;
+  }
+  async listTikTokCommercialMusic(accountRef: string, req: { countryCode?: string } = {}): Promise<TikTokCommercialTrack[]> {
+    this.record('listTikTokCommercialMusic', { accountRef, ...req });
+    return [1, 2, 3].map((rank) => {
+      const h = shortHash(`${req.countryCode ?? 'global'}:${rank}`, 8);
+      return { id: `7${parseInt(h, 16)}`, clipId: `8${parseInt(h, 16)}`, name: `Fake chart track ${rank}`, artist: 'Fake Artist', durationS: 30 + rank, rank, genres: ['Pop'], previewUrl: null };
+    });
+  }
+  async instagramOnlineFollowers(accountRef: string): Promise<OnlineFollowersDay[]> {
+    this.record('instagramOnlineFollowers', { accountRef });
+    const base = parseInt(shortHash(accountRef, 4), 16) % 100;
+    return [1, 2].map((d) => ({
+      endTime: new Date(Date.UTC(2026, 9, d, 7)).toISOString(),
+      hours: Object.fromEntries(Array.from({ length: 24 }, (_, h) => [String(h), base + Math.round(100 * Math.sin(((h - 6) / 24) * Math.PI) ** 2)])),
+    }));
+  }
+  async bestTime(req: { platform?: Platform; accountRef?: string; profileId?: string } = {}): Promise<BestTimeSlot[]> {
+    this.record('bestTime', req);
+    return [
+      { dayOfWeek: 2, hour: 18, avgEngagement: 510.3, postCount: 15 },
+      { dayOfWeek: 0, hour: 9, avgEngagement: 342.5, postCount: 12 },
+    ];
+  }
+  async accountHealth(accountRef?: string): Promise<AccountHealth[]> {
+    this.record('accountHealth', { accountRef: accountRef ?? null });
+    const list = accountRef ? this.accounts.filter((a) => a.accountRef === accountRef) : this.accounts;
+    return list.map((a) => ({
+      accountRef: a.accountRef,
+      platform: a.platform,
+      handle: a.handle,
+      status: 'healthy' as const,
+      canPost: true,
+      canFetchAnalytics: true,
+      tokenValid: true,
+      needsReconnect: false,
+      issues: [],
+      recommendations: [],
+    }));
+  }
   sign(rawBody: string): string {
     return createHmac('sha256', FAKE_WEBHOOK_SECRET).update(rawBody).digest('hex');
   }
@@ -405,6 +458,19 @@ export class FakeZernio extends Recorder implements PublishProvider {
     const v = JSON.parse(rawBody, (k, val) => (k === 'at' && typeof val === 'string' ? new Date(val) : val)) as DistributionEvent | DistributionEvent[];
     return Array.isArray(v) ? v : [v];
   }
+}
+
+function fakeIgAudio(seed: string, audioType: 'music' | 'original_sound', title: string): InstagramAudio {
+  return {
+    audioId: String(parseInt(shortHash(seed, 12), 16)),
+    title,
+    audioType,
+    durationMs: 15_000 + (parseInt(shortHash(seed, 4), 16) % 45_000),
+    artist: audioType === 'music' ? 'Fake Artist' : null,
+    creator: audioType === 'original_sound' ? 'fake.creator' : null,
+    previewUrl: null,
+    isAdsEligible: audioType === 'music',
+  };
 }
 
 function safeEqualHex(expectedHex: string, gotHex: string): boolean {

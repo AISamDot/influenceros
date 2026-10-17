@@ -34,6 +34,8 @@ import {
   NEWS_DESK_LABEL,
   PIP_BOX,
   RENDER_CLIP_MAX_S,
+  SLIDESHOW_SINGLE_S,
+  SLIDESHOW_SLIDE_S,
   TALKING_SHAPED,
 } from './config';
 import { type MediaDeps, mediaDeps, talkingProvider } from './deps';
@@ -41,7 +43,7 @@ import { extFor, localOf, materialize, storeAsset, workDir } from './files';
 import { ensureProfile, type MediaProfile } from './profile';
 import { gradeQ3, gradeQ4, type OcrSample, type Q3Clip, type Q4Fix } from './qc';
 import { hfSpend, type SpendScope, usdSpend } from './spend';
-import { captionCues, type CardSpec, placeText, round2, type Segment, splitSpeech, type TextBox, type VideoComposition } from './toolkit';
+import { captionCues, type CardSpec, NEUTRAL_GRADE, placeText, round2, type Segment, splitSpeech, type TextBox, type VideoComposition } from './toolkit';
 
 /**
  * The media.render job (docs/IOS-34-CONTRACTS.md §5.1): voice → Q2 → generate (Higgsfield, governor) → Q3 (talking)
@@ -1149,6 +1151,8 @@ class Render {
     });
     const rendered = await this.renderedMedia(fin.assetIds, fin.kind === 'video' ? 'video' : 'image');
     const coverMedia = (await this.renderedMedia([coverAsset.id], 'image'))[0] ?? null;
+    // Stills reach TikTok as a slideshow video: a TikTok photo post can't carry the AI disclosure.
+    const slideshow = fin.kind === 'video' ? null : await this.slideshow(fin);
     const payload: PublishPreparePayload = {
       slotId: this.p.slotId,
       personaId: this.p.personaId,
@@ -1161,8 +1165,59 @@ class Render {
       ctaKeyword: this.p.ctaKeyword,
       aiGenerated: true,
       q4ReportId: reportId,
+      ...(slideshow ? { tiktokSlideshow: slideshow } : {}),
     };
     return { payload, coverAssetId: coverAsset.id, coverUrl: coverAsset.url };
+  }
+
+  /**
+   * The TikTok slideshow of a still slot: the final stills (already graded and captioned, Q4-passed) back to back in a
+   * 1080×1920 video, letterboxed on the persona's background, no audio, the AI-generated marker in the container.
+   */
+  private async slideshow(fin: NonNullable<RenderState['final']>): Promise<RenderedMedia> {
+    const kit = await loadPersonaKit(this.services.db, this.p.personaId);
+    const files = await Promise.all(fin.keys.map((k) => localOf(this.services, k)));
+    const single = files.length === 1;
+    const each = single ? SLIDESHOW_SINGLE_S : SLIDESHOW_SLIDE_S;
+    const segments: Segment[] = files.map((file, i) => ({
+      file,
+      kind: 'image',
+      startS: round2(i * each),
+      durationS: each,
+      motion: single ? 'push' : 'none',
+      fit: 'contain',
+      padColor: kit.colors.bg,
+      ref: `slide:${i + 1}`,
+    }));
+    const comp: VideoComposition = {
+      ...EXPORT.video,
+      durationS: round2(each * files.length),
+      segments,
+      audio: null,
+      texts: [],
+      pip: null,
+      grade: NEUTRAL_GRADE,
+      sharpen: false,
+      loudnorm: 'none',
+      metadata: { comment: 'AI-generated (Influencer OS). Platform AI flag: true.', title: this.title.slice(0, 120) },
+    };
+    const n = this.state.version ?? 0;
+    const out = join(this.dir, `slideshow-${n}.mp4`);
+    const info = await this.deps.toolkit.renderVideo(comp, out);
+    const a = await storeAsset(this.services, {
+      personaId: this.p.personaId,
+      scriptId: this.p.scriptId,
+      slotId: this.p.slotId,
+      key: `${this.key}/slideshow-v${n}.mp4`,
+      file: out,
+      contentType: 'video/mp4',
+      type: 'video',
+      role: 'slideshow',
+      provider: this.deps.toolkit.name,
+      tools: [this.deps.toolkit.name],
+      meta: { width: info.width, height: info.height, fps: info.fps, duration_s: info.durationS, format: this.p.format, slides: files.length, version: n, source_asset_ids: fin.assetIds, ...this.fakeMeta },
+    });
+    return (await this.renderedMedia([a.id], 'video'))[0]!;
   }
 
   private async renderedMedia(ids: readonly string[], kind: 'video' | 'image'): Promise<RenderedMedia[]> {

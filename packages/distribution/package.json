@@ -9,7 +9,8 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "zernio:check": "tsx src/zernio-check.ts"
   },
   "dependencies": {
     "@ios/agents": "workspace:*",

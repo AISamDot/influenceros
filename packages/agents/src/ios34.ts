@@ -75,8 +75,17 @@ export interface PublishPreparePayload {
   readonly aiGenerated: true;
   /** The passing qc_report (subject_type 'asset', stage 'Q4') of the main media. */
   readonly q4ReportId: string;
-  /** A winner's activity post that should get a trending sound: F sends a draft to the app inbox instead. */
+  /**
+   * A winner's activity post that should get a trending sound. F publishes it directly with the AI flag (a TikTok
+   * inbox draft would drop the disclosure); the Sound Engine attaches a licensed track through the vendor's catalog.
+   */
   readonly trendingSound?: boolean;
+  /**
+   * (Zernio conformance, additive) Static and carousel slots: the same stills as one short vertical video (1080×1920,
+   * a few seconds per still, no audio). TikTok can't carry the AI disclosure on a photo post, so TikTok gets this
+   * video, AI flag on, instead of a photo post. Absent for video formats.
+   */
+  readonly tiktokSlideshow?: RenderedMedia;
   /**
    * (IOS-4 fix, additive) The Owner approved publishing past failed QC majors (qc_override card, with a reason).
    * Post Q4 then lets majors through; blockers still block.

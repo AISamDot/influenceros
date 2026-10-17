@@ -11,6 +11,7 @@ import { personaScorecard, pullMetrics } from './analytics';
 import { approvedCrisisText, handleCommunity, pollCommunity, proposeCrisisText } from './community';
 import { liveProviders } from './index';
 import { enqueueDuePosts } from './publishing';
+import { runZernioCheck } from './zernio-check';
 
 const HELP = `pnpm distribution <command>
 
@@ -22,7 +23,8 @@ const HELP = `pnpm distribution <command>
   pull                      capture due 1h/24h/72h/7d metric windows now
   poll <slug>               poll comments and DMs for a persona, then handle them by policy
   due                       queue publish.post for approved posts whose time has come
-  crisis-text [--propose]   show the crisis helpline approval, or propose the default text to the Owner`;
+  crisis-text [--propose]   show the crisis helpline approval, or propose the default text to the Owner
+  zernio-check              live read-only Zernio check (GET accounts, profiles, usage): counts and platforms only`;
 
 function cliEnv(): ProviderEnv {
   const backend = defaultBackend(process.env);
@@ -47,6 +49,8 @@ async function main(argv: string[]): Promise<number> {
     console.log(HELP);
     return cmd ? 0 : 1;
   }
+  // Read-only and vendor-only: it never opens the database.
+  if (cmd === 'zernio-check') return runZernioCheck();
   if (cmd === 'status') {
     const z = integrationStates(defaultBackend(process.env), process.env).find((s) => s.def.id === 'zernio');
     console.log(`Zernio: ${z?.mode ?? 'fake'} (${z?.status ?? 'pending_key'}); webhook secret ${cliEnv().secret('zernio.webhook_secret') ? 'set (webhooks on)' : 'not set (polling)'}`);

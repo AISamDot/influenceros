@@ -59,6 +59,20 @@ describe('media.render: one post per format on fakes', () => {
     expect(pp.media.length).toBe(media.final.length);
     expect(pp.media[0]!.kind).toBe(format === 'static' || format === 'carousel' ? 'image' : 'video');
     expect(pp.caption).toBe(payload.caption);
+    // Stills also hand over a TikTok slideshow: the same stills as one vertical video (TikTok photo posts can't carry
+    // the AI disclosure). Video formats don't.
+    if (format === 'static' || format === 'carousel') {
+      const ss = pp.tiktokSlideshow!;
+      expect(ss).toMatchObject({ kind: 'video', contentType: 'video/mp4', width: 1080, height: 1920 });
+      expect(ss.durationS).toBe(format === 'static' ? 6 : 3 * media.final.length);
+      const row = await f.db.one<{ type: string; role: string; render_meta: { ai: { generated: boolean }; source_asset_ids: string[] } }>('SELECT type, role, render_meta FROM asset WHERE id = $1', [ss.assetId]);
+      expect(row).toMatchObject({ type: 'video', role: 'slideshow' });
+      expect(row.render_meta.ai.generated).toBe(true);
+      expect(row.render_meta.source_asset_ids).toEqual(media.final.map((a) => a.id));
+      expect(await f.providers.storage.get(ss.storageKey)).not.toBeNull();
+      const sv = f.toolkit.calls.filter((c) => c.method === 'renderVideo').at(-1)!.args as { segments: number; texts: number };
+      expect(sv).toMatchObject({ segments: media.final.length, texts: 0 });
+    } else expect(pp.tiktokSlideshow).toBeUndefined();
 
     // Idempotent: a retried job changes nothing and spends nothing.
     const credits = await f.db.one<{ n: string }>(`SELECT COALESCE(sum(amount),0) AS n FROM credit_ledger WHERE ref_id = $1`, [payload.slotId]);

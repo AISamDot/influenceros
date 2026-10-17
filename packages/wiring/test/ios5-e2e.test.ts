@@ -160,9 +160,18 @@ describe('IOS-5 end to end (fakes)', () => {
       .filter((p) => /Photo dump/.test(p));
     expect(stills.length).toBeGreaterThanOrEqual(3);
     expect(stills.every((p) => p.includes(`Local moment for ${r.persona.name}`) && p.includes(grounding?.place.city ?? '?'))).toBe(true);
-    const posts = await db.query<{ platform: string; format: string; status: string; ai_flag: boolean }>(`SELECT platform, format, status, ai_flag FROM post WHERE calendar_slot_id = $1`, [dump.id]);
-    expect(posts.map((p) => [p.platform, p.format, p.ai_flag])).toEqual([['instagram', 'photo_dump', true]]);
-    expect(['scheduled', 'awaiting_approval']).toContain(posts[0]!.status);
+    const posts = await db.query<{ platform: string; format: string; status: string; ai_flag: boolean; meta: Record<string, unknown> }>(
+      `SELECT platform, format, status, ai_flag, meta FROM post WHERE calendar_slot_id = $1 ORDER BY platform`,
+      [dump.id],
+    );
+    // Instagram gets the photos; TikTok gets the same stills as a slideshow video (its photo posts can't carry the AI
+    // disclosure), AI flag on.
+    expect(posts.map((p) => [p.platform, p.format, p.ai_flag])).toEqual([
+      ['instagram', 'photo_dump', true],
+      ['tiktok', 'photo_dump', true],
+    ]);
+    expect(posts[1]!.meta).toMatchObject({ kind: 'video', slideshow: true });
+    for (const p of posts) expect(['scheduled', 'awaiting_approval']).toContain(p.status);
 
     // 7. A day of story frames, produced and published as Stories on Instagram only (TikTok has no Stories).
     const days = ['2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13'];

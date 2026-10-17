@@ -24,6 +24,11 @@ function Row({ r, personaId }: { r: SetupSheetRow; personaId: string }) {
           @{r.handle} {r.suggested ? <span className="text-[11.5px] text-muted">(suggested)</span> : null}
         </div>
         {r.availableFrom ? <div className="text-[11.5px] text-muted">Create from {r.availableFrom.toISOString().slice(0, 10)} (day 30)</div> : null}
+        {r.warning ? (
+          <p role="alert" className="rounded-lg border border-warn/40 bg-warn-soft px-2.5 py-1.5 text-[11.5px] text-warn">
+            {r.warning}
+          </p>
+        ) : null}
       </div>
       <div className="min-w-0 space-y-1 text-[12.5px]">
         <div>
@@ -110,6 +115,7 @@ export default async function Accounts({ searchParams }: { searchParams: Promise
   const sheets = await Promise.all(personas.map((p) => accountSetupSheet(db, p.id)));
   const zernio = integrationStates(defaultBackend()).find((s) => s.def.id === 'zernio');
   const unlabelled = sheets.flatMap((s) => s.rows).filter((r) => r.accountId && r.status === 'active' && !r.aiLabelOk).length;
+  const loginWarnings = sheets.flatMap((s) => s.rows).filter((r) => r.warning).length;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -134,6 +140,12 @@ export default async function Accounts({ searchParams }: { searchParams: Promise
       {unlabelled ? (
         <p className="rounded-xl border border-warn/40 bg-warn-soft px-4 py-3 text-[13px] text-warn">
           {unlabelled} active account{unlabelled === 1 ? '' : 's'} without the platform AI label: their posts wait for your approval (Gate amber) until it&apos;s on.
+        </p>
+      ) : null}
+      {loginWarnings ? (
+        <p className="rounded-xl border border-warn/40 bg-warn-soft px-4 py-3 text-[13px] text-warn">
+          {loginWarnings} Instagram account{loginWarnings === 1 ? ' is' : 's are'} connected in Zernio without Facebook Login. Reconnect {loginWarnings === 1 ? 'it' : 'them'} choosing the Facebook
+          option so Reels can use Instagram&apos;s audio catalog.
         </p>
       ) : null}
       {sheets.map((s) => (

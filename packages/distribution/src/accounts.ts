@@ -28,8 +28,8 @@ export const AI_LABEL_STEPS: Readonly<Record<Platform, string[]>> = {
   ],
   instagram: [
     'Use a Professional (Creator) account linked to the studio Business Portfolio.',
-    'Turn on the "AI info" / AI-generated label for the profile where Meta offers it; every post already carries is_ai_generated.',
-    'Connect the account in Zernio (Facebook login), then tick "AI label on" here.',
+    'Turn on the "AI info" / AI-generated label for the profile where Meta offers it; every post already carries isAiGenerated.',
+    'Connect the account in Zernio choosing the Facebook Login option (not "Instagram Login"): the Instagram audio catalog for Reels sounds needs it. Then tick "AI label on" here.',
   ],
   youtube: [
     `Create the channel from day ${YOUTUBE_FROM_DAY} (Shorts start then), phone-verify it and connect it in Zernio.`,
@@ -53,7 +53,13 @@ export interface SetupSheetRow {
   linked: boolean;
   /** YouTube waits for day 30. */
   availableFrom: Date | null;
+  /** A setup problem the vendor reported at the last sync (e.g. Instagram connected without Facebook Login). */
+  warning: string | null;
 }
+
+/** Instagram accounts must be connected in Zernio through Facebook Login (the Instagram audio API requires it). */
+export const INSTAGRAM_LOGIN_WARNING =
+  'Connected in Zernio with Instagram Login: reconnect it choosing the Facebook Login option. Reels sounds (the Instagram audio catalog) only work on Facebook Login accounts.';
 
 export interface SetupSheet {
   personaId: string;
@@ -135,8 +141,8 @@ export async function accountSetupSheet(db: Db, personaId: string, now: Date = n
   const eng = (bible?.content?.engagement_style ?? {}) as Record<string, unknown>;
   const tagline = typeof identity.tagline === 'string' ? identity.tagline : typeof identity.one_liner === 'string' ? identity.one_liner : null;
   const kw = Array.isArray(eng.comment_keywords) ? (eng.comment_keywords as Array<{ keyword?: string }>).find((k) => typeof k?.keyword === 'string')?.keyword : undefined;
-  const accounts = await db.query<{ id: string; platform: Platform; handle: string; status: string; ai_label_ok: boolean; token_ref: string | null }>(
-    `SELECT id, platform, handle, status, ai_label_ok, token_ref FROM account WHERE persona_id = $1 ORDER BY created_at`,
+  const accounts = await db.query<{ id: string; platform: Platform; handle: string; status: string; ai_label_ok: boolean; token_ref: string | null; meta: Record<string, unknown> | null }>(
+    `SELECT id, platform, handle, status, ai_label_ok, token_ref, meta FROM account WHERE persona_id = $1 ORDER BY created_at`,
     [personaId],
   );
   const link = personaSiteUrl(p.slug, SITE_PATHS.home);
@@ -157,6 +163,7 @@ export async function accountSetupSheet(db: Db, personaId: string, now: Date = n
       aiLabelOk: a?.ai_label_ok ?? false,
       linked: !!a?.token_ref && !a.token_ref.startsWith('vault:'),
       availableFrom: ytFrom && ytFrom > now ? ytFrom : null,
+      warning: platform === 'instagram' && a?.meta?.login_method === 'instagram_login' ? INSTAGRAM_LOGIN_WARNING : null,
     };
   });
   return { personaId: p.id, name: p.name, slug: p.slug, niche: p.niche, rows };
@@ -227,6 +234,8 @@ export interface SyncResult {
   linked: string[];
   labelUpdated: string[];
   unmatched: Array<{ platform: Platform; handle: string; accountRef: string }>;
+  /** Linked accounts with a setup problem (Instagram connected without Facebook Login). */
+  warnings: Array<{ accountId: string; platform: Platform; handle: string; warning: string }>;
 }
 
 /**
@@ -236,11 +245,11 @@ export interface SyncResult {
  */
 export async function syncAccounts(services: StudioServices): Promise<SyncResult> {
   const { db, providers } = services;
-  const out: SyncResult = { linked: [], labelUpdated: [], unmatched: [] };
+  const out: SyncResult = { linked: [], labelUpdated: [], unmatched: [], warnings: [] };
   const now = services.now().toISOString();
   for (const v of await providers.publish.listAccounts()) {
-    const a = await db.maybeOne<{ id: string; token_ref: string | null; status: string; ai_label_ok: boolean; persona_id: string; studio_id: string }>(
-      `SELECT a.id, a.token_ref, a.status, a.ai_label_ok, a.persona_id, p.studio_id FROM account a JOIN persona p ON p.id = a.persona_id
+    const a = await db.maybeOne<{ id: string; token_ref: string | null; status: string; ai_label_ok: boolean; persona_id: string; studio_id: string; meta: Record<string, unknown> | null }>(
+      `SELECT a.id, a.token_ref, a.status, a.ai_label_ok, a.persona_id, p.studio_id, a.meta FROM account a JOIN persona p ON p.id = a.persona_id
         WHERE a.platform = $1 AND lower(a.handle) = lower($2) AND a.status <> 'retired' LIMIT 1`,
       [v.platform, v.handle],
     );
@@ -250,11 +259,13 @@ export async function syncAccounts(services: StudioServices): Promise<SyncResult
     }
     const link = a.token_ref !== v.accountRef;
     const label = v.aiProfileLabel !== null && v.aiProfileLabel !== a.ai_label_ok;
-    if (!link && !label && a.status !== 'pending') continue;
+    if (v.loginMethod === 'instagram_login') out.warnings.push({ accountId: a.id, platform: v.platform, handle: v.handle, warning: INSTAGRAM_LOGIN_WARNING });
+    const login = v.loginMethod ?? null;
+    if (!link && !label && a.status !== 'pending' && (a.meta?.login_method ?? null) === login) continue;
     await db.query(
       `UPDATE account SET token_ref = $2, status = CASE WHEN status = 'pending' THEN 'active' ELSE status END,
               ai_label_ok = COALESCE($3, ai_label_ok), meta = meta || $4::jsonb WHERE id = $1`,
-      [a.id, v.accountRef, v.aiProfileLabel, json({ synced_at: now, vendor_handle: v.handle, ...(v.aiProfileLabel !== null ? { ai_label_source: 'vendor', ai_label_checked_at: now } : {}) })],
+      [a.id, v.accountRef, v.aiProfileLabel, json({ synced_at: now, vendor_handle: v.handle, login_method: login, ...(v.aiProfileLabel !== null ? { ai_label_source: 'vendor', ai_label_checked_at: now } : {}) })],
     );
     if (link || a.status === 'pending') out.linked.push(a.id);
     if (label) out.labelUpdated.push(a.id);

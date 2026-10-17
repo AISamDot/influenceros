@@ -273,6 +273,20 @@ describe('production identity and location lock jobs (fakes)', () => {
 });
 
 describe('FFmpeg graph for the format library (pure)', () => {
+  it('letterboxes a 4:5 slide into the 9:16 slideshow (contain + pad in the persona colour), never crops it', () => {
+    const base = { width: 1080, height: 1920, fps: 30, durationS: 6, pip: null, audio: null, texts: [], grade: NEUTRAL_GRADE, sharpen: false, loudnorm: 'none' as const, metadata: {} };
+    const graph = (seg: Record<string, unknown>) => {
+      const args = videoArgs({ ...base, segments: [{ file: 's1.jpg', kind: 'image', startS: 0, durationS: 3, ...seg }, { file: 's2.jpg', kind: 'image', startS: 3, durationS: 3 }] }, [], 'out.mp4');
+      return args[args.indexOf('-filter_complex') + 1]!;
+    };
+    const g = graph({ fit: 'contain', padColor: '#F4EFE6' });
+    expect(g).toContain('[0:v]scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=0xF4EFE6');
+    expect(g).toContain('[1:v]scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920'); // default stays cover
+    // A colour that isn't #RRGGBB never reaches the filter graph.
+    expect(graph({ fit: 'contain', padColor: 'red;drawtext' })).toContain('color=black');
+  });
+
+
   it('overlays the persona box at its place, after the main track and before the text layers; stickers are dark on white', () => {
     const box = PIP_BOX.facecam_screen;
     const args = videoArgs(

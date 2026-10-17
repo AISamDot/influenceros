@@ -64,6 +64,12 @@ export interface Segment {
   readonly offsetS?: number;
   /** Slow push-in on stills. */
   readonly motion?: 'push' | 'none';
+  /**
+   * How the source fills the frame: 'cover' (default) scales up and crops; 'contain' fits it whole and pads with
+   * `padColor` (#RRGGBB), so a 4:5 slide keeps its text inside a 9:16 video.
+   */
+  readonly fit?: 'cover' | 'contain';
+  readonly padColor?: string;
   /** What the segment is (state key), so Q4 can map a defect back to the clip that caused it. */
   readonly ref?: string;
 }

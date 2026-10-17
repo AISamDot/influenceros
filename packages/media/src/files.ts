@@ -56,7 +56,7 @@ export async function localOf(services: StudioServices, key: string): Promise<st
 export const workDir = (root: string, slotId: string) => join(root, slotId);
 
 export type AssetType = 'image' | 'video' | 'audio' | 'carousel' | 'thumbnail';
-export type AssetRole = 'final' | 'slide' | 'cover' | 'voice' | 'clip' | 'still' | 'reference' | 'look' | 'identity' | 'location';
+export type AssetRole = 'final' | 'slide' | 'cover' | 'voice' | 'clip' | 'still' | 'reference' | 'look' | 'identity' | 'location' | 'slideshow';
 
 /** Stores a local file and writes its asset row (render_meta.storage_key; AI marker on every generated file). */
 export async function storeAsset(

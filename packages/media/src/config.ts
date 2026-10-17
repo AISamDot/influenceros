@@ -10,6 +10,14 @@ import type { HiggsfieldOperation, MediaResolution } from '@ios/providers';
 /** Generation resolution for the pilot: Higgsfield renders at 720p; exports upscale with a sharpening pass. */
 export const GEN_RESOLUTION: MediaResolution = '720p';
 
+/**
+ * (Zernio conformance) TikTok slideshows: a still slot reaches TikTok as one vertical video (a TikTok photo post can't
+ * carry the AI disclosure). Each slide holds SLIDESHOW_SLIDE_S seconds, a single still SLIDESHOW_SINGLE_S with a slow
+ * push-in; stills are letterboxed (never cropped) on the persona's background colour.
+ */
+export const SLIDESHOW_SLIDE_S = 3;
+export const SLIDESHOW_SINGLE_S = 6;
+
 export const EXPORT = {
   video: { width: 1080, height: 1920, fps: 30 },
   /** Carousel slides are 4:5. */
