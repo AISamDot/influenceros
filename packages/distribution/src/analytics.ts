@@ -42,8 +42,8 @@ export async function pullMetrics(services: StudioServices, opts: { now?: Date; 
   const { db, providers } = services;
   const now = opts.now ?? services.now();
   const out: PullResult = { captured: 0, skipped: 0, accounts: 0, errors: [] };
-  const posts = await db.query<{ id: string; persona_id: string; platform: Platform; external_id: string; published_at: Date; windows: string[] | null }>(
-    `SELECT po.id, po.persona_id, po.platform, po.external_id, po.published_at,
+  const posts = await db.query<{ id: string; persona_id: string; platform: Platform; external_id: string; url: string | null; published_at: Date; windows: string[] | null }>(
+    `SELECT po.id, po.persona_id, po.platform, po.external_id, po.url, po.published_at,
             (SELECT array_agg(m."window") FROM metric_snapshot m WHERE m.post_id = po.id AND m."window" IS NOT NULL) AS windows
        FROM post po
       WHERE po.status = 'live' AND po.external_id IS NOT NULL AND po.published_at IS NOT NULL
@@ -53,6 +53,7 @@ export async function pullMetrics(services: StudioServices, opts: { now?: Date; 
   );
   const touched = new Set<string>();
   for (const p of posts) {
+    if (!p.url) await backfillUrl(services, p.id, p.external_id);
     const due = dueWindows(new Date(p.published_at), now, new Set(p.windows ?? []));
     if (!due.length) continue;
     if (opts.heartbeat && !(await opts.heartbeat())) break;
@@ -83,6 +84,19 @@ export async function pullMetrics(services: StudioServices, opts: { now?: Date; 
     out.accounts += 1;
   }
   return out;
+}
+
+/**
+ * A post can go live before the platform hands back its permalink (TikTok sometimes confirms with only a publish id;
+ * Zernio's reconcile backfills platformPostUrl later). Each pull re-reads such a post and stores the URL once it has one.
+ */
+async function backfillUrl(services: StudioServices, postId: string, externalId: string): Promise<void> {
+  try {
+    const v = await services.providers.publish.verify(externalId);
+    if (v.url) await services.db.query(`UPDATE post SET url = $2, updated_at = now() WHERE id = $1 AND url IS NULL`, [postId, v.url]);
+  } catch {
+    // Best effort: the next pull tries again.
+  }
 }
 
 const METRIC_COLS = ['views', 'watch_time_s', 'likes', 'comments', 'saves', 'shares', 'follows', 'profile_visits', 'link_clicks'] as const;

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { FakeZernio, type PublishProvider } from '@ios/providers';
 import { describe, expect, it } from 'vitest';
 import { ZERNIO_ROUTES, ZernioPublisher } from '../src';
@@ -146,31 +147,12 @@ describe('Zernio read-only catalogs and insights', () => {
       ZERNIO_ROUTES.conversations,
       ZERNIO_ROUTES.conversationMessages('c'),
     ];
-    // OpenAPI 1.290 paths (under /v1), with path params in braces.
-    const spec = [
-      '/posts',
-      '/posts/{postId}',
-      '/accounts',
-      '/accounts/health',
-      '/accounts/{accountId}/health',
-      '/profiles',
-      '/usage',
-      '/media/presign',
-      '/analytics',
-      '/analytics/best-time',
-      '/analytics/instagram/online-followers',
-      '/accounts/{accountId}/instagram/audio',
-      '/accounts/{accountId}/instagram/audio/{audioId}',
-      '/accounts/{accountId}/instagram/stories/{storyId}/insights',
-      '/accounts/{accountId}/tiktok/commercial-music',
-      '/inbox/comments/{postId}',
-      '/inbox/comments/{postId}/{commentId}/hide',
-      '/inbox/comments/{postId}/{commentId}/private-reply',
-      '/inbox/conversations',
-      '/inbox/conversations/{conversationId}/messages',
-    ];
+    expect(paths).toHaveLength(Object.keys(ZERNIO_ROUTES).length);
+    // Every route template must be a path in the spec (test/fixtures/zernio-spec.json, extracted from openapi.yaml).
+    const spec = (JSON.parse(readFileSync(new URL('./fixtures/zernio-spec.json', import.meta.url), 'utf8')) as { paths: string[] }).paths;
+    const templates = new Set(spec.map((p) => p.replace(/^\/v1/, '').replace(/\{[^}]+\}/g, '{}')));
     const asTemplate = (p: string) => p.replace(/\/(p|a|c|s|1)(?=\/|$)/g, '/{}');
-    expect(paths.map(asTemplate)).toEqual(spec.map((p) => p.replace(/\{[^}]+\}/g, '{}')));
+    for (const p of paths) expect(templates, `${p} is not a spec path`).toContain(asTemplate(p));
   });
 });
 

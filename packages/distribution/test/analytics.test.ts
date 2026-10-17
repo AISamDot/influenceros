@@ -106,6 +106,26 @@ describe('metric windows', () => {
   });
 });
 
+describe('URL backfill', () => {
+  it('stores the permalink of a post that went live without one once the vendor has it', async () => {
+    const p = await persona(ctx);
+    const acc = await account(ctx, p.id, 'tiktok');
+    const published = new Date('2026-10-10T09:00:00Z');
+    const { id } = await ctx.db.one<{ id: string }>(
+      `INSERT INTO post (persona_id, account_id, platform, format, caption, status, external_id, published_at) VALUES ($1, $2, 'tiktok', 'talking', 'x', 'live', 'e_nourl', $3) RETURNING id`,
+      [p.id, acc.id, published],
+    );
+    const pub = ctx.providers.publish;
+    let url: string | null = null;
+    pub.verify = async () => ({ status: 'live', url, aiLabel: true });
+    await pullMetrics(ctx.svc, { now: new Date(published.getTime() + 2 * H) });
+    expect((await ctx.db.one<{ url: string | null }>('SELECT url FROM post WHERE id = $1', [id])).url).toBeNull();
+    url = 'https://www.tiktok.com/@a/video/1';
+    await pullMetrics(ctx.svc, { now: new Date(published.getTime() + 25 * H) });
+    expect((await ctx.db.one<{ url: string | null }>('SELECT url FROM post WHERE id = $1', [id])).url).toBe(url);
+  });
+});
+
 describe('anomalies and circuit breakers (FR-13.4, FR-17.2)', () => {
   it('a takedown of a live post pauses the persona (kill switch + L0) and raises an S1 alert', async () => {
     const p = await persona(ctx);

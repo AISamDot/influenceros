@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { assertPublishable, carriesAiLabel } from './publish-rules';
 import { MemoryMediaStore } from './storage';
 import {
   type AccountHealth,
@@ -256,8 +257,6 @@ export class FakeZernio extends Recorder implements PublishProvider {
   readonly posts = new Map<string, FakePost>();
   /** Set to make the next N publish calls throw (for retry tests). */
   failNext = 0;
-  /** externalIds sent to the app inbox as drafts (draft_inbox): processing until `completeDraft`. */
-  readonly drafts = new Set<string>();
   /** Comments per externalId (tests push into it). Posts without an entry get two default comments. */
   readonly comments = new Map<string, PublishComment[]>();
   /** Comment ids hidden through `hideComment`. */
@@ -281,13 +280,13 @@ export class FakeZernio extends Recorder implements PublishProvider {
     return { reach, replies: h % 7, tapsForward: Math.round(reach * 0.3), tapsBack: Math.round(reach * 0.04), exits: Math.round(reach * 0.08) };
   }
 
+  /**
+   * The live adapter's own rules (publish-rules.ts, shared with buildPostBody): the AI label, AI-flag options in every
+   * spelling, no inbox drafts, no TikTok photo posts, Stories only where `storySupport` says so. Fake mode refuses
+   * exactly what the live adapter refuses, with the same PublishRefusedError.
+   */
   private guard(req: PublishRequest): void {
-    // The type already forces `true`; this catches untyped callers.
-    if (req.aiLabel !== true) throw new Error('AI label is required on every post');
-    // Mirrors AI_FLAG_FIELDS (types.ts): an explicit platform option may only ever say true.
-    const field = { tiktok: 'video_made_with_ai', instagram: 'is_ai_generated', youtube: 'containsSyntheticMedia', pinterest: 'is_ai_generated' }[req.platform];
-    const opt = req.platformOptions?.[field];
-    if (opt !== undefined && opt !== true) throw new Error(`refusing ${field}=${String(opt)}: the AI flag is always on`);
+    assertPublishable(req, { storySupported: (p) => this.storySupport[p as Platform] === true });
   }
   async schedule(req: PublishRequest) {
     this.guard(req);
@@ -300,35 +299,28 @@ export class FakeZernio extends Recorder implements PublishProvider {
   async publish(req: PublishRequest) {
     this.guard(req);
     const seen = req.idempotencyKey ? this.byKey.get(req.idempotencyKey) : undefined;
-    if (seen) return { externalId: seen, status: this.drafts.has(seen) ? ('processing' as const) : ('published' as const) };
+    if (seen) return { externalId: seen, status: 'published' as const };
     if (this.failNext > 0) {
       this.failNext -= 1;
       this.record('publish:failed', req);
       throw new Error('fake zernio: upstream 503');
     }
     const id = this.record('publish', req);
-    const draft = req.mode === 'draft_inbox';
-    this.posts.set(id, { req, status: draft ? 'scheduled' : 'live' });
-    if (draft) this.drafts.add(id);
+    this.posts.set(id, { req, status: 'live' });
     if (req.idempotencyKey) this.byKey.set(req.idempotencyKey, id);
-    return { externalId: id, status: draft ? ('processing' as const) : ('published' as const) };
-  }
-  /** Simulates the creator posting an inbox draft from the app. */
-  completeDraft(externalId: string): void {
-    const p = this.posts.get(externalId);
-    if (!p || !this.drafts.has(externalId)) throw new Error(`no draft ${externalId}`);
-    this.drafts.delete(externalId);
-    this.posts.set(externalId, { req: p.req, status: 'live' });
+    return { externalId: id, status: 'published' as const };
   }
   async verify(externalId: string) {
     this.record('verify', { externalId });
     const p = this.posts.get(externalId);
     if (!p) return { status: 'failed' as const, url: null, aiLabel: false };
-    if (p.status === 'failed') return { status: 'failed' as const, url: null, aiLabel: p.req.aiLabel };
+    // Like the live echoedAiFlag: labelled only on a post type that carries the flag through the API.
+    const aiLabel = carriesAiLabel(p.req);
+    if (p.status === 'failed') return { status: 'failed' as const, url: null, aiLabel };
     return {
       status: p.status === 'live' ? ('live' as const) : ('processing' as const),
       url: p.status === 'live' ? `https://fake.${p.req.platform}.local/p/${externalId}` : null,
-      aiLabel: p.req.aiLabel,
+      aiLabel,
     };
   }
   async listComments(externalId: string): Promise<PublishComment[]> {

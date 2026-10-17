@@ -1,5 +1,5 @@
 import type { Db } from '@ios/db';
-import type { PublishProvider } from '@ios/providers';
+import { isPublishRefused, type PublishProvider } from '@ios/providers';
 import { audit } from './audit';
 import { PublishBlockedError } from './errors';
 import { assertCanPublish } from './killswitch';
@@ -25,21 +25,23 @@ const strOf = (v: unknown): string | undefined => (typeof v === 'string' && v.tr
 
 /**
  * The IOS-4 fields of the publish request, from post.meta: vendor media URLs (uploaded before publishing) win over the
- * dashboard URLs, the cover, kind, YouTube title, draft-to-inbox mode and extra platform options. The AI flag is not
- * read from here: it is always the literal `aiLabel: true`, and the live adapter refuses any option that says otherwise.
+ * dashboard URLs, the cover, kind, YouTube title and extra platform options. The AI flag is not read from here: it is
+ * always the literal `aiLabel: true`, and the publisher refuses any option that says otherwise. No inbox-draft mode is
+ * ever forwarded (a draft can't carry the AI disclosure; migration 0021 moved the old draft_inbox posts to publish).
  */
 export function publishRequestExtras(post: Pick<PostRow, 'media' | 'thumbnail_url' | 'meta'>): {
   mediaUrls: string[];
   kind?: 'video' | 'image' | 'carousel';
   title?: string;
   coverUrl?: string;
-  mode?: 'publish' | 'draft_inbox';
+  mode?: 'publish';
   platformOptions?: Record<string, unknown>;
 } {
   const meta = post.meta ?? {};
   const vendor = Array.isArray(meta.vendor_media_urls) ? meta.vendor_media_urls.filter((u): u is string => typeof u === 'string' && !!u) : [];
   const kind = meta.kind === 'video' || meta.kind === 'image' || meta.kind === 'carousel' ? meta.kind : undefined;
-  const mode = meta.mode === 'draft_inbox' ? 'draft_inbox' : meta.mode === 'publish' ? 'publish' : undefined;
+  // Only 'publish' is ever forwarded: a stored 'draft_inbox' (pre-0021) is dropped and the post publishes directly.
+  const mode = meta.mode === 'publish' ? 'publish' : undefined;
   const opts = meta.platform_options && typeof meta.platform_options === 'object' && !Array.isArray(meta.platform_options) ? (meta.platform_options as Record<string, unknown>) : undefined;
   return {
     mediaUrls: vendor.length ? vendor : (post.media ?? []).map((m) => m.url),
@@ -57,8 +59,10 @@ export function publishRequestExtras(post: Pick<PostRow, 'media' | 'thumbnail_ur
  * post (scheduled → publishing, atomically, so a retry or a second worker can't publish it twice) → provider
  * publish with the AI label and the post id as idempotency key → record the external id → verify. If verify throws
  * or the provider is still processing, the post stays 'publishing' and recoverPublishing() finishes it.
- * IOS-4 (stream F): the request also carries the vendor account ref, vendor media URLs, cover, kind, title, mode
- * (draft-to-inbox for trending-sound posts) and platform options from post.meta (publishRequestExtras).
+ * IOS-4 (stream F): the request also carries the vendor account ref, vendor media URLs, cover, kind, title and platform
+ * options from post.meta (publishRequestExtras). A request the publisher refuses for good (PublishRefusedError, e.g. a
+ * TikTok photo post) becomes a PublishBlockedError: the post is handed back, recorded as blocked and the Owner told once,
+ * instead of being retried every minute.
  */
 export async function publishPost(
   db: Db,
@@ -122,15 +126,12 @@ export async function publishPost(
   } catch (err) {
     // Hand the post back for a retry; the idempotency key stops the provider from posting it twice.
     await db.query(`UPDATE post SET status = 'scheduled', publishing_at = NULL, updated_at = now() WHERE id = $1 AND status = 'publishing'`, [postId]);
+    // A permanent refusal can't succeed on retry: surface it as a block (recorded on the post, the Owner told once).
+    if (isPublishRefused(err)) throw new PublishBlockedError([`the publisher refused it: ${err.message}`]);
     throw err;
   }
   // Record the external id before verifying, so a verify failure (or a crash) leaves enough to recover from.
-  await db.query(
-    `UPDATE post SET external_id = $2, updated_at = now(),
-            meta = CASE WHEN meta->>'mode' = 'draft_inbox' THEN meta || jsonb_build_object('inbox_sent_at', now()) ELSE meta END
-      WHERE id = $1 AND status = 'publishing'`,
-    [postId, res.externalId],
-  );
+  await db.query(`UPDATE post SET external_id = $2, updated_at = now() WHERE id = $1 AND status = 'publishing'`, [postId, res.externalId]);
   const ctx = { studioId: post.studio_id, personaId: post.persona_id, platform: post.platform };
   let verified: Awaited<ReturnType<PublishProvider['verify']>>;
   try {
@@ -206,16 +207,14 @@ async function applyVerification(db: Db, c: PostCtx, postId: string, externalId:
 export async function recoverPublishing(
   db: Db,
   publisher: PublishProvider,
-  opts: { now?: Date; staleMs?: number; maxAttempts?: number; limit?: number; draftWaitMs?: number } = {},
+  opts: { now?: Date; staleMs?: number; maxAttempts?: number; limit?: number } = {},
 ): Promise<{ rescheduled: string[]; live: string[]; failed: string[]; pending: string[] }> {
   const now = opts.now ?? new Date();
-  const draftWaitMs = opts.draftWaitMs ?? 72 * 3_600_000;
   const staleMs = opts.staleMs ?? 5 * 60_000;
   const maxAttempts = opts.maxAttempts ?? 6;
   const out = { rescheduled: [] as string[], live: [] as string[], failed: [] as string[], pending: [] as string[] };
-  const stuck = await db.query<{ id: string; external_id: string | null; verify_attempts: number; persona_id: string; studio_id: string; platform: Platform; draft: boolean; publishing_at: Date | null }>(
-    `SELECT po.id, po.external_id, po.verify_attempts, po.persona_id, pe.studio_id, po.platform,
-            (po.meta->>'mode' = 'draft_inbox') IS TRUE AS draft, po.publishing_at
+  const stuck = await db.query<{ id: string; external_id: string | null; verify_attempts: number; persona_id: string; studio_id: string; platform: Platform }>(
+    `SELECT po.id, po.external_id, po.verify_attempts, po.persona_id, pe.studio_id, po.platform
        FROM post po JOIN persona pe ON pe.id = po.persona_id
       WHERE po.status = 'publishing' AND COALESCE(po.publishing_at, po.updated_at) < $1
       ORDER BY po.publishing_at NULLS FIRST LIMIT $2`,
@@ -242,10 +241,7 @@ export async function recoverPublishing(
       await markVerifyPending(db, p.id, err);
       outcome = 'verifying';
     }
-    // An inbox draft (trending-sound post) is finished by the creator in the app: it stays pending for up to
-    // `draftWaitMs` instead of failing after `maxAttempts` checks.
-    const draftWaiting = p.draft && now.getTime() - new Date(p.publishing_at ?? now).getTime() < draftWaitMs;
-    if (outcome === 'verifying' && !draftWaiting && p.verify_attempts + 1 >= maxAttempts) {
+    if (outcome === 'verifying' && p.verify_attempts + 1 >= maxAttempts) {
       const rows = await db.query(
         `UPDATE post SET status = 'failed', updated_at = now() WHERE id = $1 AND status = 'publishing' RETURNING id`,
         [p.id],

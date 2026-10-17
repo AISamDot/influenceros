@@ -16,6 +16,7 @@ import { fenceUntrusted, loadPersonaContext, type PersonaContext, qcPass, qcScor
 import { type Actor, actorRef, assertCanPublish, audit, type Autonomy, BudgetExceededError, DeferJob, notify, type PersonaState, type Platform, PublishBlockedError, PUBLISHING_STATES } from '@ios/core';
 import { json } from '@ios/db';
 import { EXPORT, getProfile, gradeFromKit, hfSpend, mediaDeps, mediaModels, SAFE_ZONE, type TextBox } from '@ios/media';
+import { isPublishRefused } from '@ios/providers';
 import { STORY_FRAME_COST_USD } from './catalog';
 import { defaultPlan } from './plan';
 import { planInForce } from './store';
@@ -672,6 +673,11 @@ export async function publishStoryFrame(services: StudioServices, frameId: strin
       r = await pub.publish({ accountRef: vendorRef ?? a.handle, platform: a.platform, mediaUrls: [f.media_url], caption: '', aiLabel: true, kind: 'story', idempotencyKey: `story:${f.id}:${a.platform}` });
     } catch (err) {
       const reason = err instanceof Error ? err.message.slice(0, 300) : String(err);
+      // A permanent refusal (the publisher's own rules) is held like a block, never fast-retried.
+      if (isPublishRefused(err)) {
+        await record(a.platform, 'blocked', null, reason);
+        continue;
+      }
       await record(a.platform, 'failed', null, reason);
       retryable.push(`${a.platform}: ${reason}`);
       continue;

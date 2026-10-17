@@ -4,7 +4,9 @@ import { basename } from 'node:path';
 import { inspect } from 'node:util';
 import {
   type AccountHealth,
-  AI_FLAG_FIELDS,
+  AI_FLAG_SPELLINGS,
+  assertAiFlagOptions as assertAiFlagOptionsShared,
+  assertPublishable,
   type BestTimeSlot,
   type DistributionEvent,
   type DmMessage,
@@ -15,6 +17,7 @@ import {
   type PublishAccount,
   type PublishComment,
   type PublishProvider,
+  PublishRefusedError,
   type PublishRequest,
   type StoryCapability,
   type StoryMetrics,
@@ -90,7 +93,7 @@ export const ZERNIO_AI_FIELD: Readonly<Record<ZernioPlatform, string | null>> = 
   facebook: null,
 };
 /** Every spelling of an AI flag a caller might pass (contract names, Zernio's camelCase and TikTok's snake_case). */
-const AI_KEYS = ['videoMadeWithAi', 'video_made_with_ai', 'isAiGenerated', 'is_ai_generated', 'containsSyntheticMedia', 'contains_synthetic_media'] as const;
+const AI_KEYS = AI_FLAG_SPELLINGS;
 
 /** TikTok: the API keeps the video's own sound at 0 under a commercial track; the app (and the studio) uses 50. */
 export const TIKTOK_ORIGINAL_SOUND_VOLUME = 50;
@@ -128,17 +131,11 @@ const zPlatformOf = (v: unknown): ZernioPlatform | null => (ALL_PLATFORMS.includ
 
 /** Refuses any platform option that would turn the AI flag off (every spelling, top level and in nested settings). */
 export function assertAiFlagOptions(platform: ZernioPlatform, options: Readonly<Record<string, unknown>> | undefined): void {
-  if (!options) return;
-  const contract = platform === 'facebook' ? null : AI_FLAG_FIELDS[platform];
-  const check = (o: Json, where: string) => {
-    for (const field of new Set([...(contract ? [contract] : []), ...AI_KEYS])) {
-      if (field in o && o[field] !== true) throw new Error(`zernio: refusing ${where}${field}=${String(o[field])}; every post carries the AI flag`);
-    }
-  };
-  check(rec(options), '');
-  check(rec(options.tiktokSettings), 'tiktokSettings.');
-  check(rec(options.platformSpecificData), 'platformSpecificData.');
+  assertAiFlagOptionsShared(platform, options);
 }
+
+/** Whether `platform` has Stories through the API (Facebook Page stories via contentType 'story'). */
+const zernioStorySupported = (platform: string): boolean => platform === 'facebook' || ZERNIO_STORY_SUPPORT.some((c) => c.platform === platform && c.stories);
 
 /** Platform options with every AI-flag spelling and the nested namespaces removed (the adapter writes the flag). */
 function passThrough(options: Readonly<Record<string, unknown>> | undefined): Json {
@@ -192,20 +189,10 @@ export function tiktokMusicOptions(
  * adapter may publish to (Facebook is off by default).
  */
 export function buildPostBody(req: ZernioPublishRequest, enabled: readonly ZernioPlatform[] = DEFAULT_ZERNIO_PLATFORMS): Json {
-  if (req.aiLabel !== true) throw new Error('zernio: the AI label is required on every post');
-  if (!enabled.includes(req.platform)) throw new Error(`zernio: ${req.platform} is not enabled for publishing (Facebook joins with the day-30 rollout, off by default)`);
-  assertAiFlagOptions(req.platform, req.platformOptions);
-  if (!req.mediaUrls.length) throw new Error('zernio: a post needs media');
-  if (req.mode === 'draft_inbox') {
-    // TikTok drafts drop every post_info field, videoMadeWithAi included; no other platform has inbox drafts here.
-    throw new Error(`zernio: ${req.platform} inbox drafts are never sent (a draft cannot carry the AI disclosure); publish directly`);
-  }
+  // The shared publish rules (also run by FakeZernio): AI label, AI-flag options, no drafts, no TikTok photo posts,
+  // Stories only where the API has them. Each refusal is a PublishRefusedError (permanent, never retried).
+  assertPublishable(req, { enabled, storySupported: zernioStorySupported });
   const kind = req.kind ?? 'video';
-  if (kind === 'story') {
-    const storyOk = req.platform === 'facebook' || ZERNIO_STORY_SUPPORT.some((c) => c.platform === req.platform && c.stories);
-    if (!storyOk) throw new Error(`zernio: ${req.platform} has no Stories through the API`);
-    if (req.mediaUrls.length !== 1) throw new Error('zernio: a story is exactly one frame');
-  }
   const extra = passThrough(req.platformOptions);
   const isVideo = kind === 'video';
   const mediaItems = req.mediaUrls.map((url, i) => ({
@@ -219,13 +206,13 @@ export function buildPostBody(req: ZernioPublishRequest, enabled: readonly Zerni
     mediaItems,
     metadata: { source: 'influencer-os', idempotency_key: req.idempotencyKey ?? null },
   };
-  if (req.platform !== 'tiktok' && 'musicSoundInfo' in extra) throw new Error('zernio: musicSoundInfo is TikTok-only');
-  if (req.platform !== 'instagram' && 'audioConfiguration' in extra) throw new Error('zernio: audioConfiguration is Instagram-only');
+  if (req.platform !== 'tiktok' && 'musicSoundInfo' in extra) throw new PublishRefusedError('zernio: musicSoundInfo is TikTok-only');
+  if (req.platform !== 'instagram' && 'audioConfiguration' in extra) throw new PublishRefusedError('zernio: audioConfiguration is Instagram-only');
   let psd: Json;
   switch (req.platform) {
     case 'tiktok': {
       // TikTok-for-Business photo posts reject videoMadeWithAi at creation; stills reach TikTok as a slideshow video.
-      if (!isVideo) throw new Error('zernio: a TikTok photo post cannot carry the AI disclosure; send the stills as a slideshow video');
+      if (!isVideo) throw new PublishRefusedError('zernio: a TikTok photo post cannot carry the AI disclosure; send the stills as a slideshow video');
       psd = {
         privacyLevel: 'PUBLIC_TO_EVERYONE',
         allowComment: true,
@@ -239,7 +226,7 @@ export function buildPostBody(req: ZernioPublishRequest, enabled: readonly Zerni
       };
       if (psd.musicSoundInfo !== undefined) {
         const m = rec(psd.musicSoundInfo);
-        if (!str(m.musicSoundId)) throw new Error('zernio: musicSoundInfo needs a musicSoundId');
+        if (!str(m.musicSoundId)) throw new PublishRefusedError('zernio: musicSoundInfo needs a musicSoundId');
         psd.musicSoundInfo = { musicSoundVolume: 50, ...m };
         if (psd.videoOriginalSoundVolume === undefined) psd.videoOriginalSoundVolume = TIKTOK_ORIGINAL_SOUND_VOLUME;
       } else delete psd.videoOriginalSoundVolume;
@@ -249,8 +236,8 @@ export function buildPostBody(req: ZernioPublishRequest, enabled: readonly Zerni
     }
     case 'instagram': {
       if ('audioConfiguration' in extra) {
-        if (!isVideo) throw new Error('zernio: an Instagram audio track attaches to a Reel only');
-        if (!str(rec(extra.audioConfiguration).audioId)) throw new Error('zernio: audioConfiguration needs an audioId');
+        if (!isVideo) throw new PublishRefusedError('zernio: an Instagram audio track attaches to a Reel only');
+        if (!str(rec(extra.audioConfiguration).audioId)) throw new PublishRefusedError('zernio: audioConfiguration needs an audioId');
       }
       psd = {
         ...extra,
@@ -406,7 +393,9 @@ export class ZernioPublisher implements PublishProvider {
     this.#remember(externalId, post);
     // removedFromPlatformAt: published, then deleted or taken down on the platform (status stays "published").
     if (['failed', 'error', 'rejected', 'cancelled'].includes(st) || str(entry.removedFromPlatformAt)) return { status: 'failed' as const, url: null, aiLabel };
-    if (st === 'published' && url) return { status: 'live' as const, url, aiLabel };
+    // Published is live even without a URL: TikTok sometimes confirms with only a publish id and Zernio's reconcile cron
+    // backfills platformPostUrl later (or never). The AI flag is still checked; the URL is backfilled by pullMetrics.
+    if (st === 'published') return { status: 'live' as const, url, aiLabel };
     return { status: 'processing' as const, url: null, aiLabel };
   }
 

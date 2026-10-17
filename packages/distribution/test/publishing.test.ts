@@ -237,6 +237,35 @@ describe('TikTok stills as a slideshow video (Zernio: no AI disclosure on TikTok
     expect(call.mediaUrls as string[]).toHaveLength(1);
   });
 
+  it('fake mode refuses what the live adapter refuses: a TikTok photo post or an inbox draft is blocked, told once, never live', async () => {
+    const { s } = await stillSlot('carousel', true);
+    const tt = (await posts(s.id)).find((r) => r.platform === 'tiktok')!;
+    await approveAll(s.id);
+    // A regression that sends the stills to TikTok as a carousel: refused (permanent), not retried every minute.
+    await ctx.db.query(`UPDATE post SET meta = meta || '{"kind":"carousel"}'::jsonb WHERE id = $1`, [tt.id]);
+    const r1 = await publishOne(ctx.svc, tt.id);
+    expect(r1.status).toBe('blocked');
+    expect(r1.status === 'blocked' && r1.reasons.join(' ')).toMatch(/TikTok photo post cannot carry the AI disclosure/);
+    expect(await status(ctx, 'post', tt.id)).toBe('scheduled');
+    const row = (await posts(s.id)).find((r) => r.id === tt.id)!;
+    expect(row.meta.blocked_reason).toMatch(/refused it/);
+    // Not due again until the block-retry hour has passed.
+    expect(await enqueueDuePosts(ctx.svc, new Date(ctx.clock.now.getTime() + 60_000))).not.toContain(tt.id);
+    expect((await publishOne(ctx.svc, tt.id)).status).toBe('blocked');
+    const told = await ctx.db.one<{ n: number }>(`SELECT count(*)::int AS n FROM notification WHERE title = 'A tiktok post can''t publish yet'`);
+    expect(told.n).toBe(1);
+    // Same for an option that tries to switch the flag off, or a story on a platform without Stories.
+    const pub = ctx.providers.publish;
+    const base = { accountRef: 'a', platform: 'tiktok' as const, mediaUrls: ['https://x/v.mp4'], caption: '', aiLabel: true as const };
+    await expect(pub.publish({ ...base, mode: 'draft_inbox' })).rejects.toThrow(/drafts are never sent/);
+    await expect(pub.publish({ ...base, platformOptions: { videoMadeWithAi: false } })).rejects.toThrow(/refusing videoMadeWithAi=false/);
+    await expect(pub.publish({ ...base, platformOptions: { tiktokSettings: { video_made_with_ai: 0 } } })).rejects.toThrow(/refusing/);
+    await expect(pub.publish({ ...base, kind: 'image', mediaUrls: ['https://x/1.jpg'] })).rejects.toThrow(/slideshow video/);
+    await expect(pub.publish({ ...base, platform: 'youtube', kind: 'story', mediaUrls: ['https://x/1.jpg'] })).rejects.toThrow(/no Stories/);
+    await expect(pub.schedule({ ...base, kind: 'carousel', mediaUrls: ['https://x/1.jpg', 'https://x/2.jpg'] })).rejects.toThrow(/TikTok photo post/);
+    expect(pub.callsTo('publish').filter((c) => (c.args as Record<string, unknown>).platform === 'tiktok')).toHaveLength(0);
+  });
+
   it('without a slideshow, stills skip TikTok rather than post a photo without disclosure', async () => {
     const { s } = await stillSlot('static', false);
     expect((await posts(s.id)).map((r) => r.platform)).toEqual(['instagram']);

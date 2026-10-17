@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createFakeProviders } from '@ios/providers';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { decide, OWNER, propose, PublishBlockedError, publishPost, recoverPublishing, STUDIO_MANAGER, sweepAutoApprovals } from '../src';
@@ -198,18 +199,39 @@ describe('publishPost (IOS-4 request fields)', () => {
     expect(args.mode).toBeUndefined();
   });
 
-  it('an inbox draft is kept pending past maxAttempts until draftWaitMs, then failed', async () => {
+  it('a legacy draft_inbox post publishes directly: the mode is never forwarded', async () => {
     const pub = createFakeProviders().publish;
     const id = await makePersona(ctx);
     const p = await ownerApproved(id);
     await ctx.db.query(`UPDATE post SET meta = '{"mode":"draft_inbox"}'::jsonb WHERE id = $1`, [p]);
-    expect((await publishPost(ctx.db, pub, p)).status).toBe('verifying');
+    expect((await publishPost(ctx.db, pub, p)).status).toBe('live');
+    expect((pub.callsTo('publish')[0]?.args as Record<string, unknown>).mode).toBeUndefined();
     const meta = (await ctx.db.one<{ meta: Record<string, unknown> }>('SELECT meta FROM post WHERE id = $1', [p])).meta;
-    expect(meta.inbox_sent_at).toBeTruthy();
-    const soon = new Date(Date.now() + 10 * 60_000);
-    for (let i = 0; i < 3; i++) await recoverPublishing(ctx.db, pub, { now: soon, maxAttempts: 2 });
-    expect(await status(p)).toBe('publishing');
-    const late = new Date(Date.now() + 73 * 3_600_000);
-    expect((await recoverPublishing(ctx.db, pub, { now: late, maxAttempts: 2 })).failed).toEqual([p]);
+    expect(meta.inbox_sent_at).toBeUndefined();
+  });
+
+  it('migration 0021 moves unsent draft_inbox posts to publish and leaves sent ones alone', async () => {
+    const id = await makePersona(ctx);
+    const unsent = await ownerApproved(id);
+    const sent = await ownerApproved(id);
+    await ctx.db.query(`UPDATE post SET meta = '{"mode":"draft_inbox","kind":"video"}'::jsonb WHERE id = ANY($1)`, [[unsent, sent]]);
+    await ctx.db.query(`UPDATE post SET status = 'publishing', external_id = 'zp_1' WHERE id = $1`, [sent]);
+    await ctx.db.exec(readFileSync(new URL('../../db/migrations/0021_no_inbox_drafts.sql', import.meta.url), 'utf8'));
+    const meta = async (p: string) => (await ctx.db.one<{ meta: Record<string, unknown> }>('SELECT meta FROM post WHERE id = $1', [p])).meta;
+    expect(await meta(unsent)).toEqual({ mode: 'publish', kind: 'video' });
+    expect((await meta(sent)).mode).toBe('draft_inbox');
+  });
+
+  it('a request the publisher refuses for good is a PublishBlockedError and the post goes back to scheduled', async () => {
+    const pub = createFakeProviders().publish;
+    const id = await makePersona(ctx);
+    const p = await ownerApproved(id);
+    // A TikTok photo post can't carry the AI disclosure: the fake refuses it exactly like the live adapter.
+    await ctx.db.query(`UPDATE post SET meta = '{"kind":"carousel"}'::jsonb, media = '[{"url":"a.jpg"},{"url":"b.jpg"}]'::jsonb WHERE id = $1`, [p]);
+    const err = await publishPost(ctx.db, pub, p).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PublishBlockedError);
+    expect(String((err as Error).message)).toMatch(/refused it: .*TikTok photo post/);
+    expect(await status(p)).toBe('scheduled');
+    expect(pub.callsTo('publish')).toHaveLength(0);
   });
 });

@@ -2,11 +2,19 @@ import { createHmac } from 'node:crypto';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { PublishRequest } from '@ios/providers';
+import { readFileSync } from 'node:fs';
+import { FakeZernio, isPublishRefused, type PublishRequest } from '@ios/providers';
 import { describe, expect, it } from 'vitest';
 import { buildPostBody, DEFAULT_ZERNIO_PLATFORMS, echoedAiFlag, instagramAudioOptions, liveProviders, parseZernioEvent, TIKTOK_ORIGINAL_SOUND_VOLUME, tiktokMusicOptions, ZERNIO_AI_FIELD, ZernioPublisher, type ZernioPublishRequest } from '../src';
 
 const KEY = 'zk_test_secret_value';
+/** Extracted from the Zernio OpenAPI spec by scripts/extract-zernio-spec.ts (never hand-edited). */
+const SPEC = JSON.parse(readFileSync(new URL('./fixtures/zernio-spec.json', import.meta.url), 'utf8')) as {
+  version: string;
+  schemas: Record<string, Record<string, string>>;
+  paths: string[];
+};
+const SCHEMA_OF = { tiktok: 'TikTokPlatformData', instagram: 'InstagramPlatformData', youtube: 'YouTubePlatformData', pinterest: 'PinterestPlatformData', facebook: 'FacebookPlatformData' } as const;
 const base: PublishRequest = { accountRef: 'acc_1', platform: 'tiktok', mediaUrls: ['https://cdn.zernio.test/v.mp4'], caption: 'hello #budget', aiLabel: true, idempotencyKey: 'post-1' };
 
 function fakeFetch(responses: Array<{ status?: number; body: unknown }>) {
@@ -143,12 +151,69 @@ describe('Zernio request mapping', () => {
     expect(echoedAiFlag({ platforms: [{ platform: 'facebook', platformSpecificData: { isAiGenerated: true } }] }, 'facebook')).toBe(false);
   });
 
-  it('confirms the AI field of every studio platform against its *PlatformData schema', () => {
-    expect(ZERNIO_AI_FIELD).toEqual({ tiktok: 'videoMadeWithAi', instagram: 'isAiGenerated', youtube: 'containsSyntheticMedia', pinterest: 'isAiGenerated', facebook: null });
-    for (const platform of ['tiktok', 'instagram', 'youtube', 'pinterest'] as const) {
-      const body = buildPostBody({ ...base, platform });
-      expect((body.platforms as Array<{ platformSpecificData: Record<string, unknown> }>)[0]!.platformSpecificData[ZERNIO_AI_FIELD[platform]!]).toBe(true);
+  it('confirms every platformSpecificData key the adapter writes, and the AI field, against the spec *PlatformData schemas', () => {
+    expect(SPEC.version).toMatch(/^1\.290\./);
+    const on = [...DEFAULT_ZERNIO_PLATFORMS, 'facebook'] as const;
+    const full = { coverUrl: 'https://cdn/c.jpg', title: 'T', scheduledAt: new Date('2026-11-01T10:00:00Z') };
+    const cases: ZernioPublishRequest[] = [
+      { ...base, ...full, platformOptions: tiktokMusicOptions('7123') },
+      { ...base, ...full, platform: 'instagram', platformOptions: instagramAudioOptions('123') },
+      { ...base, platform: 'instagram', kind: 'story', mediaUrls: ['https://a/f.png'] },
+      { ...base, platform: 'instagram', kind: 'carousel', mediaUrls: ['https://a/1.jpg', 'https://a/2.jpg'] },
+      { ...base, ...full, platform: 'youtube' },
+      { ...base, ...full, platform: 'pinterest', platformOptions: { boardId: 'b1' } },
+      { ...base, ...full, platform: 'facebook' },
+      { ...base, platform: 'facebook', kind: 'story', mediaUrls: ['https://a/f.png'] },
+    ];
+    for (const req of cases) {
+      const psd = (buildPostBody(req, on).platforms as Array<{ platformSpecificData: Record<string, unknown> }>)[0]!.platformSpecificData;
+      const props = SPEC.schemas[SCHEMA_OF[req.platform]]!;
+      for (const key of Object.keys(psd)) expect(props, `${req.platform}.${key} is not in ${SCHEMA_OF[req.platform]}`).toHaveProperty(key);
     }
+    for (const platform of ['tiktok', 'instagram', 'youtube', 'pinterest'] as const) {
+      const field = ZERNIO_AI_FIELD[platform]!;
+      expect(SPEC.schemas[SCHEMA_OF[platform]]![field], `${SCHEMA_OF[platform]}.${field}`).toBe('boolean');
+      const body = buildPostBody({ ...base, platform });
+      expect((body.platforms as Array<{ platformSpecificData: Record<string, unknown> }>)[0]!.platformSpecificData[field]).toBe(true);
+    }
+    // FacebookPlatformData has no AI field in any spelling: the adapter maps none.
+    expect(ZERNIO_AI_FIELD.facebook).toBeNull();
+    for (const k of ['isAiGenerated', 'videoMadeWithAi', 'containsSyntheticMedia']) expect(SPEC.schemas.FacebookPlatformData).not.toHaveProperty(k);
+  });
+
+  it('refuses the same requests in fake mode as the live adapter (shared rules, permanent PublishRefusedError)', async () => {
+    const bad: PublishRequest[] = [
+      { ...base, aiLabel: false } as never,
+      { ...base, mode: 'draft_inbox' },
+      { ...base, platform: 'instagram', mode: 'draft_inbox' },
+      { ...base, kind: 'carousel', mediaUrls: ['https://a/1.jpg', 'https://a/2.jpg'] },
+      { ...base, kind: 'image', mediaUrls: ['https://a/1.jpg'] },
+      { ...base, kind: 'story', mediaUrls: ['https://a/1.jpg'] },
+      { ...base, platform: 'youtube', kind: 'story', mediaUrls: ['https://a/1.jpg'] },
+      { ...base, platform: 'instagram', kind: 'story', mediaUrls: ['https://a/1.jpg', 'https://a/2.jpg'] },
+      { ...base, mediaUrls: [] },
+      { ...base, platformOptions: { videoMadeWithAi: false } },
+      { ...base, platformOptions: { platformSpecificData: { videoMadeWithAi: 'no' } } },
+      { ...base, platform: 'instagram', platformOptions: { tiktokSettings: { is_ai_generated: false } } },
+      { ...base, platform: 'pinterest', platformOptions: { isAiGenerated: null } },
+    ];
+    for (const req of bad) {
+      let live: unknown;
+      try {
+        buildPostBody(req);
+      } catch (e) {
+        live = e;
+      }
+      expect(isPublishRefused(live), JSON.stringify(req)).toBe(true);
+      const fake = await new FakeZernio().publish(req).catch((e: unknown) => e);
+      expect(isPublishRefused(fake), JSON.stringify(req)).toBe(true);
+      expect((fake as Error).message).toBe((live as Error).message);
+    }
+    // And the fake's verify only reports the label where the post type carries it.
+    const f = new FakeZernio();
+    const ok = await f.publish({ ...base, platform: 'instagram', kind: 'carousel', mediaUrls: ['https://a/1.jpg', 'https://a/2.jpg'] });
+    expect((await f.verify(ok.externalId)).aiLabel).toBe(true);
+    expect((await f.verify((await f.publish(base)).externalId)).aiLabel).toBe(true);
   });
 
   it('publishes with the idempotency key, keeps the key out of URLs and bodies, and maps verify from the spec shapes', async () => {
@@ -199,6 +264,18 @@ describe('Zernio request mapping', () => {
     expect(await z.publish({ ...base, platform: 'instagram' })).toEqual({ externalId: 'zp_f', status: 'processing' });
     expect(await z.verify('zp_f')).toEqual({ status: 'failed', url: null, aiLabel: true });
     expect((await z.verify('zp_r')).status).toBe('failed');
+  });
+
+  it('a published TikTok post without a platformPostUrl is live (URL backfilled later); the AI flag still decides', async () => {
+    const tiktok = (psd: Record<string, unknown>) => ({
+      body: { post: { _id: 'zp_t', mediaItems: [{ type: 'video' }], platforms: [{ platform: 'tiktok', status: 'published', platformPostUrl: null, platformPostId: 'pub_1', accountId: 'acc_1', platformSpecificData: psd }] } },
+    });
+    const { fn } = fakeFetch([tiktok({ videoMadeWithAi: true }), tiktok({}), { body: { post: { platforms: [{ platform: 'tiktok', status: 'processing', platformPostUrl: null }] } } }]);
+    const z = new ZernioPublisher({ apiKey: KEY, fetch: fn });
+    expect(await z.verify('zp_t')).toEqual({ status: 'live', url: null, aiLabel: true });
+    // Live but unlabelled: core marks it failed (never recorded as labelled).
+    expect(await z.verify('zp_t')).toEqual({ status: 'live', url: null, aiLabel: false });
+    expect(await z.verify('zp_t')).toEqual({ status: 'processing', url: null, aiLabel: false });
   });
 
   it('reports a post the vendor echoes without the AI flag as unlabelled, and TikTok drafts or photo posts as unlabelled', async () => {
