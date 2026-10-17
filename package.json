@@ -29,7 +29,8 @@
     "radar": "tsx packages/radar/src/cli.ts",
     "world": "tsx packages/world/src/cli.ts",
     "production": "tsx packages/production/src/cli.ts",
-    "formats": "tsx packages/formats/src/cli.ts"
+    "formats": "tsx packages/formats/src/cli.ts",
+    "ios:keys": "tsx scripts/secret-popup.ts"
   },
   "devDependencies": {
     "@types/node": "22.20.5",
