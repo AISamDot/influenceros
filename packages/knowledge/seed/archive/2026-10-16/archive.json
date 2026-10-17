@@ -9,6 +9,6 @@
     "rosa": "Rosa Bellini",
     "sal": "Walt Novak (folder slug sal)"
   },
-  "contents": "Each folder keeps bible.md, look-prompts.md, content-plan.md, field-brain-seed.md and products/ (manuscripts, listing packs, welcome sequences; build files where they existed), copied from Ventures/Influencer-OS/_archive/personas-2026-10-16. manifest.json pins niche, timezone and hue.",
+  "contents": "Each folder keeps bible.md, look-prompts.md, content-plan.md, field-brain-seed.md and products/ (manuscripts, listing packs, welcome sequences; build files where they existed), copied from Ventures/Troupe-House/_archive/personas-2026-10-16. manifest.json pins niche, timezone and hue.",
   "restore": "pnpm knowledge personas restore <slug|all> [--from 2026-10-16], or the Restore button on /archive. A restored persona is imported as PROPOSED and waits for the Owner's launch approval in the Persona Generator's review step."
 }

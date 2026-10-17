@@ -17,7 +17,7 @@ export async function WorldPersonaPanel({ db, personaId, slug: _slug }: { db: Db
       return (
         <section id="world" className="card p-4 text-[13px]" aria-label="World">
           <div className="eyebrow">World Bible · storyline</div>
-          <p className="mt-1 text-muted">No World Bible yet (launched before IOS-5 or restored). Draft one so scripts are grounded and the storyline runs.</p>
+          <p className="mt-1 text-muted">No World Bible yet (launched before TH-5 or restored). Draft one so scripts are grounded and the storyline runs.</p>
           <form action={backfillWorldAction} className="mt-2">
             <input type="hidden" name="persona_id" value={personaId} />
             <SubmitButton className="btn btn-sm btn-ink">Draft the World Bible</SubmitButton>

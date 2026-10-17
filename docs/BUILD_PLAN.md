@@ -1,6 +1,6 @@
 # Troupe House: Build Plan
 
-**Product spec:** `/Users/hossamhamdy/Desktop/Family/Hossam/Ventures/Influencer-OS/PRD.md`. It is the source of truth. Read the sections a task needs, not the whole file.
+**Product spec:** `/Users/hossamhamdy/Desktop/Family/Hossam/Ventures/Troupe-House/PRD.md`. It is the source of truth. Read the sections a task needs, not the whole file.
 **Started:** 14 Oct 2026. **Target:** a 5-persona pilot live around 1 Nov 2026, once Hossam's accounts exist.
 **Mode:** Multi-agent build with independent audit and tests (owner, 14 Oct)
 

@@ -113,7 +113,7 @@ export function Profile({ content, version, approvedAt, approvedBy }: { content:
             {approverLabel(approvedBy)} {new Date(approvedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
           </span>
         ) : null}
-        <span>· Edit by chatting with the persona manager (IOS-2)</span>
+        <span>· Edit by chatting with the persona manager (TH-2)</span>
       </div>
       {groups.map((g) => (
         <section key={g}>

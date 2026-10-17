@@ -288,7 +288,7 @@ export default async function PersonaPage({ params, searchParams }: Props) {
               {/* Plan */}
               <section className="card p-5">
                 <h2 className="font-[family-name:var(--font-display)] text-[26px] leading-none">6–12 month plan</h2>
-                <p className="mt-1 text-[12px] text-muted">Draft stub. The Persona Manager owns and updates it from IOS-2.</p>
+                <p className="mt-1 text-[12px] text-muted">Draft stub. The Persona Manager owns and updates it from TH-2.</p>
                 <ol className="mt-4 space-y-3 border-l border-line pl-4">
                   {((plan?.content.milestones as Array<{ month: string; goal: string }> | undefined) ?? []).map((m) => (
                     <li key={m.month} className="relative">

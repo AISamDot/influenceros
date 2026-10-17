@@ -2,7 +2,7 @@
 
 Four builders work in parallel on IOS-3 (media) and IOS-4 (distribution and money). This file is what they share: who owns which files, which migration filenames are reserved, the interfaces each stream exports or consumes, how shared files are edited, and the tests that must stay green. Follow it and the four branches merge into `dev` without conflicts.
 
-- **Product spec:** `/Users/hossamhamdy/Desktop/Family/Hossam/Ventures/Influencer-OS/PRD.md`: §3.6 (QC), §3.8 (dashboard), FR-5 to FR-13, FR-20 to FR-22, §7 (integrations), §8 (architecture) and §8.6 (secrets). Where the PRD and the owner rules in §1 disagree, §1 wins. For example, talking reels use Higgsfield Seedance, not HeyGen.
+- **Product spec:** `/Users/hossamhamdy/Desktop/Family/Hossam/Ventures/Troupe-House/PRD.md`: §3.6 (QC), §3.8 (dashboard), FR-5 to FR-13, FR-20 to FR-22, §7 (integrations), §8 (architecture) and §8.6 (secrets). Where the PRD and the owner rules in §1 disagree, §1 wins. For example, talking reels use Higgsfield Seedance, not HeyGen.
 - **Base:** branch from the `dev` commit that added this file (`git log -1 --format=%h -- docs/IOS-34-CONTRACTS.md`).
 - **Contract stubs in that commit:**
   - empty packages `@troupe/media` (E), `@troupe/distribution` (F), `@troupe/commerce` (G) and `@troupe/products` (H), already composed by `@troupe/wiring` and listed in `apps/web`;

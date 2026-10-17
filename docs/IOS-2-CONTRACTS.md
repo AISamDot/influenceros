@@ -2,7 +2,7 @@
 
 Four builders work in parallel on IOS-2. This file is what they share: who owns which files, which migration filenames are reserved, the interfaces each stream exports or consumes, how shared files are edited, and the tests that must stay green. If you follow it, the four branches merge into `dev` without conflicts.
 
-- **Product spec:** `/Users/hossamhamdy/Desktop/Family/Hossam/Ventures/Influencer-OS/PRD.md` (§3.1–3.11, §4, FR-4, FR-20, FR-21, FR-23, FR-24, §8.4–8.6).
+- **Product spec:** `/Users/hossamhamdy/Desktop/Family/Hossam/Ventures/Troupe-House/PRD.md` (§3.1–3.11, §4, FR-4, FR-20, FR-21, FR-23, FR-24, §8.4–8.6).
 - **Base:** branch from the `dev` commit that added this file (`git log -1 --format=%h -- docs/IOS-2-CONTRACTS.md`).
 - **Contract stubs in that commit:** `packages/agents/src/contracts.ts`, the new provider interfaces and fakes, and empty packages `agents`, `auth`, `content`, `knowledge`, `profit`, `wiring` plus `apps/worker`. All are wired into the web app, scripts and Vitest already. `pnpm test` and `pnpm build` pass on it.
 

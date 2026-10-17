@@ -143,7 +143,7 @@ export const SEED_PERSONAS: SeedPersona[] = [
         humour: 'Gentle self-aware jokes about naming funds',
       },
       look: {
-        soul_id: 'soul_vivian_v1 (placeholder until IOS-3)',
+        soul_id: 'soul_vivian_v1 (placeholder until TH-3)',
         look_pack_rules: 'Same face and hair in every look; knitwear and linen; no logos',
         outfits: ['Sage cardigan', 'Cream linen shirt', 'Denim jacket (market)'],
         settings: ['Home office', 'Corner café', 'Sunday market', 'Bookshelf nook'],
@@ -303,7 +303,7 @@ export const SEED_PERSONAS: SeedPersona[] = [
         humour: 'Deadpan meeting ratings',
       },
       look: {
-        soul_id: 'soul_amos_v2 (placeholder until IOS-3)',
+        soul_id: 'soul_amos_v2 (placeholder until TH-3)',
         look_pack_rules: 'Neutral knitwear, rolled sleeves, oak and linen; no brand logos',
         outfits: ['Charcoal knit', 'White tee + overshirt', 'Running layer (morning run)'],
         settings: ['Studio desk', 'Morning run', 'Library', 'Kitchen table'],
@@ -454,7 +454,7 @@ export const SEED_PERSONAS: SeedPersona[] = [
         humour: 'Soft self-deprecation about her generated garden',
       },
       look: {
-        soul_id: 'soul_sienna_v1 (placeholder until IOS-3)',
+        soul_id: 'soul_sienna_v1 (placeholder until TH-3)',
         look_pack_rules: 'Linen and knits, modest cuts, natural make-up, no logos',
         outfits: ['Oat linen set', 'Rose cardigan', 'Long knit dress'],
         settings: ['Sunlit bedroom', 'Balcony tea', 'Evening lamp', 'Garden path'],
@@ -592,7 +592,7 @@ export const SEED_PERSONAS: SeedPersona[] = [
         humour: 'Label-maker jokes',
       },
       look: {
-        soul_id: 'soul_layla_v1 (placeholder until IOS-3)',
+        soul_id: 'soul_layla_v1 (placeholder until TH-3)',
         look_pack_rules: 'Modest, warm-toned outfits; headscarf in some looks; no logos',
         outfits: ['Plum cardigan + scarf', 'Cream blouse', 'Apron (kitchen)'],
         settings: ['Family kitchen', 'Planning table', 'Pantry shelves', 'Living room'],
@@ -731,7 +731,7 @@ export const SEED_PERSONAS: SeedPersona[] = [
         humour: 'Index-card puns',
       },
       look: {
-        soul_id: 'soul_theo_v1 (placeholder until IOS-3)',
+        soul_id: 'soul_theo_v1 (placeholder until TH-3)',
         look_pack_rules: 'Hoodies and flannel, no university logos',
         outfits: ['Navy hoodie', 'Flannel shirt'],
         settings: ['Campus library', 'Dorm desk', 'Coffee shop', 'Lecture hall'],

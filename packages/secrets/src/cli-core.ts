@@ -20,7 +20,7 @@ export interface CliIo {
 const USAGE = `Usage:
   troupe secrets status
   troupe secrets set <name>          (value is read with hidden input, never from argv)
-  troupe secrets unset <name>
+  troupe secrets unset <name>        (removes it from ai.troupe-house only; ai.influencer-os is never touched)
   troupe secrets import-brandos [--yes] [--overwrite] [name…]
   troupe secrets migrate-service     (copies ai.influencer-os items into ai.troupe-house; never overwrites)
 Names: ${Object.keys(SECRETS).join(', ')}`;
@@ -32,6 +32,15 @@ function nameArg(arg: string | undefined, io: CliIo): SecretName | null {
     return null;
   }
   return arg;
+}
+
+function hasValue(b: SecretBackend, name: SecretName): boolean {
+  try {
+    const v = b.get(name);
+    return v !== null && v !== '';
+  } catch {
+    return false;
+  }
 }
 
 /** `troupe secrets …`. Output carries names and statuses only, never a value. Returns the exit code. */
@@ -70,7 +79,10 @@ export async function runSecretsCli(args: readonly string[], io: CliIo): Promise
     case 'unset': {
       const name = nameArg(rest[0], io);
       if (!name) return 2;
-      io.out(reading.delete(name) ? `Removed ${name}.` : `${name} was not set.`);
+      io.out(io.backend.delete(name) ? `Removed ${name} from ai.troupe-house.` : `${name} was not set in ai.troupe-house.`);
+      if (io.legacyBackend && hasValue(io.legacyBackend, name)) {
+        io.out(`${name} is still in the old ai.influencer-os service and is read as a fallback; it was left in place.`);
+      }
       return 0;
     }
     case 'migrate-service': {

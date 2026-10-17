@@ -10,7 +10,7 @@ Four builders work in parallel on IOS-5: the Growth Radar (I), the persona's wor
 
 Follow it and the four branches merge into `dev` without conflicts.
 
-- **Product spec:** `/Users/hossamhamdy/Desktop/Family/Hossam/Ventures/Influencer-OS/PRD.md`. The sections you need:
+- **Product spec:** `/Users/hossamhamdy/Desktop/Family/Hossam/Ventures/Troupe-House/PRD.md`. The sections you need:
   - §3.12 (Persona Generator) and §3.13 (Pinterest inspiration boards);
   - §3.14 (grounded universe, storyline, continuity, no-repeat) and §3.15 (production playbook, Winner Finder, Growth Radar);
   - FR-4.3 to FR-4.3d (cadence, Format Plan, Stories) and FR-24 (Profit Engine levers);

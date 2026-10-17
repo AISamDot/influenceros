@@ -71,7 +71,7 @@ describe('secrets', () => {
     expect(LEGACY_KEYCHAIN_SERVICE).toBe('ai.influencer-os');
   });
 
-  it('FallbackBackend reads the new service first, then the legacy one; writes only the new one; unset clears both', () => {
+  it('FallbackBackend reads the new service first, then the legacy one; writes and deletes only the new one', () => {
     const current = new MemoryKeyring({ 'anthropic.api_key': 'new-FAKE' });
     const legacy = new MemoryKeyring({ 'anthropic.api_key': 'old-FAKE', 'zernio.api_key': 'zernio-old-FAKE' });
     const kc = new FallbackBackend(current, legacy);
@@ -84,9 +84,13 @@ describe('secrets', () => {
     // readSecret / integration status see legacy-only items.
     expect(readSecret('zernio.api_key', kc, {})?.reveal()).toBe('zernio-old-FAKE');
     expect(integrationStates(kc, {}).find((s) => s.def.id === 'zernio')?.status).toBe('connected');
-    expect(kc.delete('zernio.api_key')).toBe(true);
-    expect(kc.get('zernio.api_key')).toBeNull();
+    // delete never touches the legacy service (main and the Desktop checkout still read it).
     expect(kc.delete('zernio.api_key')).toBe(false);
+    expect(legacy.get('zernio.api_key')).toBe('zernio-old-FAKE');
+    expect(kc.delete('anthropic.api_key')).toBe(true);
+    expect(current.get('anthropic.api_key')).toBeNull();
+    expect(legacy.get('anthropic.api_key')).toBe('old-FAKE');
+    expect(kc.get('anthropic.api_key')).toBe('old-FAKE');
     expect(JSON.stringify({ kc })).not.toContain('FAKE');
     expect(inspect(kc)).not.toContain('FAKE');
   });
@@ -144,6 +148,22 @@ describe('secrets', () => {
     expect(t.backend.get('zernio.api_key')).toBe('zernio-FAKE');
     expect(legacy.get('zernio.api_key')).toBe('zernio-FAKE');
     expect(await runSecretsCli(['migrate-service'], io())).toBe(1);
+  });
+
+  it('CLI unset removes the new item only, leaves the legacy one and says so without values', async () => {
+    const legacy = new MemoryKeyring({ 'zernio.api_key': 'zernio-old-FAKE' });
+    const t = io({ legacyBackend: legacy });
+    t.backend.set('zernio.api_key', 'zernio-new-FAKE');
+    expect(await runSecretsCli(['unset', 'zernio.api_key'], t)).toBe(0);
+    expect(t.backend.get('zernio.api_key')).toBeNull();
+    expect(legacy.get('zernio.api_key')).toBe('zernio-old-FAKE');
+    expect(await runSecretsCli(['unset', 'zernio.api_key'], t)).toBe(0);
+    expect(legacy.get('zernio.api_key')).toBe('zernio-old-FAKE');
+    const out = t.lines.join('\n');
+    expect(out).toMatch(/Removed zernio\.api_key from ai\.troupe-house\./);
+    expect(out).toMatch(/zernio\.api_key was not set in ai\.troupe-house\./);
+    expect(out).toMatch(/still in the old ai\.influencer-os service/);
+    expect(out).not.toContain('FAKE');
   });
 
   it('Secret values refuse to print', () => {

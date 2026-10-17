@@ -42,7 +42,7 @@ async function main() {
           `${pad(s.at.slice(0, 16).replace('T', ' '), 17)} ${pad(s.format, 13)} ${pad(s.purpose, 7)} ${pad(s.ctaKeyword ?? '', 7)} ${pad(s.q1Pass === null ? '' : `${s.q1Pass ? 'pass' : 'FAIL'}${s.fixLoops ? ` +${s.fixLoops}` : ''}`, 9)} ${pad(s.verdict ?? '', 6)} ${pad(s.status, 13)} ${s.hook ?? s.title} (${s.hookScore ?? '-'})`,
         );
       }
-      console.log(`\nmedia.render jobs queued: ${r.mediaJobs.length} (IOS-3 handles them)`);
+      console.log(`\nmedia.render jobs queued: ${r.mediaJobs.length} (TH-3 handles them)`);
       const v = r.mediaJobs.find((j) => j.voiceover);
       if (v) console.log(`example voiceover (TTS-safe): ${v.voiceover}`);
       console.log(`\nMonetization: ${r.monetization.signals} signals, ${r.monetization.opportunities} opportunities, ${r.monetization.briefed.length} briefs, ${r.monetization.listings.length} listing packs, ${r.monetization.launches.length} launch plans`);

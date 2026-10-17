@@ -16,7 +16,7 @@ export default async function Niches() {
   );
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <StubHeader title="Niches" milestone="IOS-2" lead="The Studio Manager's scored niche candidates (demand, buyer intent, competition, product fit, seasonality, policy risk) and each niche's Field Brain." />
+      <StubHeader title="Niches" milestone="TH-2" lead="The Studio Manager's scored niche candidates (demand, buyer intent, competition, product fit, seasonality, policy risk) and each niche's Field Brain." />
       <div className="grid gap-3 md:grid-cols-2">
         {rows.map((r) => (
           <article key={r.niche} className="card p-4">
@@ -30,7 +30,7 @@ export default async function Niches() {
           </article>
         ))}
       </div>
-      <Empty>Candidate niches appear here once the Niche Analyst runs (IOS-2).</Empty>
+      <Empty>Candidate niches appear here once the Niche Analyst runs (TH-2).</Empty>
     </div>
   );
 }

@@ -104,7 +104,7 @@ const worldUpdate: ToolDef<{ persona_id: string; patch: Record<string, unknown>;
 
 const worldBackfill: ToolDef<{ persona_id: string }, unknown> = {
   name: 'world.backfill',
-  description: 'Drafts and adopts a World Bible and storyline for a persona that has none (launched before IOS-5 or restored from the archive).',
+  description: 'Drafts and adopts a World Bible and storyline for a persona that has none (launched before TH-5 or restored from the archive).',
   scope: 'persona',
   callers: [...MANAGERS, 'system'],
   mutates: true,

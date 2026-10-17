@@ -8,7 +8,7 @@ import { inspect } from 'node:util';
 export const KEYCHAIN_SERVICE = 'ai.troupe-house';
 /**
  * The pre-rename (Influencer OS) Keychain service. Reads fall back to it, and `pnpm troupe secrets migrate-service`
- * copies its items into KEYCHAIN_SERVICE. Never written to.
+ * copies its items into KEYCHAIN_SERVICE. Never written to or deleted from (`unset` removes the new item only).
  */
 export const LEGACY_KEYCHAIN_SERVICE = 'ai.influencer-os';
 export const BRANDOS_KEYCHAIN_SERVICE = 'ai.brandos';
@@ -95,10 +95,9 @@ export class FallbackBackend implements SecretBackend {
   set(name: string, value: string): void {
     this.primary.set(name, value);
   }
+  /** Deletes from the new service only. The legacy item stays (other checkouts may still read it). */
   delete(name: string): boolean {
-    const a = this.primary.delete(name);
-    const b = this.legacy.delete(name);
-    return a || b;
+    return this.primary.delete(name);
   }
   toJSON(): string {
     return '[FallbackBackend]';

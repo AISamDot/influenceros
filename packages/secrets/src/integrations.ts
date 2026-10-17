@@ -18,38 +18,38 @@ export interface IntegrationDef {
 }
 
 export const INTEGRATIONS: readonly IntegrationDef[] = [
-  { id: 'anthropic', name: 'Anthropic', purpose: 'Claude Agent SDK: Studio Manager, persona managers, workers', secrets: ['anthropic.api_key'], liveAdapter: true, milestone: 'IOS-2', kind: 'provider' },
+  { id: 'anthropic', name: 'Anthropic', purpose: 'Claude Agent SDK: Studio Manager, persona managers, workers', secrets: ['anthropic.api_key'], liveAdapter: true, milestone: 'TH-2', kind: 'provider' },
   // IOS-3/4: each stream edits only its own integrations' entries (e.g. liveAdapter: true once its adapter lands).
   // >>> stream E integrations
-  { id: 'higgsfield', name: 'Higgsfield', purpose: 'Soul ID, stills, activity clips, Seedance talking, cost probe', secrets: ['higgsfield.api_key', 'higgsfield.api_secret'], liveAdapter: true, milestone: 'IOS-3', kind: 'provider' },
-  { id: 'fal', name: 'fal.ai', purpose: 'Kling AI Avatar talking reels (pluggable with Seedance)', secrets: ['fal.api_key'], liveAdapter: true, milestone: 'IOS-3', kind: 'provider' },
-  { id: 'elevenlabs', name: 'ElevenLabs', purpose: 'Synthetic voices (Voice Design), TTS and Speech-to-Text for QC Q2', secrets: ['elevenlabs.api_key'], liveAdapter: true, milestone: 'IOS-3', kind: 'provider' },
+  { id: 'higgsfield', name: 'Higgsfield', purpose: 'Soul ID, stills, activity clips, Seedance talking, cost probe', secrets: ['higgsfield.api_key', 'higgsfield.api_secret'], liveAdapter: true, milestone: 'TH-3', kind: 'provider' },
+  { id: 'fal', name: 'fal.ai', purpose: 'Kling AI Avatar talking reels (pluggable with Seedance)', secrets: ['fal.api_key'], liveAdapter: true, milestone: 'TH-3', kind: 'provider' },
+  { id: 'elevenlabs', name: 'ElevenLabs', purpose: 'Synthetic voices (Voice Design), TTS and Speech-to-Text for QC Q2', secrets: ['elevenlabs.api_key'], liveAdapter: true, milestone: 'TH-3', kind: 'provider' },
   // <<< stream E integrations
   // >>> stream F integrations
-  { id: 'zernio', name: 'Zernio', purpose: 'Scheduling and publishing with AI labels, comments, DMs, analytics', secrets: ['zernio.api_key'], liveAdapter: true, milestone: 'IOS-4', kind: 'provider' },
+  { id: 'zernio', name: 'Zernio', purpose: 'Scheduling and publishing with AI labels, comments, DMs, analytics', secrets: ['zernio.api_key'], liveAdapter: true, milestone: 'TH-4', kind: 'provider' },
   // <<< stream F integrations
   // >>> stream G integrations
-  { id: 'lemonsqueezy', name: 'Lemon Squeezy', purpose: 'Stores, products (read-only), checkouts, discount codes, order and subscription webhooks', secrets: ['lemonsqueezy.api_key', 'lemonsqueezy.webhook_secret'], liveAdapter: true, milestone: 'IOS-4', kind: 'provider' },
+  { id: 'lemonsqueezy', name: 'Lemon Squeezy', purpose: 'Stores, products (read-only), checkouts, discount codes, order and subscription webhooks', secrets: ['lemonsqueezy.api_key', 'lemonsqueezy.webhook_secret'], liveAdapter: true, milestone: 'TH-4', kind: 'provider' },
   // <<< stream G integrations
   // IOS-5 (docs/IOS-5-CONTRACTS.md): each stream edits only its own entries.
   // >>> stream I integrations
-  { id: 'apify', name: 'Apify', purpose: 'Growth Radar and Winner Finder scrapers (public data, low volume, weekly cap)', secrets: ['apify.token'], liveAdapter: true, milestone: 'IOS-5', kind: 'provider' },
+  { id: 'apify', name: 'Apify', purpose: 'Growth Radar and Winner Finder scrapers (public data, low volume, weekly cap)', secrets: ['apify.token'], liveAdapter: true, milestone: 'TH-5', kind: 'provider' },
   // <<< stream I integrations
   // >>> stream J integrations
-  { id: 'open-meteo', name: 'Open-Meteo', purpose: 'Local weather and sun times for real-time grounding (no key needed; live unless TROUPE_FAKE_PROVIDERS)', secrets: [], liveAdapter: true, milestone: 'IOS-5', kind: 'provider' },
-  { id: 'pinterest', name: 'Pinterest', purpose: 'Boards and pins for products and carousels; inspiration search (mood only)', secrets: ['pinterest.access_token'], liveAdapter: true, milestone: 'IOS-5', kind: 'provider' },
+  { id: 'open-meteo', name: 'Open-Meteo', purpose: 'Local weather and sun times for real-time grounding (no key needed; live unless TROUPE_FAKE_PROVIDERS)', secrets: [], liveAdapter: true, milestone: 'TH-5', kind: 'provider' },
+  { id: 'pinterest', name: 'Pinterest', purpose: 'Boards and pins for products and carousels; inspiration search (mood only)', secrets: ['pinterest.access_token'], liveAdapter: true, milestone: 'TH-5', kind: 'provider' },
   // <<< stream J integrations
   // >>> stream K integrations
   // <<< stream K integrations
   // >>> stream L integrations
   // <<< stream L integrations
-  { id: 'resend', name: 'Resend', purpose: 'Owner sign-in links (IOS-2); email lists, sequences and the daily digest', secrets: ['resend.api_key'], liveAdapter: true, milestone: 'IOS-2', kind: 'provider' },
-  { id: 'google-sheets', name: 'Google Sheets', purpose: 'Product Builder spreadsheet templates', secrets: ['google.sheets_token'], liveAdapter: true, milestone: 'IOS-4', kind: 'provider' },
-  { id: 'notion', name: 'Notion', purpose: 'Product Builder Notion templates', secrets: ['notion.api_key', 'notion.template_parent_id'], liveAdapter: true, milestone: 'IOS-4', kind: 'provider' },
-  { id: 'pixabay', name: 'Pixabay', purpose: 'Royalty-free B-roll and music', secrets: ['pixabay.api_key'], liveAdapter: false, milestone: 'IOS-3', kind: 'provider' },
+  { id: 'resend', name: 'Resend', purpose: 'Owner sign-in links (TH-2); email lists, sequences and the daily digest', secrets: ['resend.api_key'], liveAdapter: true, milestone: 'TH-2', kind: 'provider' },
+  { id: 'google-sheets', name: 'Google Sheets', purpose: 'Product Builder spreadsheet templates', secrets: ['google.sheets_token'], liveAdapter: true, milestone: 'TH-4', kind: 'provider' },
+  { id: 'notion', name: 'Notion', purpose: 'Product Builder Notion templates', secrets: ['notion.api_key', 'notion.template_parent_id'], liveAdapter: true, milestone: 'TH-4', kind: 'provider' },
+  { id: 'pixabay', name: 'Pixabay', purpose: 'Royalty-free B-roll and music', secrets: ['pixabay.api_key'], liveAdapter: false, milestone: 'TH-3', kind: 'provider' },
   { id: 'discord', name: 'Discord', purpose: 'Membership community access', secrets: ['discord.bot_token'], liveAdapter: false, milestone: 'Phase 1', kind: 'provider' },
-  { id: 'vercel', name: 'Vercel', purpose: 'Dashboard, API and cron hosting', secrets: ['vercel.token'], liveAdapter: false, milestone: 'IOS-5', kind: 'infra' },
-  { id: 'supabase', name: 'Supabase', purpose: 'Postgres (DATABASE_URL), storage and vault', secrets: ['supabase.database_url', 'supabase.service_role_key'], liveAdapter: false, milestone: 'IOS-5', kind: 'infra' },
+  { id: 'vercel', name: 'Vercel', purpose: 'Dashboard, API and cron hosting', secrets: ['vercel.token'], liveAdapter: false, milestone: 'TH-5', kind: 'infra' },
+  { id: 'supabase', name: 'Supabase', purpose: 'Postgres (DATABASE_URL), storage and vault', secrets: ['supabase.database_url', 'supabase.service_role_key'], liveAdapter: false, milestone: 'TH-5', kind: 'infra' },
 ];
 
 export type IntegrationStatus = 'connected' | 'pending_key' | 'fake_mode';
