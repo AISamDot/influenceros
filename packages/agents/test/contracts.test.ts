@@ -1,4 +1,4 @@
-import { BudgetExceededError, OWNER, STUDIO_MANAGER } from '@ios/core';
+import { BudgetExceededError, OWNER, STUDIO_MANAGER } from '@troupe/core';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CADENCE, MODEL_IDS, type ToolDef, ToolPermissionError } from '../src';
 import { createTestStudio, makeTestPersona } from '../src/testing';

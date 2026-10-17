@@ -1,4 +1,4 @@
-import { ownerAsked } from '@ios/agents';
+import { ownerAsked } from '@troupe/agents';
 import { describe, expect, it } from 'vitest';
 import { allTools } from '../src';
 

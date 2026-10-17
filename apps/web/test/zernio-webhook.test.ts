@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto';
-import type { Db } from '@ios/db';
-import { createTestDb } from '@ios/db/testing';
-import { FAKE_WEBHOOK_SECRET, FakeZernio } from '@ios/providers';
+import type { Db } from '@troupe/db';
+import { createTestDb } from '@troupe/db/testing';
+import { FAKE_WEBHOOK_SECRET, FakeZernio } from '@troupe/providers';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { POST as LS_POST } from '../app/api/webhooks/lemonsqueezy/route';
 import { POST as RESEND_POST } from '../app/api/webhooks/resend/route';
@@ -13,15 +13,15 @@ let db: Db;
 let personaId: string;
 beforeAll(async () => {
   db = await createTestDb();
-  (globalThis as Record<symbol, unknown>)[Symbol.for('influencer-os.db')] = Promise.resolve(db);
-  delete (globalThis as Record<symbol, unknown>)[Symbol.for('influencer-os.services')];
+  (globalThis as Record<symbol, unknown>)[Symbol.for('troupe-house.db')] = Promise.resolve(db);
+  delete (globalThis as Record<symbol, unknown>)[Symbol.for('troupe-house.services')];
   const studio = (await db.one<{ id: string }>(`INSERT INTO studio (slug, name) VALUES ('t', 'T') RETURNING id`)).id;
   personaId = (await db.one<{ id: string }>(`INSERT INTO persona (studio_id, slug, name, niche, state) VALUES ($1, 'maya', 'Maya', 'money', 'TESTING') RETURNING id`, [studio])).id;
   await db.query(`INSERT INTO post (persona_id, platform, format, caption, status, external_id) VALUES ($1, 'instagram', 'talking', 'x', 'live', 'ext_w')`, [personaId]);
 });
 afterAll(async () => {
-  delete (globalThis as Record<symbol, unknown>)[Symbol.for('influencer-os.db')];
-  delete (globalThis as Record<symbol, unknown>)[Symbol.for('influencer-os.services')];
+  delete (globalThis as Record<symbol, unknown>)[Symbol.for('troupe-house.db')];
+  delete (globalThis as Record<symbol, unknown>)[Symbol.for('troupe-house.services')];
   await db.close();
 });
 

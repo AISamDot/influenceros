@@ -4,9 +4,9 @@
 //   run <persona-slug>                      run every planned slot of this and next week inline (idea → … → media_queued)
 //   monetize <persona-slug>                 run the Monetization Agent's cycle inline
 // The real-database commands need DATABASE_URL, or a stopped dev server when using local PGlite (they refuse while it runs).
-import { createServices } from '@ios/agents';
-import { getStudio } from '@ios/core';
-import { exitOnOpenError, getDb } from '@ios/db';
+import { createServices } from '@troupe/agents';
+import { getStudio } from '@troupe/core';
+import { exitOnOpenError, getDb } from '@troupe/db';
 import { planWeek } from './calendar';
 import { enqueueSlot } from './jobs';
 import { runMonetizationCycle } from './monetization';

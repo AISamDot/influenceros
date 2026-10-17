@@ -1,5 +1,6 @@
-import { authSecret, isDeployed, readCookie, SESSION_COOKIE, sessionActive, sessionCookie, verifySession } from '@ios/auth';
-import { getDb } from '@ios/db';
+import { troupeEnv } from '@troupe/env';
+import { authSecret, isDeployed, readCookie, SESSION_COOKIE, sessionActive, sessionCookie, verifySession } from '@troupe/auth';
+import { getDb } from '@troupe/db';
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
@@ -14,8 +15,8 @@ export async function currentSession(): Promise<{ sid: string } | null> {
   return (await sessionActive(await getDb(), claims.sid)) ? { sid: claims.sid } : null;
 }
 
-/** Local development with IOS_AUTH=off: never honoured when deployed (Vercel or IOS_DEPLOYED=1). */
-export const authOff = (): boolean => process.env.IOS_AUTH === 'off' && !isDeployed();
+/** Local development with TROUPE_AUTH=off: never honoured when deployed (Vercel or TROUPE_DEPLOYED=1). */
+export const authOff = (): boolean => troupeEnv('AUTH') === 'off' && !isDeployed();
 
 /** For every non-public API route: null when the Owner's session is valid, else a 401 response. */
 export async function requireOwner(req: Request): Promise<Response | null> {
@@ -32,7 +33,7 @@ export function isHttps(req: Request): boolean {
 
 /** The origin links in emails point at (the Host header is allowlisted by the proxy). */
 export function publicOrigin(req: Request): string {
-  const configured = process.env.IOS_PUBLIC_URL?.trim();
+  const configured = troupeEnv('PUBLIC_URL')?.trim();
   if (configured) return configured.replace(/\/$/, '');
   const host = req.headers.get('host') ?? new URL(req.url).host;
   return `${isHttps(req) ? 'https' : 'http'}://${host}`;
@@ -54,6 +55,6 @@ export function redirectWithSession(location: string, token: string | null, req:
 export async function requireOwnerPage(): Promise<void> {
   if (authOff()) return;
   if (await currentSession().catch(() => null)) return;
-  const path = (await headers()).get('x-ios-path') ?? '/';
+  const path = (await headers()).get('x-troupe-path') ?? '/';
   redirect(path && path !== '/' && path.startsWith('/') && !path.startsWith('//') ? `/login?next=${encodeURIComponent(path)}` : '/login');
 }

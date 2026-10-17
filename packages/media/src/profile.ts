@@ -1,9 +1,9 @@
 import { join } from 'node:path';
-import { loadPersonaKit, type StudioServices } from '@ios/agents';
-import { loadPersonaContext, type PersonaContext } from '@ios/content';
-import { BudgetExceededError, notify } from '@ios/core';
-import { json } from '@ios/db';
-import { readPersonaDoc } from '@ios/core/seed';
+import { loadPersonaKit, type StudioServices } from '@troupe/agents';
+import { loadPersonaContext, type PersonaContext } from '@troupe/content';
+import { BudgetExceededError, notify } from '@troupe/core';
+import { json } from '@troupe/db';
+import { readPersonaDoc } from '@troupe/core/seed';
 import { ELEVENLABS_DESIGN_USD, GEN_RESOLUTION, mediaModels } from './config';
 import type { MediaDeps } from './deps';
 import { extFor, materialize, storeAsset } from './files';
@@ -30,7 +30,7 @@ import {
   placeKey,
   saveIdentityRef,
   upscaleCellPrompt,
-} from '@ios/production';
+} from '@troupe/production';
 
 /**
  * A persona's media identity (FR-5.1): the Soul ID trained from its look prompts, the face reference every talking

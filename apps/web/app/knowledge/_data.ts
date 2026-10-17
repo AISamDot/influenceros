@@ -1,14 +1,14 @@
-import type { KnowledgeService } from '@ios/agents';
-import type { Db } from '@ios/db';
-import { createKnowledgeService } from '@ios/knowledge';
-import type { Providers } from '@ios/providers';
-import { resolveProviders } from '@ios/wiring';
+import type { KnowledgeService } from '@troupe/agents';
+import type { Db } from '@troupe/db';
+import { createKnowledgeService } from '@troupe/knowledge';
+import type { Providers } from '@troupe/providers';
+import { resolveProviders } from '@troupe/wiring';
 
 /**
  * Stream C's server helpers for the Knowledge pages and routes. Providers are resolved once per server process so
  * the local embedding model loads once (it backs the search box's query embedding).
  */
-const KEY = Symbol.for('influencer-os.knowledge-providers');
+const KEY = Symbol.for('troupe-house.knowledge-providers');
 type G = typeof globalThis & { [KEY]?: Providers };
 
 export function knowledgeProviders(): Providers {

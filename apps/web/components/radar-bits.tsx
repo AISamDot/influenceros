@@ -1,6 +1,6 @@
-import type { FormatBenchmark } from '@ios/agents';
-import type { PostFormat } from '@ios/core';
-import { FORMAT_LABEL } from '@ios/radar';
+import type { FormatBenchmark } from '@troupe/agents';
+import type { PostFormat } from '@troupe/core';
+import { FORMAT_LABEL } from '@troupe/radar';
 
 /** Small presentational pieces for the Radar page and panels (stream I). Server components, no client state. */
 

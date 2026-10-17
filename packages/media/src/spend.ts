@@ -1,7 +1,7 @@
-import type { StudioServices } from '@ios/agents';
-import { type CostRef, creditsToSettle, metered, notify } from '@ios/core';
-import { type Db, json } from '@ios/db';
-import { type HiggsfieldOperation, higgsfieldCredits } from '@ios/providers';
+import type { StudioServices } from '@troupe/agents';
+import { type CostRef, creditsToSettle, metered, notify } from '@troupe/core';
+import { type Db, json } from '@troupe/db';
+import { type HiggsfieldOperation, higgsfieldCredits } from '@troupe/providers';
 import { GEN_RESOLUTION, type MediaModels, mediaModels, PROBE_GRID } from './config';
 
 /**

@@ -1,6 +1,6 @@
-import { ToolPermissionError } from '@ios/agents';
-import { ApprovalError, OWNER, STUDIO_MANAGER, sweepAutoApprovals } from '@ios/core';
-import { BIBLE_SECTIONS, loadArchivedPersonas } from '@ios/core/seed';
+import { ToolPermissionError } from '@troupe/agents';
+import { ApprovalError, OWNER, STUDIO_MANAGER, sweepAutoApprovals } from '@troupe/core';
+import { BIBLE_SECTIONS, loadArchivedPersonas } from '@troupe/core/seed';
 import { describe, expect, it } from 'vitest';
 import {
   archiveDraft,
@@ -213,7 +213,7 @@ describe('owner-only launch', () => {
   it('an Owner-only launch card never auto-approves and the database refuses any other decider', async () => {
     const t = await generatorStudio();
     const lp = loadArchivedPersonas(undefined, ['dot'])[0]!;
-    const { importLaunchPersona } = await import('@ios/core/seed');
+    const { importLaunchPersona } = await import('@troupe/core/seed');
     const res = await importLaunchPersona(t.db, t.studioId, lp, { now: NOW, source: 'archive' });
     const card = await t.db.one<{ id: string; mode: string; auto_approve_at: Date | null }>(`SELECT id, mode, auto_approve_at FROM approval WHERE persona_id = $1`, [res.personaId]);
     expect(card).toMatchObject({ mode: 'explicit', auto_approve_at: null });

@@ -1,4 +1,4 @@
-import { getStudio, OWNER, updateSettings } from '@ios/core';
+import { getStudio, OWNER, updateSettings } from '@troupe/core';
 // Relative imports so the route can be exercised directly in tests.
 import { requireOwner } from '../../../../lib/auth';
 import { backTo, isFormPost } from '../../../../lib/http';

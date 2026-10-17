@@ -1,8 +1,8 @@
-import { enqueueOnceFor, PUBLISH_PREPARE_JOB, type PublishPreparePayload, type QcCheck, type RenderedMedia, type StudioServices } from '@ios/agents';
-import { gatePost } from '@ios/content';
-import { ApprovalError, audit, DeferJob, notify, type PostFormat, propose, publishBlockers, PublishBlockedError, publishPost, recoverPublishing } from '@ios/core';
-import { json } from '@ios/db';
-import { AI_FLAG_FIELDS, type Platform } from '@ios/providers';
+import { enqueueOnceFor, PUBLISH_PREPARE_JOB, type PublishPreparePayload, type QcCheck, type RenderedMedia, type StudioServices } from '@troupe/agents';
+import { gatePost } from '@troupe/content';
+import { ApprovalError, audit, DeferJob, notify, type PostFormat, propose, publishBlockers, PublishBlockedError, publishPost, recoverPublishing } from '@troupe/core';
+import { json } from '@troupe/db';
+import { AI_FLAG_FIELDS, type Platform } from '@troupe/providers';
 import {
   aiPlatformOptions,
   CAPTION_MAX,

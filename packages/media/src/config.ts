@@ -1,6 +1,6 @@
-import { CLIP_MAX_S } from '@ios/agents';
-import type { PostFormat } from '@ios/core';
-import type { HiggsfieldOperation, MediaResolution } from '@ios/providers';
+import { CLIP_MAX_S } from '@troupe/agents';
+import type { PostFormat } from '@troupe/core';
+import type { HiggsfieldOperation, MediaResolution } from '@troupe/providers';
 
 /**
  * Stream E constants: export sizes, generation settings, platform safe zones and the QC targets (PRD §3.6, owner

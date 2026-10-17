@@ -1,5 +1,6 @@
-import type { JobHandlerMap, ScheduledTask, StudioServices } from '@ios/agents';
-import { createWorker, schedulerStatus, studioTick, type Worker } from '@ios/profit';
+import { troupeEnv } from '@troupe/env';
+import type { JobHandlerMap, ScheduledTask, StudioServices } from '@troupe/agents';
+import { createWorker, schedulerStatus, studioTick, type Worker } from '@troupe/profit';
 
 /**
  * The `pnpm worker` commands, separated from process concerns (opening the database, signals) so they can be
@@ -26,10 +27,10 @@ export function parseArgs(argv: readonly string[], env: Readonly<Record<string, 
   const raw = positional[0] ?? 'run';
   const command = (['run', 'once', 'tick', 'status', 'help'] as const).find((c) => c === raw) ?? 'help';
   const i = argv.indexOf('--concurrency');
-  const n = i >= 0 ? Number(argv[i + 1]) : env.IOS_WORKER_CONCURRENCY ? Number(env.IOS_WORKER_CONCURRENCY) : NaN;
+  const n = i >= 0 ? Number(argv[i + 1]) : troupeEnv('WORKER_CONCURRENCY', env) ? Number(troupeEnv('WORKER_CONCURRENCY', env)) : NaN;
   return {
     command: argv.includes('--help') ? 'help' : command,
-    tick: !argv.includes('--no-tick') && env.IOS_TICKER !== 'off',
+    tick: !argv.includes('--no-tick') && troupeEnv('TICKER', env) !== 'off',
     concurrency: Number.isInteger(n) && n >= 1 && n <= 16 ? n : null,
   };
 }

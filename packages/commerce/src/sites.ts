@@ -1,5 +1,6 @@
-import { appOrigin, kitColors, loadPersonaKit, parsePalette, personaSiteUrl, type PersonaKit } from '@ios/agents';
-import type { Db } from '@ios/db';
+import { studioDomain } from '@troupe/env';
+import { appOrigin, kitColors, loadPersonaKit, parsePalette, personaSiteUrl, type PersonaKit } from '@troupe/agents';
+import type { Db } from '@troupe/db';
 
 /**
  * Persona micro-sites (docs/IOS-34-CONTRACTS.md §5.5): read models for the public pages and the URL helpers the
@@ -139,7 +140,7 @@ type Env = Readonly<Record<string, string | undefined>>;
 
 /** Absolute URL of a public site endpoint (`/api/public/…`, `/l/…`) on the persona's host (prod) or the app (local). */
 export function publicEndpointUrl(slug: string, path: string, env: Env = process.env): string {
-  const domain = env.IOS_STUDIO_DOMAIN?.trim().toLowerCase();
+  const domain = studioDomain(env);
   const p = path.startsWith('/') ? path : `/${path}`;
   return domain ? `https://${slug}.${domain}${p}` : `${appOrigin(env)}${p}`;
 }

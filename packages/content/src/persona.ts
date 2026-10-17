@@ -1,6 +1,6 @@
-import type { PersonaRow, PostFormat } from '@ios/core';
-import type { Db } from '@ios/db';
-import type { LlmCacheBlock } from '@ios/providers';
+import type { PersonaRow, PostFormat } from '@troupe/core';
+import type { Db } from '@troupe/db';
+import type { LlmCacheBlock } from '@troupe/providers';
 import { asRecord, asString, asStrings, hashInt, keywordFrom, stableStringify } from './util';
 
 /**
@@ -45,7 +45,7 @@ const FORMATS: readonly PostFormat[] = [
 ];
 
 /** Stable studio-wide rules every content agent works under (cached first; change the version when editing). */
-export const STUDIO_CONTENT_RULES = `Studio content rules v2 (Influencer OS).
+export const STUDIO_CONTENT_RULES = `Studio content rules v2 (Troupe House).
 - What wins: reach plus sales. Every post has one clear CTA, usually "Comment KEYWORD" that DMs a resource.
 - English only. Write for the ear: short sentences, contractions, one idea per line, no jargon.
 - First-person stories, situations, dramatised scenarios and lore are character content and are allowed: "my date stood me up

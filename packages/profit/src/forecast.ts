@@ -1,4 +1,4 @@
-import { type Db, json } from '@ios/db';
+import { type Db, json } from '@troupe/db';
 import { weeklySeries, type WeekPoint } from './pnl';
 import { getProfitSettings } from './settings';
 import type { Forecast, ForecastBand } from './types';

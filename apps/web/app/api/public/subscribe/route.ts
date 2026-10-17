@@ -1,4 +1,4 @@
-import { PublicInputError, subscribe } from '@ios/commerce';
+import { PublicInputError, subscribe } from '@troupe/commerce';
 import { baseFor, clientIpOf, formFields, regionOf, seeOther, SLUG_RE } from '@/components/site-http';
 import { getServices } from '@/lib/services';
 

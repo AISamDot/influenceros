@@ -1,4 +1,4 @@
-import { siteBase } from '@ios/commerce';
+import { siteBase } from '@troupe/commerce';
 
 /** Helpers for the public site endpoints (stream G): form fields, the page base on this host, redirects, cookies. */
 
@@ -20,11 +20,11 @@ export async function formFields(req: Request): Promise<Record<string, string>> 
 
 /** The path prefix of a persona's pages on the host that served this request ('' on the persona's own host). */
 export function baseFor(req: Request, slug: string): string {
-  return siteBase(slug, req.headers.get('x-ios-site') === slug);
+  return siteBase(slug, req.headers.get('x-troupe-site') === slug);
 }
 
 /** The persona slug of this host, if it is a persona host (set only by the proxy). */
-export const hostSlug = (req: Request): string | null => req.headers.get('x-ios-site');
+export const hostSlug = (req: Request): string | null => req.headers.get('x-troupe-site');
 
 /** 303 to a same-host path. */
 export function seeOther(path: string, headers: Record<string, string> = {}): Response {

@@ -1,4 +1,4 @@
-import { siteImage } from '@ios/commerce';
+import { siteImage } from '@troupe/commerce';
 import { fileResponse, SLUG_RE } from '@/components/site-http';
 import { getServices } from '@/lib/services';
 

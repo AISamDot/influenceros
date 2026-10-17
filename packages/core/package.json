@@ -1,5 +1,5 @@
 {
-  "name": "@ios/core",
+  "name": "@troupe/core",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@ios/db": "workspace:*",
-    "@ios/providers": "workspace:*"
+    "@troupe/db": "workspace:*",
+    "@troupe/env": "workspace:*",
+    "@troupe/providers": "workspace:*"
   }
 }

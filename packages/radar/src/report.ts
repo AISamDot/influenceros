@@ -1,6 +1,6 @@
-import { apifyWeekSpendUsd } from '@ios/agents';
-import { addMessage, findThread, getSettings, notify, type PostFormat } from '@ios/core';
-import { type Db, json } from '@ios/db';
+import { apifyWeekSpendUsd } from '@troupe/agents';
+import { addMessage, findThread, getSettings, notify, type PostFormat } from '@troupe/core';
+import { type Db, json } from '@troupe/db';
 import { FORMAT_LABEL, formatBenchmarks, latestTrends, safeLabel } from './insights';
 import { isoDate, weekStartOf } from './scrape';
 

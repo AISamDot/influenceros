@@ -1,5 +1,5 @@
-import type { Grounding, QcCheck } from '@ios/agents';
-import type { WeatherNow } from '@ios/providers';
+import type { Grounding, QcCheck } from '@troupe/agents';
+import type { WeatherNow } from '@troupe/providers';
 import { HOLIDAYS, holidaysNear, observes, occurrence } from './holidays';
 import type { WorldBible } from './model';
 import { climateTempC, localParts, minutesOf, seasonOf, sunTimes, timeOfDayOf } from './time';

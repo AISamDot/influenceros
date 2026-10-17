@@ -1,4 +1,4 @@
-import type { PersonaKit } from '@ios/agents';
+import type { PersonaKit } from '@troupe/agents';
 import { escapeHtml } from './util';
 
 /**

@@ -1,5 +1,5 @@
-import { CORE_FORMATS, FORMAT_SHAPE, OPTIONAL_FORMATS, POST_FORMATS, releaseHold, reserve, scriptShape } from '@ios/core';
-import { FakeApify } from '@ios/providers';
+import { CORE_FORMATS, FORMAT_SHAPE, OPTIONAL_FORMATS, POST_FORMATS, releaseHold, reserve, scriptShape } from '@troupe/core';
+import { FakeApify } from '@troupe/providers';
 import { describe, expect, it } from 'vitest';
 import {
   APIFY_PROVIDER,

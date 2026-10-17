@@ -1,4 +1,4 @@
-import type { ServiceBase } from '@ios/agents';
+import type { ServiceBase } from '@troupe/agents';
 import { normalizeIgPost, normalizeIgProfile, normalizeTikTok, type ScrapedPost, tiktokAuthor } from './apify';
 import type { RadarConfig } from './config';
 import { median } from './scoring';

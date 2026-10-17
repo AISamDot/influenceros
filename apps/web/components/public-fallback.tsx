@@ -7,8 +7,8 @@ import { headers } from 'next/headers';
  */
 export async function publicSiteHome(): Promise<string | null> {
   const h = await headers();
-  if (h.get('x-ios-site')) return '/';
-  const m = /^\/p\/([a-z0-9-]+)/.exec(h.get('x-ios-path') ?? '');
+  if (h.get('x-troupe-site')) return '/';
+  const m = /^\/p\/([a-z0-9-]+)/.exec(h.get('x-troupe-path') ?? '');
   return m ? `/p/${m[1]}` : null;
 }
 

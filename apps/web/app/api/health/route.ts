@@ -1,4 +1,4 @@
-import { getDb } from '@ios/db';
+import { getDb } from '@troupe/db';
 
 export const dynamic = 'force-dynamic';
 

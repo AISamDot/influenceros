@@ -1,6 +1,6 @@
-import { meteredApify, type StudioServices } from '@ios/agents';
-import { addMessage, findThread, notify, type PostFormat } from '@ios/core';
-import { type Db, json } from '@ios/db';
+import { meteredApify, type StudioServices } from '@troupe/agents';
+import { addMessage, findThread, notify, type PostFormat } from '@troupe/core';
+import { type Db, json } from '@troupe/db';
 import { gateRules, runGate, saveGateResult, verdictOf } from './gate';
 import { loadPersonaContext, type PersonaContext } from './persona';
 import { asRecord, asString, asStrings, clamp, clamp01, DAY_MS, isoDate, keywordFrom, slugify, upperFirst } from './util';

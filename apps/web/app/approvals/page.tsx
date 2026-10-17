@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
-import { type ApprovalRow, listPendingApprovals, payloadHash } from '@ios/core';
+import { type ApprovalRow, listPendingApprovals, payloadHash } from '@troupe/core';
 import Link from 'next/link';
 import { Countdown } from '@/components/countdown';
 import { Flash } from '@/components/flash';

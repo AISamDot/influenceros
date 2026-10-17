@@ -1,4 +1,4 @@
-import { INTERNAL_WINNER_LIFT, OUTLIER } from '@ios/agents';
+import { INTERNAL_WINNER_LIFT, OUTLIER } from '@troupe/agents';
 import { describe, expect, it } from 'vitest';
 import {
   ageFromPosts,

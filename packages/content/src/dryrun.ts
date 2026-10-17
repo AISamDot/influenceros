@@ -1,6 +1,6 @@
-import { MEDIA_RENDER_JOB, type MediaRenderPayload, type StudioServices } from '@ios/agents';
-import { createTestStudio, makeTestPersona } from '@ios/agents/testing';
-import type { PersonaState } from '@ios/core';
+import { MEDIA_RENDER_JOB, type MediaRenderPayload, type StudioServices } from '@troupe/agents';
+import { createTestStudio, makeTestPersona } from '@troupe/agents/testing';
+import type { PersonaState } from '@troupe/core';
 import { planWeek } from './calendar';
 import { type CycleSummary, runMonetizationCycle } from './monetization';
 import { processSlot, type SlotOutcome } from './pipeline';
@@ -73,7 +73,7 @@ export async function dryRun(opts: { state?: PersonaState; timezone?: string; no
     const tts = await services.providers.voice.tts({ voiceId: 'voice_sample', text: spoken.payload.voiceover });
     const clean = await voiceCheck(services, { studioId: t.studioId, personaId: persona.id, scriptId: spoken.payload.scriptId, audioUrl: tts.url });
     const kw = spoken.payload.ctaKeyword;
-    const misheardProviders = (await import('@ios/providers')).createFakeProviders({ mishear: (text) => text.replace(new RegExp(`\\b${kw}\\b`, 'i'), 'PLANT') });
+    const misheardProviders = (await import('@troupe/providers')).createFakeProviders({ mishear: (text) => text.replace(new RegExp(`\\b${kw}\\b`, 'i'), 'PLANT') });
     const tts2 = await misheardProviders.voice.tts({ voiceId: 'voice_sample', text: spoken.payload.voiceover });
     const bad = await voiceCheck({ ...services, providers: misheardProviders }, { studioId: t.studioId, personaId: persona.id, scriptId: spoken.payload.scriptId, audioUrl: tts2.url });
     q2 = {

@@ -1,8 +1,9 @@
+import { troupeEnv } from '@troupe/env';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import type { StudioServices } from '@ios/agents';
-import { ensureThreads } from '@ios/core';
-import { defaultPersonasDir, type ImportResult, importLaunchPersona, LAUNCH_FILES, loadLaunchPersonas } from '@ios/core/seed';
+import type { StudioServices } from '@troupe/agents';
+import { ensureThreads } from '@troupe/core';
+import { defaultPersonasDir, type ImportResult, importLaunchPersona, LAUNCH_FILES, loadLaunchPersonas } from '@troupe/core/seed';
 
 /**
  * Launch-persona import (stream C). The seed writes the personas into a fresh studio; this keeps an existing studio
@@ -14,9 +15,10 @@ import { defaultPersonasDir, type ImportResult, importLaunchPersona, LAUNCH_FILE
 
 export const PERSONA_JOBS = { import: 'personas.import' } as const;
 
-/** Where the importer reads from: IOS_PERSONAS_SOURCE (e.g. the Ventures folder on the Mac) or the repo's seed dir. */
+/** Where the importer reads from: TROUPE_PERSONAS_SOURCE (e.g. the Ventures folder on the Mac) or the repo's seed dir. */
 export function personasSourceDir(): string {
-  return process.env.IOS_PERSONAS_SOURCE ? resolve(process.env.IOS_PERSONAS_SOURCE) : defaultPersonasDir();
+  const configured = troupeEnv('PERSONAS_SOURCE');
+  return configured ? resolve(configured) : defaultPersonasDir();
 }
 
 export async function importPersonas(services: StudioServices, opts: { studioId?: string; dir?: string } = {}): Promise<ImportResult[]> {

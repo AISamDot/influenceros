@@ -1,5 +1,5 @@
-import type { StudioServices } from '@ios/agents';
-import { type Actor, actorRef, audit } from '@ios/core';
+import type { StudioServices } from '@troupe/agents';
+import { type Actor, actorRef, audit } from '@troupe/core';
 import { buildStoryline } from './draft';
 import { ARC_WEEKS, type BeatKind } from './model';
 import { loadWorld } from './service';

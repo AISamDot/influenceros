@@ -1,4 +1,4 @@
-import { confirmSubscription } from '@ios/commerce';
+import { confirmSubscription } from '@troupe/commerce';
 import { baseFor, formFields, seeOther, SLUG_RE } from '@/components/site-http';
 import { getServices } from '@/lib/services';
 

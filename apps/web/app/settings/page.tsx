@@ -1,4 +1,4 @@
-import { activeKillSwitches, PLATFORMS, personaCaps, type PersonaRow } from '@ios/core';
+import { activeKillSwitches, PLATFORMS, personaCaps, type PersonaRow } from '@troupe/core';
 import Link from 'next/link';
 import { Flash } from '@/components/flash';
 import { IconPause, IconPlug } from '@/components/icons';

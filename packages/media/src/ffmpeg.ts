@@ -1,3 +1,4 @@
+import { troupeEnv } from '@troupe/env';
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
@@ -10,7 +11,7 @@ import { wrap } from './toolkit';
 /**
  * The real render worker on the Mac (adapted from Brand OS creative-worker `video/ffmpeg.ts`): FFmpeg filter graphs for
  * the reels, sharp (libvips) for stills, cards and the text layers. Binaries come from pinned npm static builds
- * (`ffmpeg-static`, `ffprobe-static`), overridable with IOS_FFMPEG / IOS_FFPROBE; never brew or curl. Argv only.
+ * (`ffmpeg-static`, `ffprobe-static`), overridable with TROUPE_FFMPEG / TROUPE_FFPROBE; never brew or curl. Argv only.
  *
  * Every export: H.264 High yuv420p, 30 fps, 2 s GOP, AAC 48 kHz stereo, faststart, upscaled from 720p with lanczos and an
  * unsharp pass, the persona grade (eq + colorbalance), captions as full-frame PNG layers inside the safe zones, and
@@ -24,8 +25,8 @@ export interface FfmpegBins {
 
 export function resolveBins(env: Readonly<Record<string, string | undefined>> = process.env): FfmpegBins | null {
   const req = createRequire(import.meta.url);
-  let ffmpeg = env.IOS_FFMPEG?.trim() || null;
-  let ffprobe = env.IOS_FFPROBE?.trim() || null;
+  let ffmpeg = troupeEnv('FFMPEG', env)?.trim() || null;
+  let ffprobe = troupeEnv('FFPROBE', env)?.trim() || null;
   try {
     ffmpeg ??= req('ffmpeg-static') as string | null;
   } catch {

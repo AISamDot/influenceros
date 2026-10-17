@@ -1,4 +1,4 @@
-import { INTERNAL_WINNER_LIFT, OUTLIER } from '@ios/agents';
+import { INTERNAL_WINNER_LIFT, OUTLIER } from '@troupe/agents';
 
 /**
  * The Winner Finder and Growth Radar maths (PRD §3.15.9–10). Pure functions: the jobs feed them stored rows and

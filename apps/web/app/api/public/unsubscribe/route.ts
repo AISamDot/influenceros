@@ -1,4 +1,4 @@
-import { unsubscribe } from '@ios/commerce';
+import { unsubscribe } from '@troupe/commerce';
 import { baseFor, formFields, seeOther, SLUG_RE } from '@/components/site-http';
 import { getServices } from '@/lib/services';
 

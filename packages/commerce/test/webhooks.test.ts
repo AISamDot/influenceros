@@ -1,4 +1,4 @@
-import { pnl } from '@ios/profit';
+import { pnl } from '@troupe/profit';
 import { describe, expect, it } from 'vitest';
 import { checkoutUrlFor, handleStoreWebhook, resolveShortLink, sweepPostLinks } from '../src';
 import { linkStore, persona, post, product, signed, studio } from './helpers';

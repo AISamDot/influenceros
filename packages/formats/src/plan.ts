@@ -9,8 +9,8 @@ import {
   STORY_FRAME_KINDS,
   type StoriesPlan,
   type StoryFrameKind,
-} from '@ios/agents';
-import { CORE_FORMATS, isOptionalFormat, POST_FORMATS, type PostFormat } from '@ios/core';
+} from '@troupe/agents';
+import { CORE_FORMATS, isOptionalFormat, POST_FORMATS, type PostFormat } from '@troupe/core';
 import { FORMAT_COST_USD, FORMAT_LABEL, FORMAT_WHY, round2, STORY_FRAME_COST_USD, STORY_KIND_WHY, usd, WEEKS_PER_MONTH } from './catalog';
 
 /**

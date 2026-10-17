@@ -1,5 +1,5 @@
-import type { Grounding, KnowledgeHit, QcCheck, StudioServices } from '@ios/agents';
-import { type CostRef, type PostFormat, type PostPurpose, scriptShape } from '@ios/core';
+import type { Grounding, KnowledgeHit, QcCheck, StudioServices } from '@troupe/agents';
+import { type CostRef, type PostFormat, type PostPurpose, scriptShape } from '@troupe/core';
 import type { Hook } from './hooks';
 import { shortenHook, topicOf } from './hooks';
 import type { PersonaContext } from './persona';

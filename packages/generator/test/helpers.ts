@@ -1,4 +1,4 @@
-import { createTestStudio, type TestStudio } from '@ios/agents/testing';
+import { createTestStudio, type TestStudio } from '@troupe/agents/testing';
 import { GENERATOR_TOOLS } from '../src';
 
 /** A Thursday in October 2026, after the archive decision. */

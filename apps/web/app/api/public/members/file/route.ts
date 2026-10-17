@@ -1,4 +1,4 @@
-import { MEMBER_COOKIE, memberFile } from '@ios/commerce';
+import { MEMBER_COOKIE, memberFile } from '@troupe/commerce';
 import { fileResponse, readCookieValue, SLUG_RE } from '@/components/site-http';
 import { getServices } from '@/lib/services';
 

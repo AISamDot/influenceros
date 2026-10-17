@@ -1,7 +1,7 @@
-import { type Grounding, nullWorld, type WorldRecordRequest, type WorldService } from '@ios/agents';
-import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
-import { attachSampleBible } from '@ios/content';
-import { BudgetExceededError, clearKillSwitch, DeferJob, type JobRow, OWNER, setKillSwitch } from '@ios/core';
+import { type Grounding, nullWorld, type WorldRecordRequest, type WorldService } from '@troupe/agents';
+import { createTestStudio, makeTestPersona, type TestStudio } from '@troupe/agents/testing';
+import { attachSampleBible } from '@troupe/content';
+import { BudgetExceededError, clearKillSwitch, DeferJob, type JobRow, OWNER, setKillSwitch } from '@troupe/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // Generator walks and full Story days are heavy under the parallel suite (PGlite per test).

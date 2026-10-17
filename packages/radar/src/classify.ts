@@ -1,5 +1,5 @@
-import { CAMERA_STYLES, type CameraStyle, type MonetisationPattern } from '@ios/agents';
-import type { PostFormat } from '@ios/core';
+import { CAMERA_STYLES, type CameraStyle, type MonetisationPattern } from '@troupe/agents';
+import type { PostFormat } from '@troupe/core';
 
 /**
  * Deterministic classifiers over scraped text and metadata: the fake analysis in tests and fake mode, and the

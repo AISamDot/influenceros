@@ -1,5 +1,5 @@
 import { requireOwner } from '@/lib/auth';
-import { latestBriefing } from '@ios/knowledge';
+import { latestBriefing } from '@troupe/knowledge';
 import { studioContext } from '@/lib/server';
 
 export const dynamic = 'force-dynamic';

@@ -1,6 +1,6 @@
-import { type ConceptFingerprint, fingerprintOf, type GateCheck, MEDIA_RENDER_JOB, type MediaRenderPayload, type PipelineStage, type QcCheck, type StudioServices } from '@ios/agents';
-import { type CostRef, enqueue, notify, type PostFormat, type PostPurpose, thumbnailUri } from '@ios/core';
-import { json } from '@ios/db';
+import { type ConceptFingerprint, fingerprintOf, type GateCheck, MEDIA_RENDER_JOB, type MediaRenderPayload, type PipelineStage, type QcCheck, type StudioServices } from '@troupe/agents';
+import { type CostRef, enqueue, notify, type PostFormat, type PostPurpose, thumbnailUri } from '@troupe/core';
+import { json } from '@troupe/db';
 import { runGate, saveGateResult } from './gate';
 import { type Hook, type HookLab, type HookType, runHookLab } from './hooks';
 import { loadPersonaContext, type PersonaContext } from './persona';

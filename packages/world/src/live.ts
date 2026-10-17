@@ -1,4 +1,4 @@
-import type { GeoPlace, InspirationPin, PinterestBoard, PinterestProvider, WeatherNow, WeatherProvider } from '@ios/providers';
+import type { GeoPlace, InspirationPin, PinterestBoard, PinterestProvider, WeatherNow, WeatherProvider } from '@troupe/providers';
 
 /**
  * Live adapters stream J owns: Open-Meteo (weather and geocoding, no key) and Pinterest API v5 (OAuth access token

@@ -1,5 +1,5 @@
-import type { StudioServices } from '@ios/agents';
-import type { CostRef, PostFormat, PostPurpose } from '@ios/core';
+import type { StudioServices } from '@troupe/agents';
+import type { CostRef, PostFormat, PostPurpose } from '@troupe/core';
 import { gateRules } from './gate';
 import type { PersonaContext } from './persona';
 import { asString, clamp, lowerFirst, similarity, upperFirst, wordCount } from './util';

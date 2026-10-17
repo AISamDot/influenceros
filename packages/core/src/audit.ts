@@ -1,4 +1,4 @@
-import { type Db, json } from '@ios/db';
+import { type Db, json } from '@troupe/db';
 import { type Actor } from './types';
 
 export interface AuditEntry {

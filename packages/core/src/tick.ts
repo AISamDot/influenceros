@@ -1,4 +1,4 @@
-import type { Db } from '@ios/db';
+import type { Db } from '@troupe/db';
 import { sweepAutoApprovals } from './approvals';
 import { reapOrphanHolds } from './governor';
 import { reapStale } from './queue';
@@ -9,7 +9,7 @@ export const STALE_JOB_MS = 15 * 60_000;
 /**
  * The core part of a scheduler tick: auto-approve due cards and veto-window posts, reap dead workers' jobs, then
  * drop orphaned governor holds. Each step runs on its own, so a failing sweep never stops the reaper (and vice versa). The full tick is
- * `studioTick` in @ios/profit (this, then every package's due schedules), called by /api/cron/tick (Vercel Cron),
+ * `studioTick` in @troupe/profit (this, then every package's due schedules), called by /api/cron/tick (Vercel Cron),
  * the ticker in apps/web/instrumentation.ts and `pnpm worker`.
  */
 export async function tick(db: Db, opts: { now?: Date } = {}): Promise<{ approved: string[]; reaped: number; holds: number; errors: string[] }> {

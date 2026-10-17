@@ -1,5 +1,5 @@
-import { type RunTrust, runAgent, STUDIO_RULES_BLOCK, type StudioServices, type ToolContext } from '@ios/agents';
-import { BudgetExceededError, STUDIO_MANAGER } from '@ios/core';
+import { type RunTrust, runAgent, STUDIO_RULES_BLOCK, type StudioServices, type ToolContext } from '@troupe/agents';
+import { BudgetExceededError, STUDIO_MANAGER } from '@troupe/core';
 import { GENERATOR_SYSTEM } from './steps';
 import { addDraftMessage, DraftError, listDraftMessages, requireDraft } from './store';
 import { CHAT_TOOLS, draftSummary, REVISE_INTENT } from './tools';

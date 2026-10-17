@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
-import { portraitUri } from '@ios/core';
-import { archiveOverview, STEPS } from '@ios/generator';
+import { portraitUri } from '@troupe/core';
+import { archiveOverview, STEPS } from '@troupe/generator';
 import Link from 'next/link';
 import { LifecycleBadge } from '@/components/badges';
 import { Flash } from '@/components/flash';

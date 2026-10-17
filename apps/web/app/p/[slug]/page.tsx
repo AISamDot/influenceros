@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Public persona site, link-in-bio page (IOS-4 stream G, docs/IOS-34-CONTRACTS.md §5.5). Served at /p/<slug> locally
- * and at https://<slug>.<IOS_STUDIO_DOMAIN>/ in production (the proxy rewrites the host). It is every account's
+ * and at https://<slug>.<TROUPE_STUDIO_DOMAIN>/ in production (the proxy rewrites the host). It is every account's
  * profile link: the free guide first, then live products and the membership. Never shows studio data.
  */
 export default async function PersonaSite({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {

@@ -1,5 +1,5 @@
-import { ApprovalError, ApprovalRequiredError, decide, InvalidTransitionError, NotFoundError, OWNER } from '@ios/core';
-import { getDb } from '@ios/db';
+import { ApprovalError, ApprovalRequiredError, decide, InvalidTransitionError, NotFoundError, OWNER } from '@troupe/core';
+import { getDb } from '@troupe/db';
 // Relative imports so the route can be exercised directly in tests (apps/web/test/routes.test.ts).
 import { requireOwner } from '../../../../lib/auth';
 import { backTo, isFormPost, isJson, UUID_RE } from '../../../../lib/http';

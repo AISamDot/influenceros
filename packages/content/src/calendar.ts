@@ -1,6 +1,6 @@
-import { CADENCE_BOUNDS, type CadenceTarget, DEFAULT_CADENCE, type SlotBeat, type StudioServices, WINNER_CADENCE, WINNER_STATES } from '@ios/agents';
-import { CORE_FORMATS, isOptionalFormat, type PersonaState, POST_FORMATS, type PostFormat, type PostPurpose, PUBLISHING_STATES, thumbnailUri } from '@ios/core';
-import { json } from '@ios/db';
+import { CADENCE_BOUNDS, type CadenceTarget, DEFAULT_CADENCE, type SlotBeat, type StudioServices, WINNER_CADENCE, WINNER_STATES } from '@troupe/agents';
+import { CORE_FORMATS, isOptionalFormat, type PersonaState, POST_FORMATS, type PostFormat, type PostPurpose, PUBLISHING_STATES, thumbnailUri } from '@troupe/core';
+import { json } from '@troupe/db';
 import { loadPersonaContext, type PersonaContext } from './persona';
 import { sellQueue, type SellItem } from './monetization';
 import { asRecord, asString, DAY_MS, hashInt, isoDate, lowerFirst, mondayUtc, safeTimeZone, similarity, upperFirst, zonedToUtc } from './util';

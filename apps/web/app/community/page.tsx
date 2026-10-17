@@ -1,4 +1,4 @@
-import { approvedCrisisText } from '@ios/distribution';
+import { approvedCrisisText } from '@troupe/distribution';
 import Link from 'next/link';
 import { CommunityClassPill } from '@/components/community-bits';
 import { Flash } from '@/components/flash';

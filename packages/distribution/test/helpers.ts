@@ -1,8 +1,8 @@
-import type { AgentResult, AgentTask, PublishPreparePayload, RenderedMedia, StudioServices } from '@ios/agents';
-import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
-import type { PostFormat } from '@ios/core';
-import { json } from '@ios/db';
-import type { Platform } from '@ios/providers';
+import type { AgentResult, AgentTask, PublishPreparePayload, RenderedMedia, StudioServices } from '@troupe/agents';
+import { createTestStudio, makeTestPersona, type TestStudio } from '@troupe/agents/testing';
+import type { PostFormat } from '@troupe/core';
+import { json } from '@troupe/db';
+import type { Platform } from '@troupe/providers';
 
 export interface Ctx extends TestStudio {
   /** Services with a controllable clock and an optional runtime override. */

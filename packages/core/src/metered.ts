@@ -1,4 +1,4 @@
-import type { Db } from '@ios/db';
+import type { Db } from '@troupe/db';
 import {
   estimateTokens,
   higgsfieldCredits,
@@ -8,7 +8,7 @@ import {
   type Providers,
   type TalkingProvider,
   type VoiceProvider,
-} from '@ios/providers';
+} from '@troupe/providers';
 import { releaseHold, reserve, settleHold, type Unit } from './governor';
 import type { CostRef } from './types';
 

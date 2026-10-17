@@ -1,5 +1,5 @@
-import { CADENCE_BOUNDS, type StoryFrameKind } from '@ios/agents';
-import { isOptionalFormat, POST_FORMATS, type PostFormat } from '@ios/core';
+import { CADENCE_BOUNDS, type StoryFrameKind } from '@troupe/agents';
+import { isOptionalFormat, POST_FORMATS, type PostFormat } from '@troupe/core';
 
 /**
  * The format library as the Format Plan sees it (PRD FR-4.3c): what each format is, what it costs per post on

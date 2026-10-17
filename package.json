@@ -1,5 +1,5 @@
 {
-  "name": "influencer-os",
+  "name": "troupe-house",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.34.6",
@@ -7,16 +7,16 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "pnpm db:setup && pnpm --filter @ios/web dev",
-    "build": "pnpm typecheck && pnpm --filter @ios/web build",
-    "start": "pnpm --filter @ios/web start",
+    "dev": "pnpm db:setup && pnpm --filter @troupe/web dev",
+    "build": "pnpm typecheck && pnpm --filter @troupe/web build",
+    "start": "pnpm --filter @troupe/web start",
     "test": "vitest run",
     "typecheck": "pnpm -r typecheck",
     "db:migrate": "tsx packages/db/src/cli/migrate.ts",
     "db:seed": "tsx packages/core/src/seed/cli.ts",
     "db:setup": "pnpm db:migrate && pnpm db:seed --if-empty",
     "db:reset": "tsx packages/db/src/cli/reset.ts && pnpm db:migrate && pnpm db:seed",
-    "ios": "tsx packages/secrets/src/cli.ts",
+    "troupe": "tsx packages/secrets/src/cli.ts",
     "worker": "tsx apps/worker/src/main.ts",
     "owner": "tsx packages/auth/src/cli.ts",
     "content": "tsx packages/content/src/cli.ts",
@@ -30,6 +30,8 @@
     "world": "tsx packages/world/src/cli.ts",
     "production": "tsx packages/production/src/cli.ts",
     "formats": "tsx packages/formats/src/cli.ts",
+    "troupe:keys": "tsx scripts/secret-popup.ts",
+    "ios": "tsx packages/secrets/src/cli.ts",
     "ios:keys": "tsx scripts/secret-popup.ts"
   },
   "devDependencies": {

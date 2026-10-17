@@ -1,6 +1,6 @@
 import { inspect } from 'node:util';
 import Anthropic from '@anthropic-ai/sdk';
-import { estimateTokens, LLM_PRICES, type LlmProvider, type LlmRequest, type LlmResponse } from '@ios/providers';
+import { estimateTokens, LLM_PRICES, type LlmProvider, type LlmRequest, type LlmResponse } from '@troupe/providers';
 import { createMessagesEngine, type MessagesClient, type MessageStreamLike } from './messages-engine';
 
 /** Effort per tier: Haiku runs low (classification), Sonnet and Opus medium (set explicitly; defaults differ). */
@@ -33,7 +33,7 @@ export class AnthropicLlm implements LlmProvider {
       HOME: process.env.HOME,
       TMPDIR: process.env.TMPDIR,
       ANTHROPIC_API_KEY: this.#apiKey,
-      CLAUDE_AGENT_SDK_CLIENT_APP: 'influencer-os/0.2',
+      CLAUDE_AGENT_SDK_CLIENT_APP: 'troupe-house/0.2',
       DISABLE_AUTOUPDATER: '1',
     };
   }

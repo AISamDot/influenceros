@@ -1,5 +1,5 @@
-import { authSecret, AuthError, hashIp, loginWithMagicToken, safeNext } from '@ios/auth';
-import { getDb } from '@ios/db';
+import { authSecret, AuthError, hashIp, loginWithMagicToken, safeNext } from '@troupe/auth';
+import { getDb } from '@troupe/db';
 import { clientIp, redirectWithSession } from '@/lib/auth';
 import { isFormPost } from '@/lib/http';
 

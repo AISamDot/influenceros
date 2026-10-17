@@ -1,9 +1,9 @@
-import type { GateCheck, StudioServices } from '@ios/agents';
-import { loadPersonaKit } from '@ios/agents';
-import { loadPersonaContext, runGate, verdictOf } from '@ios/content';
-import { addMessage, findThread, type GateVerdict, notify } from '@ios/core';
-import type { Db } from '@ios/db';
-import { json } from '@ios/db';
+import type { GateCheck, StudioServices } from '@troupe/agents';
+import { loadPersonaKit } from '@troupe/agents';
+import { loadPersonaContext, runGate, verdictOf } from '@troupe/content';
+import { addMessage, findThread, type GateVerdict, notify } from '@troupe/core';
+import type { Db } from '@troupe/db';
+import { json } from '@troupe/db';
 import { oneClickUnsubscribeUrl, ensureList, syncPendingOptOuts, unsubscribeUrl } from './audience';
 import { renderEmail } from './render';
 import { getCommerceSettings } from './settings';

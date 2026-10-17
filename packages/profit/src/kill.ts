@@ -1,5 +1,5 @@
-import { addMessage, canTransition, findThread, type PersonaState, proposeKill, STUDIO_MANAGER } from '@ios/core';
-import type { Db } from '@ios/db';
+import { addMessage, canTransition, findThread, type PersonaState, proposeKill, STUDIO_MANAGER } from '@troupe/core';
+import type { Db } from '@troupe/db';
 import { getProfitSettings } from './settings';
 import type { Forecast } from './types';
 import { addDays } from './util';

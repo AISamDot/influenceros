@@ -1,6 +1,6 @@
-import { enqueueOnceFor, type JobHandlerMap, type ScheduledTask, type StudioServices } from '@ios/agents';
-import { BudgetExceededError, DeferJob, PUBLISHING_STATES } from '@ios/core';
-import type { Db } from '@ios/db';
+import { enqueueOnceFor, type JobHandlerMap, type ScheduledTask, type StudioServices } from '@troupe/agents';
+import { BudgetExceededError, DeferJob, PUBLISHING_STATES } from '@troupe/core';
+import type { Db } from '@troupe/db';
 import { curateHighlights, tuneStories } from './curate';
 import { ingestStoryMetrics, planStoryDay, produceStoryFrame, publishStoryFrame, queueDueStories, STORY_JOB } from './stories';
 import { localDate, localTime } from './time';

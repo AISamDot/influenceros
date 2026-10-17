@@ -1,5 +1,5 @@
-import type { StudioServices } from '@ios/agents';
-import type { Db } from '@ios/db';
+import type { StudioServices } from '@troupe/agents';
+import type { Db } from '@troupe/db';
 import { storeFor } from './store';
 import { newCode, UUID_RE } from './util';
 

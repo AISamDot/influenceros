@@ -1,5 +1,5 @@
-import { getStudio, OWNER } from '@ios/core';
-import { enqueueHandle, proposeCrisisText, resolveEscalation } from '@ios/distribution';
+import { getStudio, OWNER } from '@troupe/core';
+import { enqueueHandle, proposeCrisisText, resolveEscalation } from '@troupe/distribution';
 import { requireOwner } from '@/lib/auth';
 import { backTo, isFormPost, isJson, UUID_RE } from '@/lib/http';
 import { getServices } from '@/lib/services';

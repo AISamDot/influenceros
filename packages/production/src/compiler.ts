@@ -13,9 +13,9 @@ import {
   speechSeconds,
   VIDEO_PROMPT_BLOCKS,
   type VideoPromptSpec,
-} from '@ios/agents';
-import { asksBakedText, hasTimecodes, loadPersonaContext } from '@ios/content';
-import type { Db } from '@ios/db';
+} from '@troupe/agents';
+import { asksBakedText, hasTimecodes, loadPersonaContext } from '@troupe/content';
+import type { Db } from '@troupe/db';
 import { cameraLine, cameraMotionLine, cameraStylesFor, pickCamera } from './camera';
 import { identityStackUrls, lockedLocation } from './store';
 

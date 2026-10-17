@@ -10,7 +10,7 @@ import {
   setKillSwitch,
   updatePersonaControls,
   withdraw,
-} from '@ios/core';
+} from '@troupe/core';
 import type { Caller, ToolContext, ToolDef } from '../contracts';
 import { latestBible, personaStatus, personaSummaries, playbookRules, recentFeedback, recentPosts, studioOverview } from '../data';
 import { applyFeedback, BIBLE_SECTIONS, rejectFeedback, reviseBible } from '../feedback';
@@ -379,7 +379,7 @@ export const approvalsDecideTool = tool({
   },
 });
 
-/** Same rule as @ios/auth's sameOriginPath (no control characters, whitespace or backslashes; stays on origin). */
+/** Same rule as @troupe/auth's sameOriginPath (no control characters, whitespace or backslashes; stays on origin). */
 function sameOriginPath(v: unknown): string | null {
   if (typeof v !== 'string' || !v.startsWith('/') || v.startsWith('//') || /[\x00-\x20\x7f\\]/.test(v)) return null;
   try {
@@ -415,7 +415,7 @@ export const chatNotifyOwnerTool = tool({
   },
 });
 
-/** Every stream A tool, registered through @ios/agents `tools` (composed by @ios/wiring). */
+/** Every stream A tool, registered through @troupe/agents `tools` (composed by @troupe/wiring). */
 export const A_TOOLS: ReadonlyArray<ToolDef<any, any>> = [
   studioOverviewTool,
   studioPersonasTool,

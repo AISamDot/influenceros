@@ -1,8 +1,8 @@
-import type { AgentTask } from '@ios/agents';
-import { createTestStudio } from '@ios/agents/testing';
-import { attachSampleBible, planWeek, processSlot } from '@ios/content';
-import { OWNER, STUDIO_MANAGER, type Actor } from '@ios/core';
-import { chooseOption, createDraft, GENERATOR_TOOLS, launchDraft, setDraftExtension } from '@ios/generator';
+import type { AgentTask } from '@troupe/agents';
+import { createTestStudio } from '@troupe/agents/testing';
+import { attachSampleBible, planWeek, processSlot } from '@troupe/content';
+import { OWNER, STUDIO_MANAGER, type Actor } from '@troupe/core';
+import { chooseOption, createDraft, GENERATOR_TOOLS, launchDraft, setDraftExtension } from '@troupe/generator';
 import { describe, expect, it } from 'vitest';
 import { asBible, asStoryline, createWorldService, mergeBible, storylineView, WORLD_TOOLS, type WorldBible } from '../src';
 import { clock, personaWithWorld, worldStudio } from './helpers';

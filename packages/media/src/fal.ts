@@ -1,4 +1,4 @@
-import type { MediaResolution, TalkingProvider } from '@ios/providers';
+import type { MediaResolution, TalkingProvider } from '@troupe/providers';
 import { FAL_AVATAR_USD_PER_S } from './config';
 
 type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
@@ -6,7 +6,7 @@ type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 export const FAL_AVATAR_ENDPOINT = 'https://queue.fal.run/fal-ai/kling-video/ai-avatar/v2/standard';
 
 /**
- * fal.ai Kling AI Avatar v2: the pluggable fallback talking provider (IOS_TALKING_PROVIDER=fal). Queue API: submit,
+ * fal.ai Kling AI Avatar v2: the pluggable fallback talking provider (TROUPE_TALKING_PROVIDER=fal). Queue API: submit,
  * poll the status URL, read the result. The key travels only in the Authorization header. Billed in USD per second.
  */
 export class FalKlingAvatar implements TalkingProvider {

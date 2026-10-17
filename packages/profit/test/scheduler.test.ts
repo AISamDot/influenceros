@@ -1,6 +1,6 @@
-import type { ScheduledTask } from '@ios/agents';
-import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
-import { DeferJob, enqueue, propose, STUDIO_MANAGER } from '@ios/core';
+import type { ScheduledTask } from '@troupe/agents';
+import { createTestStudio, makeTestPersona, type TestStudio } from '@troupe/agents/testing';
+import { DeferJob, enqueue, propose, STUDIO_MANAGER } from '@troupe/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createWorker, jobs, lastDailyMark, lastWeeklyMark, PROFIT_JOBS, runSchedules, schedules, studioTick, tools } from '../src';
 import { addWeeklyHistory, NOW } from './fixtures';

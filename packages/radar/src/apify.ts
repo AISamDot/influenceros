@@ -1,5 +1,5 @@
-import type { Platform } from '@ios/core';
-import type { ResearchProvider } from '@ios/providers';
+import type { Platform } from '@troupe/core';
+import type { ResearchProvider } from '@troupe/providers';
 
 /**
  * Apify: the live ResearchProvider (real HTTP, `apify.token`) and the normalisers that turn the actors' dataset

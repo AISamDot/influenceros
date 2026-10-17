@@ -1,7 +1,7 @@
-import { CLIP_MAX_S, type Grounding, IMAGE_PROMPT_BLOCKS, NO_CAPTIONS, nullWorld, speechSeconds, VIDEO_PROMPT_BLOCKS, type WorldService } from '@ios/agents';
-import { createTestStudio, makeTestPersona } from '@ios/agents/testing';
-import { attachSampleBible } from '@ios/content';
-import { json } from '@ios/db';
+import { CLIP_MAX_S, type Grounding, IMAGE_PROMPT_BLOCKS, NO_CAPTIONS, nullWorld, speechSeconds, VIDEO_PROMPT_BLOCKS, type WorldService } from '@troupe/agents';
+import { createTestStudio, makeTestPersona } from '@troupe/agents/testing';
+import { attachSampleBible } from '@troupe/content';
+import { json } from '@troupe/db';
 import { describe, expect, it } from 'vitest';
 import { accentPhrase, checkVideoPrompt, compileImage, compileVideo, type CompileContext, createPromptCompiler, ensureLocations, lockLocation, placeKey, saveIdentityRef, stripTimecodes } from '../src';
 

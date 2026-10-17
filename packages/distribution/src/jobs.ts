@@ -1,5 +1,5 @@
-import { enqueueOnceFor, type JobHandlerMap, PUBLISH_PREPARE_JOB, type ScheduledTask, type StudioServices } from '@ios/agents';
-import { BudgetExceededError, DeferJob, notify, PUBLISHING_STATES } from '@ios/core';
+import { enqueueOnceFor, type JobHandlerMap, PUBLISH_PREPARE_JOB, type ScheduledTask, type StudioServices } from '@troupe/agents';
+import { BudgetExceededError, DeferJob, notify, PUBLISHING_STATES } from '@troupe/core';
 import { JOB as ACCOUNTS_JOB, enqueueSync, syncAccounts } from './accounts';
 import { detectAnomalies } from './anomalies';
 import { JOB as ANALYTICS_JOB, enqueuePull, pullMetrics } from './analytics';

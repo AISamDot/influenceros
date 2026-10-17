@@ -12,7 +12,7 @@ const TSX = join(ROOT, 'node_modules', '.bin', 'tsx');
 const dirs: string[] = [];
 const children: ChildProcess[] = [];
 function scratch(): string {
-  const d = mkdtempSync(join(tmpdir(), 'ios-lock-'));
+  const d = mkdtempSync(join(tmpdir(), 'troupe-lock-'));
   dirs.push(d);
   return join(d, 'pglite');
 }
@@ -157,7 +157,7 @@ describe('CLIs under the lock', () => {
     spawnSync(TSX, args, {
       cwd: ROOT,
       encoding: 'utf8',
-      env: { ...process.env, DATABASE_URL: '', IOS_PUBLIC_URL: '', PORT: '', ...env },
+      env: { ...process.env, DATABASE_URL: '', TROUPE_PUBLIC_URL: '', PORT: '', ...env },
       timeout: 60_000,
     });
 

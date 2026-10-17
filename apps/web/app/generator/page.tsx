@@ -1,4 +1,4 @@
-import { listDrafts, STEPS } from '@ios/generator';
+import { listDrafts, STEPS } from '@troupe/generator';
 import Link from 'next/link';
 import { Flash } from '@/components/flash';
 import { SubmitButton } from '@/components/submit-button';

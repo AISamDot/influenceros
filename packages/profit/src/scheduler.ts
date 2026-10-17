@@ -1,6 +1,6 @@
-import type { ScheduledTask, StudioServices } from '@ios/agents';
-import { enqueue, tick } from '@ios/core';
-import { type Db, json } from '@ios/db';
+import type { ScheduledTask, StudioServices } from '@troupe/agents';
+import { enqueue, tick } from '@troupe/core';
+import { type Db, json } from '@troupe/db';
 
 /**
  * The scheduler behind the cron tick (docs/IOS-2-CONTRACTS.md §5.5). Every tick (Vercel Cron → /api/cron/tick each

@@ -1,4 +1,4 @@
-import type { ProductBrief } from '@ios/content';
+import type { ProductBrief } from '@troupe/content';
 
 export const KIT = { bg: '#F6F1E7', ink: '#1F2A44', accent: '#C2562B', accent2: '#5A8F7B' } as const;
 

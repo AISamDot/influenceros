@@ -1,7 +1,7 @@
-// `pnpm --filter @ios/distribution zernio:check` (or `pnpm distribution zernio-check`): a live, read-only smoke test of
+// `pnpm --filter @troupe/distribution zernio:check` (or `pnpm distribution zernio-check`): a live, read-only smoke test of
 // the Zernio key. GET /accounts, /profiles and /usage only; prints counts and platforms, never ids, handles, names or
 // the key. Any non-GET request is refused before it leaves the process. Opens no database.
-import { defaultBackend, readSecret } from '@ios/secrets';
+import { defaultBackend, readSecret } from '@troupe/secrets';
 import { ZernioPublisher, type ZernioSnapshot } from './zernio';
 
 /** A fetch that only lets GET through: the check can never create, edit or delete anything. */
@@ -34,12 +34,12 @@ export function formatSnapshot(s: ZernioSnapshot): string {
   ].join('\n');
 }
 
-/** Reads the key from the Keychain (via @ios/secrets), runs the GET-only snapshot and prints it. Exit code. */
+/** Reads the key from the Keychain (via @troupe/secrets), runs the GET-only snapshot and prints it. Exit code. */
 export async function runZernioCheck(): Promise<number> {
   const backend = defaultBackend(process.env);
   const key = readSecret('zernio.api_key', backend, process.env)?.reveal() ?? null;
   if (!key) {
-    console.error('zernio:check: no zernio.api_key (add it with `pnpm ios`)');
+    console.error('zernio:check: no zernio.api_key (add it with `pnpm troupe secrets set zernio.api_key`)');
     return 1;
   }
   const z = new ZernioPublisher({ apiKey: key, fetch: getOnlyFetch(), baseUrl: process.env.ZERNIO_API_URL || undefined, timeoutMs: 20_000 });

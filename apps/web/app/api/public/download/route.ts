@@ -1,4 +1,4 @@
-import { downloadByToken } from '@ios/commerce';
+import { downloadByToken } from '@troupe/commerce';
 import { fileResponse } from '@/components/site-http';
 import { getServices } from '@/lib/services';
 

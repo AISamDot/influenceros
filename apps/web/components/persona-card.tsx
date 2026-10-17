@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
-import type { PersonaCard as Card } from '@ios/core';
+import type { PersonaCard as Card } from '@troupe/core';
 import Link from 'next/link';
 import { compact, daysSince, FORMAT_LABEL, localTime, localWeekday, usd, zoneLabel } from '@/lib/format';
 import { AutonomyBadge, KillFlag, LifecycleBadge } from './badges';

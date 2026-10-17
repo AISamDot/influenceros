@@ -1,6 +1,6 @@
-import { enqueueOnceFor, MEDIA_RENDER_JOB, type JobHandlerMap, type MediaRenderPayload, type ScheduledTask, type StudioServices } from '@ios/agents';
-import { BudgetExceededError, DeferJob, enqueue, notify, POST_FORMATS } from '@ios/core';
-import { PRODUCTION_JOB } from '@ios/production';
+import { enqueueOnceFor, MEDIA_RENDER_JOB, type JobHandlerMap, type MediaRenderPayload, type ScheduledTask, type StudioServices } from '@troupe/agents';
+import { BudgetExceededError, DeferJob, enqueue, notify, POST_FORMATS } from '@troupe/core';
+import { PRODUCTION_JOB } from '@troupe/production';
 import { BUDGET_DEFER_MS } from './config';
 import { mediaDeps } from './deps';
 import { buildLookPack, buildProductionIdentity, ensureProfile, lockPersonaLocations } from './profile';

@@ -1,7 +1,7 @@
-import type { StudioServices } from '@ios/agents';
-import { POST_FORMATS, type PostFormat } from '@ios/core';
-import { fenceUntrusted } from '@ios/content';
-import { json } from '@ios/db';
+import type { StudioServices } from '@troupe/agents';
+import { POST_FORMATS, type PostFormat } from '@troupe/core';
+import { fenceUntrusted } from '@troupe/content';
+import { json } from '@troupe/db';
 import {
   classifyCamera,
   classifyCta,

@@ -1,4 +1,4 @@
-import { loadSite, siteBase, type SiteData, type SiteProduct } from '@ios/commerce';
+import { loadSite, siteBase, type SiteData, type SiteProduct } from '@troupe/commerce';
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
@@ -7,7 +7,7 @@ import { studioContext } from '@/lib/server';
 
 /**
  * Shared pieces of the public persona sites (stream G). Public pages never read the Owner session or show studio
- * data: they get the site read model from @ios/commerce, which only returns public fields.
+ * data: they get the site read model from @troupe/commerce, which only returns public fields.
  */
 
 /** The site for a slug (404 for unknown or hidden personas) and the path prefix of its pages on this host. */
@@ -16,7 +16,7 @@ export async function siteFor(slug: string): Promise<{ site: SiteData; base: str
   const { db, studio } = await studioContext();
   const site = await loadSite(db, slug, studio.id);
   if (!site) notFound();
-  return { site, base: siteBase(slug, h.get('x-ios-site') === slug) };
+  return { site, base: siteBase(slug, h.get('x-troupe-site') === slug) };
 }
 
 /** Per-page <title> on persona sites ("Free guide · Rosa"); thank-you and email-link pages are not indexed. */

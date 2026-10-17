@@ -1,4 +1,4 @@
-import { manuscriptsDir } from '@ios/products';
+import { manuscriptsDir } from '@troupe/products';
 import Link from 'next/link';
 import { Flash } from '@/components/flash';
 import { SubmitButton } from '@/components/submit-button';

@@ -1,6 +1,6 @@
-import { nullWorld, type WorldService } from '@ios/agents';
-import { createTestStudio } from '@ios/agents/testing';
-import { json } from '@ios/db';
+import { nullWorld, type WorldService } from '@troupe/agents';
+import { createTestStudio } from '@troupe/agents/testing';
+import { json } from '@troupe/db';
 import { describe, expect, it } from 'vitest';
 import { scoreConcept } from '../src';
 import { fakeConcepts, fakeOpportunities, sheetPrompt } from '../src/fake';

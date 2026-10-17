@@ -1,5 +1,5 @@
-import type { Db } from '@ios/db';
-import { json } from '@ios/db';
+import type { Db } from '@troupe/db';
+import { json } from '@troupe/db';
 import { newToken, sha256 } from './util';
 
 /** One-time and short-lived tokens (double opt-in, member sign-in, downloads). Only the hash is stored. */

@@ -1,6 +1,6 @@
-import { apifyWeekSpendUsd, type FormatBenchmark } from '@ios/agents';
-import { getSettings } from '@ios/core';
-import type { Db } from '@ios/db';
+import { apifyWeekSpendUsd, type FormatBenchmark } from '@troupe/agents';
+import { getSettings } from '@troupe/core';
+import type { Db } from '@troupe/db';
 import { formatBenchmarks, latestTrends, type TrendRow } from './insights';
 
 /** Read model for the /radar page. Handles, URLs, tags and sound names are third-party labels (rendered as text). */

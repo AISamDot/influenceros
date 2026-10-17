@@ -1,6 +1,6 @@
-import { personaSiteUrl } from '@ios/agents';
-import { gatePost } from '@ios/content';
-import { OWNER } from '@ios/core';
+import { personaSiteUrl } from '@troupe/agents';
+import { gatePost } from '@troupe/content';
+import { OWNER } from '@troupe/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { accountSetupSheet, BIO_MAX, INSTAGRAM_LOGIN_WARNING, syncAccounts, updateAccount, upsertAccount } from '../src';
 import { type Ctx, persona, setup } from './helpers';

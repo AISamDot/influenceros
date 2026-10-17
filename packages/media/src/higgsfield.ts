@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import type { HiggsfieldOperation, ImageVideoProvider, MediaAspect, MediaResolution, MediaResult, TalkingProvider, VoiceProvider } from '@ios/providers';
+import type { HiggsfieldOperation, ImageVideoProvider, MediaAspect, MediaResolution, MediaResult, TalkingProvider, VoiceProvider } from '@troupe/providers';
 import { GEN_RESOLUTION, type MediaModels, mediaModels, TALK_CLIP_MAX_S } from './config';
 
 /**
@@ -310,7 +310,7 @@ export class HiggsfieldCli implements ImageVideoProvider {
 export class HiggsfieldSeedanceTalking implements TalkingProvider {
   readonly name = 'higgsfield-seedance' as const;
   constructor(private readonly hf: ImageVideoProvider) {}
-  async render(req: { imageUrl: string; audioUrl: string; durationS: number; resolution?: import('@ios/providers').MediaResolution; prompt?: string }) {
+  async render(req: { imageUrl: string; audioUrl: string; durationS: number; resolution?: import('@troupe/providers').MediaResolution; prompt?: string }) {
     const r = await this.hf.talkingWithAudio({ imageUrl: req.imageUrl, audioUrl: req.audioUrl, durationS: req.durationS, resolution: req.resolution ?? GEN_RESOLUTION, prompt: req.prompt });
     return { jobId: r.jobId, url: r.url, durationS: r.durationS ?? req.durationS, credits: r.credits, costUsd: 0, ...(r.creditsUnknown ? { creditsUnknown: true } : {}) };
   }

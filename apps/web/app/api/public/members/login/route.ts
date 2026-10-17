@@ -1,4 +1,4 @@
-import { requestMemberLink } from '@ios/commerce';
+import { requestMemberLink } from '@troupe/commerce';
 import { baseFor, clientIpOf, formFields, seeOther, SLUG_RE } from '@/components/site-http';
 import { getServices } from '@/lib/services';
 

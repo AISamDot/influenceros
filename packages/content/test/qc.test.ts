@@ -1,5 +1,5 @@
-import { createTestStudio, makeTestPersona } from '@ios/agents/testing';
-import { createFakeProviders } from '@ios/providers';
+import { createTestStudio, makeTestPersona } from '@troupe/agents/testing';
+import { createFakeProviders } from '@troupe/providers';
 import { describe, expect, it } from 'vitest';
 import { loadPersonaContext } from '../src/persona';
 import { q1WithFixes } from '../src/pipeline';

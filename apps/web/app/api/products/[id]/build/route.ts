@@ -1,4 +1,4 @@
-import { requestBuild } from '@ios/products';
+import { requestBuild } from '@troupe/products';
 // Relative imports so the route can be exercised directly in tests.
 import { requireOwner } from '../../../../../lib/auth';
 import { backTo, isFormPost, UUID_RE } from '../../../../../lib/http';

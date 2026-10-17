@@ -9,7 +9,7 @@ import {
   listMessages,
   NotFoundError,
   postOwnerMessage,
-} from '@ios/core';
+} from '@troupe/core';
 import type { AgentName, StudioServices } from './contracts';
 import { type AgentReply, emitChunks, today, toolNamesFor, transcript, turnTrust } from './agents/common';
 import { personaManagerAnswer, personaManagerTurn } from './agents/persona-manager';

@@ -1,4 +1,4 @@
-import type { Caller, ToolDef } from '@ios/agents';
+import type { Caller, ToolDef } from '@troupe/agents';
 import { addSeeds, loadConfig, type NicheSeeds } from './config';
 import { formatBenchmarks, monetisationPatterns } from './insights';
 import { enqueueWeekly } from './jobs';

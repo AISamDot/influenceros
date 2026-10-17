@@ -1,5 +1,5 @@
-import type { FormatPlan } from '@ios/agents';
-import { FORMAT_LABEL, monthlyCostUsd, STORY_KIND_LABEL, usd } from '@ios/formats';
+import type { FormatPlan } from '@troupe/agents';
+import { FORMAT_LABEL, monthlyCostUsd, STORY_KIND_LABEL, usd } from '@troupe/formats';
 import { SubmitButton } from './submit-button';
 
 /**

@@ -1,4 +1,4 @@
-import type { Season, TimeOfDay } from '@ios/agents';
+import type { Season, TimeOfDay } from '@troupe/agents';
 
 /**
  * Local time, sun times and seasons. Sunrise and sunset come from the standard sunrise equation (NOAA-style, about a

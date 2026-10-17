@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { type Db, json } from '@ios/db';
+import { type Db, json } from '@troupe/db';
 import { audit } from './audit';
 import { ApprovalError } from './errors';
 import { notify } from './notifications';

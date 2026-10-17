@@ -1,4 +1,4 @@
-import { isValidMediaKey } from '@ios/providers';
+import { isValidMediaKey } from '@troupe/providers';
 // Relative imports so the route can be exercised directly in tests.
 import { requireOwner } from '../../../../../lib/auth';
 import { getServices } from '../../../../../lib/services';

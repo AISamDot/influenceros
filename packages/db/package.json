@@ -1,5 +1,5 @@
 {
-  "name": "@ios/db",
+  "name": "@troupe/db",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -16,6 +16,7 @@
   "dependencies": {
     "@electric-sql/pglite": "0.5.8",
     "@electric-sql/pglite-pgvector": "0.0.9",
+    "@troupe/env": "workspace:*",
     "pg": "8.23.1"
   },
   "devDependencies": {

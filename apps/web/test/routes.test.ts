@@ -1,10 +1,10 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createSession, revokeSession } from '@ios/auth';
-import { findThread, payloadHash, propose, proposeKill, STUDIO_MANAGER } from '@ios/core';
-import type { Db } from '@ios/db';
-import { createTestDb } from '@ios/db/testing';
+import { createSession, revokeSession } from '@troupe/auth';
+import { findThread, payloadHash, propose, proposeKill, STUDIO_MANAGER } from '@troupe/core';
+import type { Db } from '@troupe/db';
+import { createTestDb } from '@troupe/db/testing';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST as decideRoute } from '../app/api/approvals/[id]/route';
 import { POST as chatRoute } from '../app/api/chat/[threadId]/messages/route';
@@ -18,17 +18,17 @@ let cookie: string;
 // The routes use the process-wide DB and services singletons: point them at a fresh in-memory test database.
 beforeAll(async () => {
   vi.stubEnv('AUTH_SECRET', SECRET);
-  vi.stubEnv('IOS_AUTH', '');
+  vi.stubEnv('TROUPE_AUTH', '');
   db = await createTestDb();
-  (globalThis as Record<symbol, unknown>)[Symbol.for('influencer-os.db')] = Promise.resolve(db);
-  delete (globalThis as Record<symbol, unknown>)[Symbol.for('influencer-os.services')];
+  (globalThis as Record<symbol, unknown>)[Symbol.for('troupe-house.db')] = Promise.resolve(db);
+  delete (globalThis as Record<symbol, unknown>)[Symbol.for('troupe-house.services')];
   studioId = (await db.one<{ id: string }>(`INSERT INTO studio (slug, name) VALUES ('t', 'T') RETURNING id`)).id;
   cookie = `ios_session=${(await createSession(db, { method: 'password', secret: SECRET })).token}`;
 });
 afterAll(async () => {
   vi.unstubAllEnvs();
-  delete (globalThis as Record<symbol, unknown>)[Symbol.for('influencer-os.db')];
-  delete (globalThis as Record<symbol, unknown>)[Symbol.for('influencer-os.services')];
+  delete (globalThis as Record<symbol, unknown>)[Symbol.for('troupe-house.db')];
+  delete (globalThis as Record<symbol, unknown>)[Symbol.for('troupe-house.services')];
   await db.close();
 });
 
@@ -183,9 +183,9 @@ describe('chat API', () => {
 describe('generator chat API', () => {
   it('streams the Studio Manager reply on a draft step and applies the Owner instruction', async () => {
     const { POST: genPost, GET: genGet } = await import('../app/api/generator/[draftId]/chat/route');
-    const { chooseOption, createDraft, getDraft } = await import('@ios/generator');
+    const { chooseOption, createDraft, getDraft } = await import('@troupe/generator');
     const { getServices } = await import('../lib/services');
-    const { OWNER } = await import('@ios/core');
+    const { OWNER } = await import('@troupe/core');
     const services = await getServices();
     let d = await createDraft(services, { studioId, actor: OWNER });
     d = await chooseOption(services, d.id, 1, 'A', { actor: OWNER });

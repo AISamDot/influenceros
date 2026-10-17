@@ -1,7 +1,7 @@
-import type { FormatBenchmark, FormatPlan, FormatPlanService, ServiceBase, ServiceFactory, StudioServices } from '@ios/agents';
-import { getSettings } from '@ios/core';
-import type { Db } from '@ios/db';
-import { getProfitSettings } from '@ios/profit';
+import type { FormatBenchmark, FormatPlan, FormatPlanService, ServiceBase, ServiceFactory, StudioServices } from '@troupe/agents';
+import { getSettings } from '@troupe/core';
+import type { Db } from '@troupe/db';
+import { getProfitSettings } from '@troupe/profit';
 import { recommendPlan, validatePlan } from './plan';
 import { planInForce, savePlan } from './store';
 import { mondayOf } from './time';

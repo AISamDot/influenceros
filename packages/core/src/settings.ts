@@ -1,4 +1,4 @@
-import { type Db, json } from '@ios/db';
+import { type Db, json } from '@troupe/db';
 import { audit } from './audit';
 import { ForbiddenError, NotFoundError } from './errors';
 import { reconcilePostApprovals } from './policy';

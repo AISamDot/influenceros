@@ -1,4 +1,4 @@
-import type { ConceptFingerprint, NoRepeatResult, QcCheck, ServiceBase } from '@ios/agents';
+import type { ConceptFingerprint, NoRepeatResult, QcCheck, ServiceBase } from '@troupe/agents';
 
 /**
  * The no-repeat engine (PRD §3.14.5). Every concept gets a fingerprint (premise + hook type + topic + format + key

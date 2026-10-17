@@ -1,11 +1,11 @@
-import { type Db, json } from '@ios/db';
+import { type Db, json } from '@troupe/db';
 import { audit } from './audit';
 import { OWNER } from './types';
 
 /**
  * Owner chat (FR-16.1: all Owner interaction happens in the dashboard). One Studio chat (Studio Manager), one chat
  * per persona (its manager), plus Monetization and Quality. Messages persist. The agents themselves live in
- * @ios/agents (`respondToOwner`); this module is storage, threads and mentions.
+ * @troupe/agents (`respondToOwner`); this module is storage, threads and mentions.
  */
 export type ThreadKind = 'studio' | 'persona' | 'monetization' | 'quality';
 
@@ -207,7 +207,7 @@ export async function composeAgentReply(db: Db, thread: ChatThreadRow, ownerText
   return lines.join('\n\n');
 }
 
-/** Saves a data-summary reply (no agent run). The chat API uses @ios/agents `respondToOwner` instead. */
+/** Saves a data-summary reply (no agent run). The chat API uses @troupe/agents `respondToOwner` instead. */
 export async function replyAsAgent(db: Db, threadId: string, ownerText: string): Promise<ChatMessageRow> {
   const thread = await db.one<ChatThreadRow>('SELECT * FROM chat_thread WHERE id = $1', [threadId]);
   const body = await composeAgentReply(db, thread, ownerText);

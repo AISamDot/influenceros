@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
-import type { BoardItem } from '@ios/content';
+import type { BoardItem } from '@troupe/content';
 import Link from 'next/link';
 import { FORMAT_LABEL } from '@/lib/format';
 import { FormatIcon } from './icons';

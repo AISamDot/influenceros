@@ -1,7 +1,7 @@
-import type { StudioServices } from '@ios/agents';
-import type { Db } from '@ios/db';
-import { json } from '@ios/db';
-import type { StoreEvent } from '@ios/providers';
+import type { StudioServices } from '@troupe/agents';
+import type { Db } from '@troupe/db';
+import { json } from '@troupe/db';
+import type { StoreEvent } from '@troupe/providers';
 import { unsubscribeSubscriber } from './audience';
 import { attributeOrder } from './attribution';
 import { UnsupportedStoreEvent } from './live/lemonsqueezy';

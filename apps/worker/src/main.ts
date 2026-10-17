@@ -1,14 +1,14 @@
 /**
  * `pnpm worker`: runs queue jobs on the Mac (claims with SKIP LOCKED, heartbeats long jobs) plus the local tick.
- * Handlers come from @ios/wiring (allJobs), so every stream's jobs run here; kinds without a handler stay queued.
+ * Handlers come from @troupe/wiring (allJobs), so every stream's jobs run here; kinds without a handler stay queued.
  * With local PGlite only one process can open the data dir: while the dev server has it open (it already works the
  * queue inline) the worker is refused by the PGlite lock with a clear message; set DATABASE_URL to run a separate
  * worker against Postgres.
  */
 import { hostname } from 'node:os';
-import { exitOnOpenError, openDb } from '@ios/db';
-import { migrate } from '@ios/db/migrate';
-import { allJobs, allSchedules, createStudioServices } from '@ios/wiring';
+import { exitOnOpenError, openDb } from '@troupe/db';
+import { migrate } from '@troupe/db/migrate';
+import { allJobs, allSchedules, createStudioServices } from '@troupe/wiring';
 import { HELP, parseArgs, runCommand } from './app';
 
 async function main(): Promise<number> {

@@ -1,4 +1,4 @@
-import type { StudioServices } from '@ios/agents';
+import type { StudioServices } from '@troupe/agents';
 import { nicheByKey, nicheForText } from './library';
 import { archiveSignatures, distinctness, draftSignature, lineFlags, scoreConcept, studioSignatures, textOf } from './score';
 import { type DraftRow, type DraftState, type ReviewState, STEPS, type StepState } from './types';

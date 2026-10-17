@@ -1,4 +1,4 @@
-import type { PersonaKit } from '@ios/agents';
+import type { PersonaKit } from '@troupe/agents';
 import type { Layout, LayoutPage } from './layout';
 import { type Block, PAGE_GEOMETRY, type ProductDoc } from './model';
 
@@ -165,7 +165,7 @@ export function renderHtml(doc: ProductDoc, layout: Layout, colors: KitColors): 
   const pages = layout.pages.map((p) => {
     if (p.kind === 'cover') {
       return `<section class="page cover" data-page="1"><div class="band"></div><div class="band2"></div><div class="inner"><h1>${esc(doc.title)}</h1>${doc.subtitle ? `<div class="promise">${inline(doc.subtitle)}</div>` : ''}</div>${
-        doc.personaName ? `<div class="by">by ${esc(doc.personaName)}<small>An AI character from the Influencer OS studio</small></div>` : ''
+        doc.personaName ? `<div class="by">by ${esc(doc.personaName)}<small>An AI character from the Troupe House studio</small></div>` : ''
       }</section>`;
     }
     if (p.kind === 'toc') {
@@ -182,7 +182,7 @@ export function renderHtml(doc: ProductDoc, layout: Layout, colors: KitColors): 
     return `<section class="page"${p.sectionStart ? ` id="${p.sectionStart.id}"` : ''} data-page="${p.number}"><div class="page-body">${head}${p.blocks.map(blockHtml).join('')}</div>${footer(doc, p, total)}</section>`;
   });
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>${esc(doc.title)}</title><meta name="author" content="${esc(doc.personaName)}"><meta name="generator" content="Influencer OS Product Builder"><style>${css(layout.size, c)}</style></head>
+<html lang="en"><head><meta charset="utf-8"><title>${esc(doc.title)}</title><meta name="author" content="${esc(doc.personaName)}"><meta name="generator" content="Troupe House Product Builder"><style>${css(layout.size, c)}</style></head>
 <body data-size="${layout.size}" data-pages="${total}">
 ${pages.join('\n')}
 ${OVERFLOW_SCRIPT}

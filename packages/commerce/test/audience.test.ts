@@ -1,4 +1,4 @@
-import type { AgentTask, StudioServices } from '@ios/agents';
+import type { AgentTask, StudioServices } from '@troupe/agents';
 import { describe, expect, it } from 'vitest';
 import {
   confirmSubscription,

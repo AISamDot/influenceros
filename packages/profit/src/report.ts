@@ -1,6 +1,6 @@
-import type { StudioServices } from '@ios/agents';
-import { addMessage, BudgetExceededError, findThread, notify } from '@ios/core';
-import { json } from '@ios/db';
+import type { StudioServices } from '@troupe/agents';
+import { addMessage, BudgetExceededError, findThread, notify } from '@troupe/core';
+import { json } from '@troupe/db';
 import { rankActions } from './actions';
 import { monthToDateProfit } from './card';
 import { latestForecast } from './forecast';

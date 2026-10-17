@@ -1,7 +1,7 @@
-import { reviseBible } from '@ios/agents';
-import { ApprovalError, decide, OWNER, propose, proposeArchive, proposeKill, STUDIO_MANAGER, studioWall, sweepAutoApprovals, transition } from '@ios/core';
-import { archiveLabels, launchPersonaSlugs, loadArchivedPersonas, seed } from '@ios/core/seed';
-import { createTestDb } from '@ios/db/testing';
+import { reviseBible } from '@troupe/agents';
+import { ApprovalError, decide, OWNER, propose, proposeArchive, proposeKill, STUDIO_MANAGER, studioWall, sweepAutoApprovals, transition } from '@troupe/core';
+import { archiveLabels, launchPersonaSlugs, loadArchivedPersonas, seed } from '@troupe/core/seed';
+import { createTestDb } from '@troupe/db/testing';
 import { describe, expect, it } from 'vitest';
 import { archiveOverview, archiveStudioPersona, getDraft, launchDraft, restoreFromArchive, restoreStudioPersona } from '../src';
 import { generatorStudio, NOW } from './helpers';

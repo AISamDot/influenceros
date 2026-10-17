@@ -1,7 +1,7 @@
-import type { Briefing, StudioServices } from '@ios/agents';
-import { addMessage, findThread } from '@ios/core';
-import { json } from '@ios/db';
-import type { FeedItem } from '@ios/providers';
+import type { Briefing, StudioServices } from '@troupe/agents';
+import { addMessage, findThread } from '@troupe/core';
+import { json } from '@troupe/db';
+import type { FeedItem } from '@troupe/providers';
 import { embedNews } from './embed';
 import { toBriefing } from './service';
 import { skillBlock } from './skills';

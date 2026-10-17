@@ -1,5 +1,5 @@
-import { createTestStudio, makeTestPersona } from '@ios/agents/testing';
-import { OPTIONAL_FORMATS, type PostFormat } from '@ios/core';
+import { createTestStudio, makeTestPersona } from '@troupe/agents/testing';
+import { OPTIONAL_FORMATS, type PostFormat } from '@troupe/core';
 import { describe, expect, it } from 'vitest';
 import { fillTemplate, HOOK_TEMPLATES, templatesFor } from '../src/hooks';
 import { loadPersonaContext } from '../src/persona';

@@ -1,5 +1,5 @@
 {
-  "name": "@ios/agents",
+  "name": "@troupe/agents",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -15,10 +15,11 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.282",
     "@anthropic-ai/sdk": "0.128.0",
-    "@ios/core": "workspace:*",
-    "@ios/db": "workspace:*",
-    "@ios/providers": "workspace:*",
     "@modelcontextprotocol/sdk": "1.30.1",
+    "@troupe/core": "workspace:*",
+    "@troupe/db": "workspace:*",
+    "@troupe/env": "workspace:*",
+    "@troupe/providers": "workspace:*",
     "zod": "4.6.5"
   }
 }

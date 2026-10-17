@@ -1,4 +1,4 @@
-import type { KnowledgeHit } from '@ios/agents';
+import type { KnowledgeHit } from '@troupe/agents';
 
 /** Retrieval results as content agents see them: kind, similarity, text and citations. */
 export function KnowledgeHits({ hits }: { hits: readonly KnowledgeHit[] }) {

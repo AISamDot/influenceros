@@ -1,5 +1,5 @@
-import type { ProviderEnv } from '@ios/agents';
-import { EMBEDDING_DIM } from '@ios/providers';
+import type { ProviderEnv } from '@troupe/agents';
+import { EMBEDDING_DIM } from '@troupe/providers';
 import { describe, expect, it } from 'vitest';
 import {
   ClaudeWebResearch,
@@ -238,9 +238,9 @@ describe('embeddings adapters', () => {
 describe('liveProviders switch', () => {
   const env = (live: boolean, secrets: Record<string, string> = {}): ProviderEnv => ({ isLive: (id) => live && id === 'anthropic', secret: (n) => secrets[n] ?? null });
 
-  it('stays on fakes when IOS_FAKE_PROVIDERS forces them (every test run)', () => {
-    expect(knowledgeLiveProviders(env(true, { 'anthropic.api_key': 'k' }), { IOS_FAKE_PROVIDERS: '1' })).toEqual({});
-    expect(Object.keys(knowledgeLiveProviders(env(true, { 'anthropic.api_key': 'k' }), { IOS_FAKE_PROVIDERS: 'feeds,embeddings' }))).toEqual(['webResearch']);
+  it('stays on fakes when TROUPE_FAKE_PROVIDERS forces them (every test run)', () => {
+    expect(knowledgeLiveProviders(env(true, { 'anthropic.api_key': 'k' }), { TROUPE_FAKE_PROVIDERS: '1' })).toEqual({});
+    expect(Object.keys(knowledgeLiveProviders(env(true, { 'anthropic.api_key': 'k' }), { TROUPE_FAKE_PROVIDERS: 'feeds,embeddings' }))).toEqual(['webResearch']);
   });
 
   it('goes live per member: research only with the Anthropic key, feeds and local embeddings without keys', () => {
@@ -248,10 +248,10 @@ describe('liveProviders switch', () => {
     expect(noKey.webResearch).toBeUndefined();
     expect(noKey.feeds?.name).toBe('http-feeds');
     expect(noKey.embeddings?.name).toBe('local:bge-small-en-v1.5');
-    const live = knowledgeLiveProviders(env(true, { 'anthropic.api_key': 'sk-test', 'voyage.api_key': 'vk' }), { IOS_EMBEDDINGS: 'voyage', IOS_FEED_ALLOWLIST: 'feeds.example.com' });
+    const live = knowledgeLiveProviders(env(true, { 'anthropic.api_key': 'sk-test', 'voyage.api_key': 'vk' }), { TROUPE_EMBEDDINGS: 'voyage', TROUPE_FEED_ALLOWLIST: 'feeds.example.com' });
     expect(live.webResearch?.name).toBe('claude-web-research');
     expect(live.embeddings?.name).toBe('voyage:voyage-3.5-lite@384');
     expect((live.feeds as HttpFeedProvider).allowed()).toContain('feeds.example.com');
-    expect(knowledgeLiveProviders(env(false), { IOS_EMBEDDINGS: 'fake' }).embeddings).toBeUndefined();
+    expect(knowledgeLiveProviders(env(false), { TROUPE_EMBEDDINGS: 'fake' }).embeddings).toBeUndefined();
   });
 });

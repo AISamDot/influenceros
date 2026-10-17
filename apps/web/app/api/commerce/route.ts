@@ -1,6 +1,6 @@
-import { enqueueOnceFor } from '@ios/agents';
-import { JOB, linkStore, productSweep, setCheckoutUrl, syncStores, updateCommerceSettings } from '@ios/commerce';
-import { OWNER } from '@ios/core';
+import { enqueueOnceFor } from '@troupe/agents';
+import { JOB, linkStore, productSweep, setCheckoutUrl, syncStores, updateCommerceSettings } from '@troupe/commerce';
+import { OWNER } from '@troupe/core';
 import { requireOwner } from '@/lib/auth';
 import { backTo, UUID_RE } from '@/lib/http';
 import { studioContext } from '@/lib/server';

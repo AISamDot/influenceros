@@ -1,5 +1,5 @@
-import { latestBriefing } from '@ios/knowledge';
-import { fieldBrainStatus } from '@ios/knowledge';
+import { latestBriefing } from '@troupe/knowledge';
+import { fieldBrainStatus } from '@troupe/knowledge';
 import Link from 'next/link';
 import { Flash } from '@/components/flash';
 import { KnowledgeHits } from '@/components/knowledge-hits';

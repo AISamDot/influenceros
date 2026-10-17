@@ -1,5 +1,5 @@
-import { authSecret, AuthError, hashIp, isDeployed, requestMagicLink, safeNext } from '@ios/auth';
-import { getDb } from '@ios/db';
+import { authSecret, AuthError, hashIp, isDeployed, requestMagicLink, safeNext } from '@troupe/auth';
+import { getDb } from '@troupe/db';
 import { clientIp, publicOrigin } from '@/lib/auth';
 import { isFormPost } from '@/lib/http';
 import { getServices } from '@/lib/services';
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     const r = await requestMagicLink(await getDb(), services.providers.email, {
       email: String(f.get('email') ?? ''),
       ownerEmail: process.env.OWNER_EMAIL,
-      from: process.env.AUTH_EMAIL_FROM || 'Influencer OS <onboarding@resend.dev>',
+      from: process.env.AUTH_EMAIL_FROM || 'Troupe House <onboarding@resend.dev>',
       baseUrl: publicOrigin(req),
       ipHash: hashIp(clientIp(req), secret),
       next,

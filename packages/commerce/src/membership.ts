@@ -1,7 +1,7 @@
-import { loadPersonaKit, type StudioServices } from '@ios/agents';
-import { briefProduct } from '@ios/content';
-import type { Db } from '@ios/db';
-import type { StoreEvent } from '@ios/providers';
+import { loadPersonaKit, type StudioServices } from '@troupe/agents';
+import { briefProduct } from '@troupe/content';
+import type { Db } from '@troupe/db';
+import type { StoreEvent } from '@troupe/providers';
 import { ensureList } from './audience';
 import { renderEmail } from './render';
 import { getCommerceSettings } from './settings';

@@ -1,8 +1,8 @@
 'use server';
 
-import { OWNER, POST_FORMATS, type PostFormat } from '@ios/core';
-import { approveStoryFrame, defaultPlan, editPlan, type PlanPatch, planInForce, recommendPlan, savePlan, mediaBudgetUsd } from '@ios/formats';
-import { getDraft, setDraftExtension } from '@ios/generator';
+import { OWNER, POST_FORMATS, type PostFormat } from '@troupe/core';
+import { approveStoryFrame, defaultPlan, editPlan, type PlanPatch, planInForce, recommendPlan, savePlan, mediaBudgetUsd } from '@troupe/formats';
+import { getDraft, setDraftExtension } from '@troupe/generator';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { authOff, currentSession } from '@/lib/auth';

@@ -1,4 +1,4 @@
-import { isPublicMediaKey } from '@ios/providers';
+import { isPublicMediaKey } from '@troupe/providers';
 import { keyFrom, serveMedia } from '@/app/api/media/serve';
 import { getServices } from '@/lib/services';
 

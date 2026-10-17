@@ -1,4 +1,4 @@
-import { isDeployed } from '@ios/auth/guard';
+import { isDeployed } from '@troupe/auth/guard';
 
 const LOOPBACK = (host: string): boolean => {
   const h = host.replace(/:\d+$/, '').toLowerCase();

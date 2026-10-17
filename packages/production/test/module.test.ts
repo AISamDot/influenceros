@@ -1,10 +1,10 @@
-import { ToolPermissionError } from '@ios/agents';
-import { createTestStudio, makeTestPersona } from '@ios/agents/testing';
-import { OWNER } from '@ios/core';
+import { ToolPermissionError } from '@troupe/agents';
+import { createTestStudio, makeTestPersona } from '@troupe/agents/testing';
+import { OWNER } from '@troupe/core';
 import { describe, expect, it } from 'vitest';
 import * as mod from '../src';
 
-describe('@ios/production module', () => {
+describe('@troupe/production module', () => {
   it('exports a StudioModule and its service factory', () => {
     expect(Array.isArray(mod.tools)).toBe(true);
     expect(typeof mod.jobs).toBe('object');

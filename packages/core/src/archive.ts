@@ -1,4 +1,4 @@
-import type { Db } from '@ios/db';
+import type { Db } from '@troupe/db';
 import { propose } from './approvals';
 import { audit } from './audit';
 import { ApprovalError, NotFoundError } from './errors';

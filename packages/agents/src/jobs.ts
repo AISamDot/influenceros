@@ -1,5 +1,5 @@
-import { enqueue, recoverPublishing } from '@ios/core';
-import { type Db, json } from '@ios/db';
+import { enqueue, recoverPublishing } from '@troupe/core';
+import { type Db, json } from '@troupe/db';
 import type { JobHandlerMap, ScheduledTask, StudioServices } from './contracts';
 
 /**

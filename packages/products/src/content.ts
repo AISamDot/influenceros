@@ -1,5 +1,5 @@
-import { personaSiteUrl, SITE_PATHS, type StudioServices } from '@ios/agents';
-import { loadPersonaContext, type ProductBrief } from '@ios/content';
+import { personaSiteUrl, SITE_PATHS, type StudioServices } from '@troupe/agents';
+import { loadPersonaContext, type ProductBrief } from '@troupe/content';
 import { type Block, type DocSection, type ProductDoc, sectionIds, type SectionKind } from './model';
 
 /**
@@ -238,7 +238,7 @@ export function referralFor(niche: string): string {
   return 'For anything specific to your situation, talk to a qualified professional.';
 }
 
-export const AI_CREDIT_LINE = (persona: string) => `Created by an AI character from the Influencer OS studio. ${persona} is fictional; the stories are entertainment.`;
+export const AI_CREDIT_LINE = (persona: string) => `Created by an AI character from the Troupe House studio. ${persona} is fictional; the stories are entertainment.`;
 export const ADVICE_LINE = 'General education, not professional advice.';
 
 /** Appends the next-step page (when missing) and makes sure the credits page carries the required lines. */

@@ -13,7 +13,7 @@ export function ThemeToggle() {
     const next = theme === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = next;
     try {
-      localStorage.setItem('ios-theme', next);
+      localStorage.setItem('troupe-theme', next);
     } catch {}
     setTheme(next);
   };

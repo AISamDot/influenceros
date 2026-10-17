@@ -1,4 +1,4 @@
-import { type Db, json } from '@ios/db';
+import { type Db, json } from '@troupe/db';
 
 /**
  * Postgres job queue. Claims use `SELECT … FOR UPDATE SKIP LOCKED`, so many workers can pull concurrently without

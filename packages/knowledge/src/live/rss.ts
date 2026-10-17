@@ -1,4 +1,4 @@
-import type { FeedItem } from '@ios/providers';
+import type { FeedItem } from '@troupe/providers';
 import { XMLParser } from 'fast-xml-parser';
 
 /**

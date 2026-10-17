@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as mod from '../src';
 
-describe('@ios/products module', () => {
+describe('@troupe/products module', () => {
   it('exports a StudioModule', () => {
     expect(Array.isArray(mod.tools)).toBe(true);
     expect(typeof mod.jobs).toBe('object');

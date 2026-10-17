@@ -1,5 +1,5 @@
-import { type ToolContext, type ToolDef, ToolInputError } from '@ios/agents';
-import { type Actor, proposeArchive } from '@ios/core';
+import { type ToolContext, type ToolDef, ToolInputError } from '@troupe/agents';
+import { type Actor, proposeArchive } from '@troupe/core';
 import { launchDraft } from './launch';
 import { computeReview } from './review';
 import { type ConceptPart, CONCEPT_PARTS, chooseOption, mixConcepts, regenerateStep, reviseStep } from './steps';

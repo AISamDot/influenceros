@@ -1,5 +1,5 @@
-import { type ChatMessageRow, PLATFORMS, type Platform, STUDIO_MANAGER } from '@ios/core';
-import type { CostRef } from '@ios/core';
+import { type ChatMessageRow, PLATFORMS, type Platform, STUDIO_MANAGER } from '@troupe/core';
+import type { CostRef } from '@troupe/core';
 import type { StudioServices, ToolContext } from '../contracts';
 import { compact, studioOverview, type StudioOverview, usd } from '../data';
 import { errorMessage } from '../live/engine';

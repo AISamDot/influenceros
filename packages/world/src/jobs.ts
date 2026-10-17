@@ -1,5 +1,5 @@
-import { ApifyWeeklyCapError, enqueueOnceFor, type JobHandlerMap, type ScheduledTask, type StudioServices } from '@ios/agents';
-import { BudgetExceededError, DeferJob, PublishBlockedError, SYSTEM } from '@ios/core';
+import { ApifyWeeklyCapError, enqueueOnceFor, type JobHandlerMap, type ScheduledTask, type StudioServices } from '@troupe/agents';
+import { BudgetExceededError, DeferJob, PublishBlockedError, SYSTEM } from '@troupe/core';
 import { describeBoard, searchInspiration } from './inspiration';
 import { PIN_KINDS, type PinKind, publishPin, unpinned } from './pinterest';
 import { liveWeather, loadWorld } from './service';

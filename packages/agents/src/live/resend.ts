@@ -1,5 +1,5 @@
 import { inspect } from 'node:util';
-import type { EmailProvider } from '@ios/providers';
+import type { EmailProvider } from '@troupe/providers';
 
 /**
  * Live Resend adapter (REST: POST https://api.resend.com/emails). IOS-2 uses it for the Owner's sign-in links;

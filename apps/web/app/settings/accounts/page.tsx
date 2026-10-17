@@ -1,5 +1,5 @@
-import { accountSetupSheet, type SetupSheetRow } from '@ios/distribution';
-import { defaultBackend, integrationStates } from '@ios/secrets';
+import { accountSetupSheet, type SetupSheetRow } from '@troupe/distribution';
+import { defaultBackend, integrationStates } from '@troupe/secrets';
 import Link from 'next/link';
 import { AccountStatusPill } from '@/components/accounts-status';
 import { Flash } from '@/components/flash';

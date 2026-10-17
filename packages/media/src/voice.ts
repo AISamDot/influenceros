@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { MediaStore, VoiceProvider } from '@ios/providers';
+import type { MediaStore, VoiceProvider } from '@troupe/providers';
 import { ELEVENLABS_MODEL, ELEVENLABS_USD_PER_CHAR } from './config';
 
 type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;

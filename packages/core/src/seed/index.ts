@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { type Db, json } from '@ios/db';
+import { type Db, json } from '@troupe/db';
 import { decide, propose, proposeKill } from '../approvals';
 import { portraitUri, thumbnailUri } from '../art';
 import { addMessage, ensureThreads, findThread } from '../chat';
@@ -71,7 +71,7 @@ export async function seed(db: Db, opts: { now?: Date; personas?: readonly Launc
 /** A studio with nothing in it yet: settings, QC standard, chat threads and a pointer to the Persona Generator. */
 export async function seedEmptyStudio(db: Db, now: Date = new Date()): Promise<SeedSummary> {
   const studio = await db.one<{ id: string }>(
-    `INSERT INTO studio (slug, name, settings) VALUES ('main', 'Influencer OS Studio', $1::jsonb) RETURNING id`,
+    `INSERT INTO studio (slug, name, settings) VALUES ('main', 'Troupe House Studio', $1::jsonb) RETURNING id`,
     [json(DEFAULT_SETTINGS)],
   );
   const studioId = studio.id;
@@ -99,7 +99,7 @@ export async function seedEmptyStudio(db: Db, now: Date = new Date()): Promise<S
 /** The IOS-1 sample studio (demo data: metrics, orders and approvals are made up). */
 export async function seedSamples(db: Db, now: Date = new Date()): Promise<SeedSummary> {
   const studio = await db.one<{ id: string }>(
-    `INSERT INTO studio (slug, name, settings) VALUES ('main', 'Influencer OS Studio', $1::jsonb) RETURNING id`,
+    `INSERT INTO studio (slug, name, settings) VALUES ('main', 'Troupe House Studio', $1::jsonb) RETURNING id`,
     [json(DEFAULT_SETTINGS)],
   );
   const studioId = studio.id;

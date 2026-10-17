@@ -1,4 +1,4 @@
-import type { StudioServices } from '@ios/agents';
+import type { StudioServices } from '@troupe/agents';
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const HOUR_MS = 3_600_000;
@@ -16,7 +16,7 @@ export const every = (ms: number) => (now: Date, last: Date | null): boolean => 
  * Third-party text (comments, DMs, webhooks) goes to a model only inside this fence, with the run marked untrusted.
  * Fence markers inside the text are neutralised and the text is trimmed, so it can't close the block early.
  */
-export { fenceUntrusted } from '@ios/content';
+export { fenceUntrusted } from '@troupe/content';
 
 /** A short single-line excerpt for notifications and the dashboard. */
 export const excerpt = (text: string, max = 140): string => {

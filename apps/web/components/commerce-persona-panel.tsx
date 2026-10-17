@@ -1,6 +1,6 @@
-import { HIDDEN_STATES, listStats, membershipStats, productStoreBoard, storeFor } from '@ios/commerce';
-import { personaSiteUrl, SITE_PATHS } from '@ios/agents';
-import type { Db } from '@ios/db';
+import { HIDDEN_STATES, listStats, membershipStats, productStoreBoard, storeFor } from '@troupe/commerce';
+import { personaSiteUrl, SITE_PATHS } from '@troupe/agents';
+import type { Db } from '@troupe/db';
 import Link from 'next/link';
 import { usd } from '@/lib/format';
 import { CommerceStoreBadge } from './commerce-bits';

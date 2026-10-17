@@ -1,6 +1,6 @@
-import { ApifyWeeklyCapError, meteredApify, type ServiceBase } from '@ios/agents';
-import { BudgetExceededError } from '@ios/core';
-import { json } from '@ios/db';
+import { ApifyWeeklyCapError, meteredApify, type ServiceBase } from '@troupe/agents';
+import { BudgetExceededError } from '@troupe/core';
+import { json } from '@troupe/db';
 import { estimateUsd, type RadarConfig, type ScraperKind } from './config';
 import { installFakeFixtures } from './fixtures';
 

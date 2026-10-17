@@ -1,13 +1,14 @@
-import { authorize, personaHostSlug, readCookie } from '@ios/auth/guard';
+import { troupeEnv } from '@troupe/env';
+import { authorize, personaHostSlug, readCookie } from '@troupe/auth/guard';
 import { type NextRequest, NextResponse } from 'next/server';
 
 /**
  * Request guard, in order:
- * 1. Host allowlist (blocks DNS rebinding): loopback names, plus the Vercel deployment hosts and IOS_ALLOWED_HOSTS
+ * 1. Host allowlist (blocks DNS rebinding): loopback names, plus the Vercel deployment hosts and TROUPE_ALLOWED_HOSTS
  *    (comma-separated) when deployed.
  * 2. State-changing /api calls must be same-origin (no cross-site form posts to approve a kill, clear a kill switch
  *    or sign in). Server-to-server routes are exempt: the cron tick (Bearer CRON_SECRET) and webhooks (signed).
- * 3. Persona sites (IOS-4, docs/IOS-34-CONTRACTS.md §5.5): on `<slug>.<IOS_STUDIO_DOMAIN>` every path is rewritten
+ * 3. Persona sites (IOS-4, docs/IOS-34-CONTRACTS.md §5.5): on `<slug>.<TROUPE_STUDIO_DOMAIN>` every path is rewritten
  *    to /p/<slug>/… (public), except /l/*, /api/public/* and Next's own assets, so a persona host can never reach the
  *    dashboard. Locally the same pages live at /p/<slug>.
  * 4. Owner login: every page and API route needs the Owner's signed session cookie, except /login, /api/auth/*,
@@ -20,7 +21,7 @@ function allowedHost(host: string | null): boolean {
   if (!host) return false;
   const name = host.replace(/:\d+$/, '').toLowerCase();
   if (LOOPBACK.has(name) || name.endsWith('.localhost')) return true;
-  const extra = [process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL, process.env.VERCEL_PROJECT_PRODUCTION_URL, ...(process.env.IOS_ALLOWED_HOSTS ?? '').split(',')]
+  const extra = [process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL, process.env.VERCEL_PROJECT_PRODUCTION_URL, ...(troupeEnv('ALLOWED_HOSTS') ?? '').split(',')]
     .map((h) => h?.trim().toLowerCase())
     .filter(Boolean);
   return extra.includes(name) || extra.includes(host.toLowerCase());
@@ -52,13 +53,13 @@ export function proxy(req: NextRequest) {
 
   if (siteSlug) {
     const headers = new Headers(req.headers);
-    headers.set('x-ios-site', siteSlug);
+    headers.set('x-troupe-site', siteSlug);
     if (SITE_PASSTHROUGH.some((p) => pathname.startsWith(p))) {
-      headers.set('x-ios-path', pathname);
+      headers.set('x-troupe-path', pathname);
       return NextResponse.next({ request: { headers } });
     }
     const target = `/p/${siteSlug}${pathname === '/' ? '' : pathname}`;
-    headers.set('x-ios-path', target);
+    headers.set('x-troupe-path', target);
     return NextResponse.rewrite(new URL(`${target}${search}`, req.url), { request: { headers } });
   }
 
@@ -75,9 +76,9 @@ export function proxy(req: NextRequest) {
 
   // Pages read the path so the layout can skip the session-row check on /login (app/layout.tsx).
   const headers = new Headers(req.headers);
-  headers.set('x-ios-path', pathname);
+  headers.set('x-troupe-path', pathname);
   // Only the proxy marks a persona-site request (a client-sent header must never switch the layout to bare).
-  headers.delete('x-ios-site');
+  headers.delete('x-troupe-site');
   return NextResponse.next({ request: { headers } });
 }
 

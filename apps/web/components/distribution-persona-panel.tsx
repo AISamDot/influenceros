@@ -1,5 +1,5 @@
-import { accountSetupSheet, personaScorecard } from '@ios/distribution';
-import type { Db } from '@ios/db';
+import { accountSetupSheet, personaScorecard } from '@troupe/distribution';
+import type { Db } from '@troupe/db';
 import Link from 'next/link';
 import { AccountStatusPill } from './accounts-status';
 import { compact } from '@/lib/format';

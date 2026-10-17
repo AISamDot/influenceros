@@ -1,4 +1,4 @@
-import { OUTLIER } from '@ios/agents';
+import { OUTLIER } from '@troupe/agents';
 
 /**
  * Trend clustering (PRD §3.15.10): a trend is a hook, format, topic or sound adopted by several accelerating

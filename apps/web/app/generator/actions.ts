@@ -1,6 +1,6 @@
 'use server';
 
-import { OWNER } from '@ios/core';
+import { OWNER } from '@troupe/core';
 import {
   addOwnerIdea,
   archiveDraft,
@@ -23,7 +23,7 @@ import {
   restoreStudioPersona,
   restoreVersion,
   setLaunchPlan,
-} from '@ios/generator';
+} from '@troupe/generator';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { authOff, currentSession } from '@/lib/auth';

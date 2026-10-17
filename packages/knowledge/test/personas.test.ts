@@ -1,9 +1,9 @@
 import { appendFileSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { reviseBible } from '@ios/agents';
-import { OWNER } from '@ios/core';
-import { archiveDir, launchPersonaSlugs as slugsIn } from '@ios/core/seed';
+import { reviseBible } from '@troupe/agents';
+import { OWNER } from '@troupe/core';
+import { archiveDir, launchPersonaSlugs as slugsIn } from '@troupe/core/seed';
 import { describe, expect, it } from 'vitest';
 import { embedPending, importPersonas, syncPersonaDocs } from '../src';
 import { knowledgeStudio } from './helpers';
@@ -15,7 +15,7 @@ const launchPersonaSlugs = () => slugsIn(SOURCE);
 describe('launch-persona importer (personas.import)', () => {
   it('adds new persona folders to an existing studio with an Owner-only launch card, and versions edited bibles', async () => {
     const t = await knowledgeStudio();
-    const dir = mkdtempSync(join(tmpdir(), 'ios-personas-'));
+    const dir = mkdtempSync(join(tmpdir(), 'troupe-personas-'));
     expect(syncPersonaDocs(SOURCE, dir)).toEqual(launchPersonaSlugs());
 
     const first = await importPersonas(t.services, { dir });
@@ -55,7 +55,7 @@ describe('launch-persona importer (personas.import)', () => {
 
   it('keeps Owner feedback rules when edited documents are re-imported', async () => {
     const t = await knowledgeStudio();
-    const dir = mkdtempSync(join(tmpdir(), 'ios-personas-'));
+    const dir = mkdtempSync(join(tmpdir(), 'troupe-personas-'));
     syncPersonaDocs(SOURCE, dir);
     await importPersonas(t.services, { dir });
     const slug = launchPersonaSlugs()[0]!;
@@ -74,6 +74,6 @@ describe('launch-persona importer (personas.import)', () => {
 
   it('does nothing without persona folders', async () => {
     const t = await knowledgeStudio();
-    expect(await importPersonas(t.services, { dir: mkdtempSync(join(tmpdir(), 'ios-empty-')) })).toEqual([]);
+    expect(await importPersonas(t.services, { dir: mkdtempSync(join(tmpdir(), 'troupe-empty-')) })).toEqual([]);
   });
 });

@@ -1,6 +1,6 @@
-import type { WorldDraft } from '@ios/agents';
-import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
-import { OWNER } from '@ios/core';
+import type { WorldDraft } from '@troupe/agents';
+import { createTestStudio, makeTestPersona, type TestStudio } from '@troupe/agents/testing';
+import { OWNER } from '@troupe/core';
 import { createWorldService, fakeWorldDraft, WORLD_TOOLS } from '../src';
 
 /** A mutable clock, so a test can move "now" (grounding uses live weather only near now). */

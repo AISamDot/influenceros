@@ -1,7 +1,7 @@
-import { CAMERA_STYLES } from '@ios/agents';
-import { createTestStudio, makeTestPersona } from '@ios/agents/testing';
-import { HOOK_TEMPLATES, planWeek, attachSampleBible } from '@ios/content';
-import { json } from '@ios/db';
+import { CAMERA_STYLES } from '@troupe/agents';
+import { createTestStudio, makeTestPersona } from '@troupe/agents/testing';
+import { HOOK_TEMPLATES, planWeek, attachSampleBible } from '@troupe/content';
+import { json } from '@troupe/db';
 import { describe, expect, it } from 'vitest';
 import {
   BOPA_ANGLES,

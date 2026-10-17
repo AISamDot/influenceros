@@ -1,5 +1,5 @@
-import type { Db } from '@ios/db';
-import { framesFor, highlightsFor, localDate, storiesPlanFor, storyStats, STORY_KIND_LABEL } from '@ios/formats';
+import type { Db } from '@troupe/db';
+import { framesFor, highlightsFor, localDate, storiesPlanFor, storyStats, STORY_KIND_LABEL } from '@troupe/formats';
 import { type FramePost, StoryFrames } from './stories-frames';
 
 /**

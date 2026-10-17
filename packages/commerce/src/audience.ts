@@ -1,6 +1,6 @@
-import { enqueueOnceFor, loadPersonaKit, type StudioServices } from '@ios/agents';
-import type { Db } from '@ios/db';
-import { json } from '@ios/db';
+import { enqueueOnceFor, loadPersonaKit, type StudioServices } from '@troupe/agents';
+import type { Db } from '@troupe/db';
+import { json } from '@troupe/db';
 import { renderEmail } from './render';
 import { getCommerceSettings, senderFor } from './settings';
 import { publicEndpointUrl, sitePageUrl, sitePersona, type SitePersona } from './sites';

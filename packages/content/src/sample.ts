@@ -1,5 +1,5 @@
-import type { Db } from '@ios/db';
-import { json } from '@ios/db';
+import type { Db } from '@troupe/db';
+import { json } from '@troupe/db';
 
 /**
  * A compact, fictional persona bible (PRD Appendix A shape) for the dry run and the package's tests. Not seed data:

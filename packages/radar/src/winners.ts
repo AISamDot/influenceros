@@ -1,6 +1,6 @@
-import { OUTLIER } from '@ios/agents';
-import type { PostFormat } from '@ios/core';
-import type { Db } from '@ios/db';
+import { OUTLIER } from '@troupe/agents';
+import type { PostFormat } from '@troupe/core';
+import type { Db } from '@troupe/db';
 import { HOOK_LABEL, type HookType } from './classify';
 import { nicheKey } from './config';
 import { coverage, heuristicReplicability, internalLift, novelty, recency, winnerScore } from './scoring';

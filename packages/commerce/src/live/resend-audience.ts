@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { inspect } from 'node:util';
-import type { AudienceProvider, EmailWebhookEvent } from '@ios/providers';
+import type { AudienceProvider, EmailWebhookEvent } from '@troupe/providers';
 import { asRecord, asString } from '../util';
 
 /**

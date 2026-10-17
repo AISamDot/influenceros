@@ -1,4 +1,4 @@
-import type { PersonaRow } from '@ios/core';
+import type { PersonaRow } from '@troupe/core';
 import { archivePersonaAction, restorePersonaAction } from '@/app/generator/actions';
 import { STATE_LABEL, shortDate } from '@/lib/format';
 import { SubmitButton } from './submit-button';

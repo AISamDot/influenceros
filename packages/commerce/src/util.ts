@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import type { Db } from '@ios/db';
+import type { Db } from '@troupe/db';
 
 /** Small shared helpers for stream G. */
 

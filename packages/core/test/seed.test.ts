@@ -1,6 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Db } from '@ios/db';
-import { createTestDb } from '@ios/db/testing';
+import type { Db } from '@troupe/db';
+import { createTestDb } from '@troupe/db/testing';
 import { listPendingApprovals, personaPage, studioWall } from '../src';
 import { BIBLE_SECTIONS, launchPersonaSlugs, loadArchivedPersonas, parseContentPlan, parseSlotWhen, seed, type SeedSummary } from '../src/seed';
 
@@ -19,6 +20,18 @@ describe('seed: persona documents (the archived launch five)', () => {
     s = await seed(db, { now: NOW, personas: loadArchivedPersonas('2026-10-16') });
   });
   afterAll(async () => db.close());
+
+  it('names the studio Troupe House; migration 0022 renames a pre-rename studio row only', async () => {
+    expect((await db.one<{ name: string }>('SELECT name FROM studio WHERE id = $1', [s.studioId])).name).toBe('Troupe House Studio');
+    const sql = readFileSync(new URL('../../db/migrations/0022_troupe_house_name.sql', import.meta.url), 'utf8');
+    await db.query(`UPDATE studio SET name = 'Influencer OS Studio' WHERE id = $1`, [s.studioId]);
+    await db.exec(sql);
+    expect((await db.one<{ name: string }>('SELECT name FROM studio WHERE id = $1', [s.studioId])).name).toBe('Troupe House Studio');
+    await db.query(`UPDATE studio SET name = 'My Studio' WHERE id = $1`, [s.studioId]);
+    await db.exec(sql);
+    expect((await db.one<{ name: string }>('SELECT name FROM studio WHERE id = $1', [s.studioId])).name).toBe('My Studio');
+    await db.query(`UPDATE studio SET name = 'Troupe House Studio' WHERE id = $1`, [s.studioId]);
+  });
 
   it('seeds the documents it is given; the live seed folder is empty', () => {
     expect(launchPersonaSlugs()).toEqual([]);

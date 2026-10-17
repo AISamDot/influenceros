@@ -18,7 +18,7 @@ A studio product is small, finite and useful on the day it is bought. It sells w
 
 ## Credits page (every product)
 
-- "Created by an AI character from the Influencer OS studio. [Persona] is fictional; the stories are entertainment."
+- "Created by an AI character from the Troupe House studio. [Persona] is fictional; the stories are entertainment."
 - Sources used, with links (from the Field Brain nodes cited in the claims log).
 - "General education, not professional advice." Then the right referral for the niche: a doctor or registered dietitian for health and food, a licensed financial adviser or the relevant government service for money, a lawyer for legal questions, and crisis or abuse hotlines where safety comes up.
 

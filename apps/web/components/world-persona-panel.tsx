@@ -1,5 +1,5 @@
-import type { Db } from '@ios/db';
-import { computeGrounding, ledgerOf, loadWorld, moodBoard, storylineView } from '@ios/world';
+import type { Db } from '@troupe/db';
+import { computeGrounding, ledgerOf, loadWorld, moodBoard, storylineView } from '@troupe/world';
 import { addCastMemberAction, addLocalEventAction, backfillWorldAction, steerStorylineAction } from '@/app/world/actions';
 import { SubmitButton } from './submit-button';
 

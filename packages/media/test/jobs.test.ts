@@ -1,5 +1,5 @@
-import { MEDIA_RENDER_JOB, PUBLISH_PREPARE_JOB } from '@ios/agents';
-import { OWNER } from '@ios/core';
+import { MEDIA_RENDER_JOB, PUBLISH_PREPARE_JOB } from '@troupe/agents';
+import { OWNER } from '@troupe/core';
 import { describe, expect, it } from 'vitest';
 import { FakeToolkit, jobs, MEDIA_JOB, personaMedia, renderSlot, schedules, sweepStuckRenders, tools } from '../src';
 import { mediaFixture, NOW } from './helpers';
@@ -60,7 +60,7 @@ describe('re-render, sweep and schedules', () => {
     expect(await byName['media.cost_probe']!.run(f.services, NOW)).toEqual({ enqueued: true });
     expect(await byName['media.cost_probe']!.run(f.services, NOW)).toEqual({ enqueued: false });
     expect(await byName['media.prepare_personas']!.run(f.services, NOW)).toEqual({ queued: 1 });
-    const job = await f.db.one<import('@ios/core').JobRow>(`SELECT * FROM job WHERE kind = $1`, [MEDIA_JOB.preparePersona]);
+    const job = await f.db.one<import('@troupe/core').JobRow>(`SELECT * FROM job WHERE kind = $1`, [MEDIA_JOB.preparePersona]);
     const res = await jobs[MEDIA_JOB.preparePersona]!({ services: f.services, job, heartbeat: async () => true });
     expect(res).toMatchObject({ looks: 2 });
     const pm = await personaMedia(f.db, f.personaId, NOW);
@@ -77,7 +77,7 @@ describe('re-render, sweep and schedules', () => {
     // A prepared persona isn't queued again.
     await f.db.query(`UPDATE job SET status = 'succeeded'`);
     expect(await byName['media.prepare_personas']!.run(f.services, NOW)).toEqual({ queued: 0 });
-    const probe = await f.db.one<import('@ios/core').JobRow>(`SELECT * FROM job WHERE kind = $1`, [MEDIA_JOB.costProbe]);
+    const probe = await f.db.one<import('@troupe/core').JobRow>(`SELECT * FROM job WHERE kind = $1`, [MEDIA_JOB.costProbe]);
     expect(await jobs[MEDIA_JOB.costProbe]!({ services: f.services, job: probe, heartbeat: async () => true })).toMatchObject({ prices: 8 });
   });
 });

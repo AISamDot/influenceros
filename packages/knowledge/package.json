@@ -1,5 +1,5 @@
 {
-  "name": "@ios/knowledge",
+  "name": "@troupe/knowledge",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -14,11 +14,12 @@
   "dependencies": {
     "@anthropic-ai/sdk": "0.133.0",
     "@huggingface/transformers": "4.3.1",
-    "@ios/agents": "workspace:*",
-    "@ios/core": "workspace:*",
-    "@ios/db": "workspace:*",
-    "@ios/generator": "workspace:*",
-    "@ios/providers": "workspace:*",
+    "@troupe/agents": "workspace:*",
+    "@troupe/core": "workspace:*",
+    "@troupe/db": "workspace:*",
+    "@troupe/env": "workspace:*",
+    "@troupe/generator": "workspace:*",
+    "@troupe/providers": "workspace:*",
     "fast-xml-parser": "5.11.2"
   }
 }

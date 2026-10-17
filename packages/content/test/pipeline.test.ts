@@ -1,6 +1,6 @@
-import { type KnowledgeHit, type KnowledgeService, MEDIA_RENDER_JOB, type MediaRenderPayload } from '@ios/agents';
-import { createTestStudio, makeTestPersona } from '@ios/agents/testing';
-import { claimNext, DeferJob } from '@ios/core';
+import { type KnowledgeHit, type KnowledgeService, MEDIA_RENDER_JOB, type MediaRenderPayload } from '@troupe/agents';
+import { createTestStudio, makeTestPersona } from '@troupe/agents/testing';
+import { claimNext, DeferJob } from '@troupe/core';
 import { describe, expect, it } from 'vitest';
 import { pipelineBoard, slotDetail } from '../src/board';
 import { planWeek } from '../src/calendar';

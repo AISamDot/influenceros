@@ -1,4 +1,4 @@
-import { enqueueOnceFor, PRODUCT_BUILD_JOB, type Caller, type StudioServices, type ToolDef } from '@ios/agents';
+import { enqueueOnceFor, PRODUCT_BUILD_JOB, type Caller, type StudioServices, type ToolDef } from '@troupe/agents';
 import { type ProductDoc } from './model';
 import { importManuscript, type ImportResult } from './inbox';
 

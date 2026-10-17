@@ -187,7 +187,7 @@ const bins = resolveBins();
 describe.skipIf(!bins)('FFmpeg toolkit (real binaries)', () => {
   it('renders, analyses and normalises a 3 s reel and a 4:5 card', async () => {
     const sharp = (await import('sharp')).default;
-    const dir = mkdtempSync(join(tmpdir(), 'ios-ffmpeg-'));
+    const dir = mkdtempSync(join(tmpdir(), 'troupe-ffmpeg-'));
     const tk = new FfmpegToolkit(bins!);
     const img = join(dir, 'bg.png');
     await sharp({ create: { width: 720, height: 1280, channels: 3, background: '#3a6ea5' } }).png().toFile(img);

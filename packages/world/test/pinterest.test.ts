@@ -1,9 +1,9 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { APIFY_PROVIDER, ApifyWeeklyCapError, type JobContext } from '@ios/agents';
-import { makeTestPersona } from '@ios/agents/testing';
-import { OWNER, setKillSwitch, type JobRow } from '@ios/core';
-import { FakeApify } from '@ios/providers';
+import { APIFY_PROVIDER, ApifyWeeklyCapError, type JobContext } from '@troupe/agents';
+import { makeTestPersona } from '@troupe/agents/testing';
+import { OWNER, setKillSwitch, type JobRow } from '@troupe/core';
+import { FakeApify } from '@troupe/providers';
 import { describe, expect, it } from 'vitest';
 import { cleanDescriptors, jobs, liveProviders, moodBoard, OpenMeteoWeather, PINTEREST_APIFY, PinterestApiV5, pinFromItem, publishPin, searchInspiration, WORLD_JOBS } from '../src';
 import { clock, worldStudio } from './helpers';
@@ -74,7 +74,7 @@ describe('Pinterest publishing', () => {
     expect((await meteo.geocode({ name: 'York', country: 'United Kingdom' }))[0]).toMatchObject({ lat: 53.96, timezone: 'Europe/London' });
 
     // Wiring: Pinterest goes live only with its token; Open-Meteo goes live when its (keyless) entry is live, and
-    // stays fake when fakes are forced (IOS_FAKE_PROVIDERS makes isLive false).
+    // stays fake when fakes are forced (TROUPE_FAKE_PROVIDERS makes isLive false).
     const only = (id: string) => (x: string) => x === id;
     expect(liveProviders({ isLive: () => false, secret: () => null })).toEqual({});
     expect(liveProviders({ isLive: only('pinterest'), secret: () => null })).toEqual({});

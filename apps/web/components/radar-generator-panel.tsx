@@ -1,5 +1,5 @@
-import type { OpportunityEvidence } from '@ios/agents';
-import type { DraftRow } from '@ios/generator';
+import type { OpportunityEvidence } from '@troupe/agents';
+import type { DraftRow } from '@troupe/generator';
 import Link from 'next/link';
 
 /**

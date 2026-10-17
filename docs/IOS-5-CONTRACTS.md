@@ -19,7 +19,7 @@ Follow it and the four branches merge into `dev` without conflicts.
   Where the PRD and the owner rules in §1 disagree, §1 wins.
 - **Base:** branch from the `dev` commit that added this file (`git log -1 --format=%h -- docs/IOS-5-CONTRACTS.md`).
 - **Contract stubs in that commit:**
-  - **New packages:** empty `@ios/radar` (I), `@ios/world` (J), `@ios/production` (K) and `@ios/formats` (L). Each exports a StudioModule plus its service factory. They are composed by `@ios/wiring`, listed in the web app, and run with `pnpm radar|world|production|formats`.
+  - **New packages:** empty `@troupe/radar` (I), `@troupe/world` (J), `@troupe/production` (K) and `@troupe/formats` (L). Each exports a StudioModule plus its service factory. They are composed by `@troupe/wiring`, listed in the web app, and run with `pnpm radar|world|production|formats`.
   - **Shared contracts** in `packages/agents/src/ios5.ts`:
     - the services `RadarService`, `WorldService`, `PromptCompiler` and `FormatPlanService`;
     - the Story, format, grounding and prompt types;
@@ -78,9 +78,9 @@ These are the IOS-2 and IOS-3/4 rules (`docs/IOS-2-CONTRACTS.md` §1, `docs/IOS-
   - No proxies or ban evasion.
   - Public data only, via Apify actors, at low volume (`maxItems` is always set).
   - **Every Apify run goes through `meteredApify`**. It enforces the governor and the studio's weekly cap.
-- **Everything works in fake mode with no keys** (fixtures) and is ready for real keys. `vitest.config.ts` forces `IOS_FAKE_PROVIDERS=1` and `IOS_KEYCHAIN=off`.
+- **Everything works in fake mode with no keys** (fixtures) and is ready for real keys. `vitest.config.ts` forces `TROUPE_FAKE_PROVIDERS=1` and `TROUPE_KEYCHAIN=off`.
 - **Tool permissions are enforced in the tool registry.**
-  - Scraped captions, transcripts, bios and comments are **untrusted**. Fence them with `fenceUntrusted` from `@ios/content`, and run agents over them with `trust: { untrusted: true }`.
+  - Scraped captions, transcripts, bios and comments are **untrusted**. Fence them with `fenceUntrusted` from `@troupe/content`, and run agents over them with `trust: { untrusted: true }`.
   - A tool that returns scraped text sets `untrustedOutput: true`.
   - Mutating tools reachable from an untrusted run need `ownerIntent`. Untrusted content never triggers a mutating tool.
 - **The Owner's ask behind stream L (16 Oct):**
@@ -92,7 +92,7 @@ These are the IOS-2 and IOS-3/4 rules (`docs/IOS-2-CONTRACTS.md` §1, `docs/IOS-
 
 | Stream | Branch | Scope |
 |---|---|---|
-| **I** Growth Radar + Winner Finder + Viral Remix | `ios5-i-radar` | PRD §3.15 items 9–11 and the Viral Remix. (1) **Apify adapter**: real HTTP behind `ResearchProvider` (the live `research` member) plus fixture-backed fakes. It covers Instagram profile, reels, hashtag and search scrapers, and TikTok profile and hashtag scrapers. Actor IDs live in I's config table. Pay-per-result estimates go through `meteredApify` (weekly cap). (2) **Discovery per niche:** seed hashtags, keywords and accounts from the persona and the generator, related-profile expansion, and the accounts behind outliers, stored as `tracked_account` rows. (3) **Weekly `profile_snapshot`:** follower velocity (Δ/week), acceleration, and breakout signals (a young account with high followers per post; reel views ≫ followers). Without history, a first pass uses recent reel views ÷ followers, account age and post count. (4) **Outlier scoring per reel:** views ÷ the creator's median over the last 20 posts (≥ 5× outlier, ≥ 10× strong; `OUTLIER`), views ÷ followers, (saves + shares) ÷ views, recency ≤ 14 days, replicability, monetisation fit and novelty. Internal winners are our posts beating the persona's median by 2–3× (`INTERNAL_WINNER_LIFT`); they become double-down ideas. (5) **Content review** of high-growth accounts' top reels: transcript plus an LLM / vision analysis through the runtime (`trend-scout`, untrusted). It extracts hook type, format (classified into our `PostFormat` values), structure, length, camera style, CTA, cadence and monetisation (bio link, products, Fanvue, brand deals) as structured output. (6) **Trend clustering:** a hook, format, topic or sound adopted by several accelerating accounts within 14 days, scored by adoption velocity × average outlier score. (7) **Feedback:** a weekly Trend Report in the Studio chat; Studio Manager tools `radar.report`, `winners.shortlist` and `remix.brief`; `RadarService` (opportunity evidence for Generator step 1, format and cadence benchmarks for L's Format Plan, monetisation patterns, which also go to the Monetization Agent as `demand_signal` rows with source `radar` through `addSignal` from `@ios/content`). **Viral Remix:** a winner becomes a remix brief: the same mechanic with our persona, our world and a new concept that passes `world.checkConcept`. It also becomes an `idea` in the calendar. (8) **`/radar` page:** growing accounts, outliers, trends and remix briefs, plus the weekly Apify cap setting (Owner, `updateSettings`). Schedules run in the worker. Tests cover the scoring maths, clustering and fenced content. |
+| **I** Growth Radar + Winner Finder + Viral Remix | `ios5-i-radar` | PRD §3.15 items 9–11 and the Viral Remix. (1) **Apify adapter**: real HTTP behind `ResearchProvider` (the live `research` member) plus fixture-backed fakes. It covers Instagram profile, reels, hashtag and search scrapers, and TikTok profile and hashtag scrapers. Actor IDs live in I's config table. Pay-per-result estimates go through `meteredApify` (weekly cap). (2) **Discovery per niche:** seed hashtags, keywords and accounts from the persona and the generator, related-profile expansion, and the accounts behind outliers, stored as `tracked_account` rows. (3) **Weekly `profile_snapshot`:** follower velocity (Δ/week), acceleration, and breakout signals (a young account with high followers per post; reel views ≫ followers). Without history, a first pass uses recent reel views ÷ followers, account age and post count. (4) **Outlier scoring per reel:** views ÷ the creator's median over the last 20 posts (≥ 5× outlier, ≥ 10× strong; `OUTLIER`), views ÷ followers, (saves + shares) ÷ views, recency ≤ 14 days, replicability, monetisation fit and novelty. Internal winners are our posts beating the persona's median by 2–3× (`INTERNAL_WINNER_LIFT`); they become double-down ideas. (5) **Content review** of high-growth accounts' top reels: transcript plus an LLM / vision analysis through the runtime (`trend-scout`, untrusted). It extracts hook type, format (classified into our `PostFormat` values), structure, length, camera style, CTA, cadence and monetisation (bio link, products, Fanvue, brand deals) as structured output. (6) **Trend clustering:** a hook, format, topic or sound adopted by several accelerating accounts within 14 days, scored by adoption velocity × average outlier score. (7) **Feedback:** a weekly Trend Report in the Studio chat; Studio Manager tools `radar.report`, `winners.shortlist` and `remix.brief`; `RadarService` (opportunity evidence for Generator step 1, format and cadence benchmarks for L's Format Plan, monetisation patterns, which also go to the Monetization Agent as `demand_signal` rows with source `radar` through `addSignal` from `@troupe/content`). **Viral Remix:** a winner becomes a remix brief: the same mechanic with our persona, our world and a new concept that passes `world.checkConcept`. It also becomes an `idea` in the calendar. (8) **`/radar` page:** growing accounts, outliers, trends and remix briefs, plus the weekly Apify cap setting (Owner, `updateSettings`). Schedules run in the worker. Tests cover the scoring maths, clustering and fenced content. |
 | **J** World Bible + storyline + continuity + no-repeat + Pinterest | `ios5-j-world` | PRD §3.13 and §3.14. (1) **World Bible per persona:** region, city or town, home, recurring places, people, seasons and local holidays. It's written at generation time (`draftWorld` in step 6, adopted at launch) and is editable (persona panel, generator panel, chat tools). (2) **Real-time grounding** (`grounding`): local date, season, time of day and real local weather through Open-Meteo (no key; fake in tests). `Grounding.block` already reaches every script brief. K's compiler puts it in every visual prompt. `checkContent` checks wardrobe, light and topical references against it. (3) **Storyline:** a ~12-week season arc of chapters, each with beats, tension and a payoff. `beatsForWeek` assigns beats to the planner's slots (stored in `calendar_slot.meta.story`). The Persona Manager maintains it and can be steered in chat (`storyline.*` tools). (4) **Fact / continuity ledger:** facts extracted from every approved script, story frame and reply through `recordApproved` (names, ages, events, possessions, opinions). `checkContent` blocks contradictions. (5) **No-repeat engine:** a concept fingerprint (`ConceptFingerprint`: premise + hook type + topic + format + key line), embedded per persona with `providers.embeddings` and pgvector. A concept too close to the persona's history is blocked. Series episodes must add a new beat. Near-duplicate wording is blocked studio-wide. It is exposed as `checkConcept` and inside `checkContent`. (6) **Pinterest:** the official API v5 adapter (the live `pinterest` member; the OAuth token is pending). It publishes boards and pins for products and carousels (AI disclosure in the description), and searches boards for inspiration where the API allows. There is an Apify Pinterest scraper fallback (through `meteredApify`) for inspiration boards. The board feeds the generator and the Studio Manager as mood and format only (`moodBoard`), never as a face reference. |
 | **K** Production playbook + new format renderers | `ios5-k-production` | PRD §3.12 notes, §3.15 items 1–8, and FR-4.3c's format library. (1) **Prompt compiler** (`PromptCompiler`): five image blocks (`IMAGE_PROMPT_BLOCKS`: subject/identity, wardrobe, setting/location lock, camera/lens/realism, lighting/grounding) and five video blocks (`VIDEO_PROMPT_BLOCKS`: start frame, action, camera motion, audio/speech, constraints). Speech runs at 2.5–3 words a second (`SPEECH_WPS`, `speechSeconds`), with no timecodes. Every talking prompt carries the accent, and every video prompt carries `NO_CAPTIONS`. Every prompt carries `Grounding.block`. It's used by K's renderers and by L's story frames. (2) **5-view character sheet** (front, side, back, front close-up, top-down) plus a detail strip, used as the identity reference, and 4 core reference images in varied settings. (3) **BOPA look pack:** backgrounds as a 3×3 grid with an upscaled pick; outfits through a keep-identity edit; poses as a 2×2 grid; angles in degrees. Commit `40b4b28` added only the PRD text and types, so build it here. (4) **Location lock and consistency chain:** each World Bible place gets a locked reference set, and the last frame or still feeds the next shot. Never chain from a rejected frame, and never drop the face ref. (5) **Realism camera styles** (`CAMERA_STYLES`), chosen per slot and recorded (`calendar_slot.meta.production.camera`). (6) **Niche filter** in the generator (the five questions; niche vs format) and a **hook-template library** seeded from the Licbe resources (inspiration, not copied). (7) **Render templates** in the worker for the new formats: `photo_dump` (5–10 casual stills, IG carousel, 4:5 or 1:1); `text_note` (a text-on-image note or quote card, static); `facecam_screen` (the persona in a corner over a generated screen recording or slides); `reply_comment` (a talking or text answer to a top comment, with the comment rendered as a sticker-like overlay and the commenter's handle anonymised); `news_greenscreen` (the persona over a News Desk headline card, never a real outlet's logo); `meme` (a relatable text post). K also builds their script rules, Q1 rules and Q3/Q4 expectations. |
 | **L** Per-persona Format Plan + Stories engine | `ios5-l-formats` | PRD FR-4.3c and FR-4.3d (read them in full). (1) **Format types:** the six values, their CHECK constraints and `FORMAT_SHAPE` are already in the base (migration `0016`). L owns what they mean in planning. (2) **Format Plan per persona** (`FormatPlanService`, L's tables). It's approved with the launch (`adoptPlan`) and editable on the persona page and in chat (`formats.*` tools). Each plan has weekly counts per format, optional formats on or off, Stories per day and their daily mix, and a reason and cost per week for every line. The Studio Manager recommends it in Generator step 6 (`recommend`), from the archetype, niche benchmarks (`services.radar.formatBenchmarks`, with a default when null), the product ladder and the budget. The CadencePolicy reads it, and the Profit Engine's format lever re-tunes it weekly within bounds from per-format results (reach, follows, saves/shares, clicks, revenue per post ÷ cost per post). (3) **New studio default:** 10 feed posts = talking 2, activity_text 2, voiceover 1, static 2, carousel 2, photo_dump 1. The winner default scales proportionally to ~17. Update `DEFAULT_CADENCE`, `WINNER_CADENCE`, the tests, the calendar and the policies so the core-format invariants still hold (each core format ≥ 1; mixes sum to `postsPerWeek`). (4) **Stories engine:** 3–5 frames a day per persona, made natively (`STORY_FRAME_KINDS`). The daily mix is: a world / where-I-am-today frame (`world.grounding`); a storyline beat (`world.beatsForWeek` with one slot at the frame's time); a feed reshare; an engagement keyword frame; and a sell frame on sell days. Frames are stills + text (`services.prompts.image` → Higgsfield still → text overlay at 1080×1920). They pass QC and the Gate (`subject_type 'story_frame'`), and their facts go to `world.recordApproved`. Publishing goes through Zernio (`kind: 'story'`) where `storyCapabilities` says the platform supports it, after core `assertCanPublish` (kill switches), with the AI flag on. The Persona Manager curates the highlight sets (`HIGHLIGHT_SETS`). Story metrics are ingested (`fetchStoryMetrics`: reach, replies, taps forward and back, exits). There's a Stories lane on the Pipeline board and on the persona page. (5) **Verify the archive:** the 5 archived launch personas must be archived (restorable) in a fresh local DB, and the default seed must be an empty studio. Fix it if not. |
@@ -121,9 +121,9 @@ While working, `pnpm vitest run packages/<yours>` is the quick loop. `packages/a
 - For any manual run, use a scratch data dir and another port:
 
   ```
-  export PGLITE_DIR="$(mktemp -d)/pglite" IOS_MEDIA_DIR="$(mktemp -d)"
+  export PGLITE_DIR="$(mktemp -d)/pglite" TROUPE_MEDIA_DIR="$(mktemp -d)"
   pnpm db:setup
-  pnpm --filter @ios/web exec next dev --hostname 127.0.0.1 --port 3201
+  pnpm --filter @troupe/web exec next dev --hostname 127.0.0.1 --port 3201
   ```
 - Tests use in-memory PGlite and are always safe.
 
@@ -138,27 +138,27 @@ After each merge the integrator runs `pnpm install`, `pnpm test` and `pnpm build
 ## 3. How the packages fit together
 
 ```
-@ios/db ← @ios/core ← @ios/agents (contracts + ios34.ts + ios5.ts + runtime + null defaults)
+@troupe/db ← @troupe/core ← @troupe/agents (contracts + ios34.ts + ios5.ts + runtime + null defaults)
               ↑                ↑
-   @ios/providers        @ios/content · @ios/knowledge · @ios/profit · @ios/generator · @ios/distribution · @ios/commerce · @ios/products
+   @troupe/providers        @troupe/content · @troupe/knowledge · @troupe/profit · @troupe/generator · @troupe/distribution · @troupe/commerce · @troupe/products
    (interfaces + fakes)        ↑                                   (existing; read-only unless §4 says otherwise)
-                         @ios/media (K owns it in IOS-5)
+                         @troupe/media (K owns it in IOS-5)
                                ↑
-          @ios/radar (I) · @ios/world (J) · @ios/production (K) · @ios/formats (L)
+          @troupe/radar (I) · @troupe/world (J) · @troupe/production (K) · @troupe/formats (L)
                                ↑
-                        @ios/wiring (composition root) ← apps/web, apps/worker, cron tick
+                        @troupe/wiring (composition root) ← apps/web, apps/worker, cron tick
 ```
 
 **Dependencies:**
-- I, J, K and L may depend on `@ios/agents`, `@ios/core`, `@ios/db` and `@ios/providers`, and read-only on the existing packages. Examples:
-  - `fenceUntrusted`, `runGate`, `gatePost`, `saveGateResult`, `saveQcReport` and `addSignal` from `@ios/content`;
-  - `addMessage` and `notify` from `@ios/core`;
+- I, J, K and L may depend on `@troupe/agents`, `@troupe/core`, `@troupe/db` and `@troupe/providers`, and read-only on the existing packages. Examples:
+  - `fenceUntrusted`, `runGate`, `gatePost`, `saveGateResult`, `saveQcReport` and `addSignal` from `@troupe/content`;
+  - `addMessage` and `notify` from `@troupe/core`;
   - `knowledge` retrieval;
-  - the existing exports of `@ios/media` (`mediaDeps` face compare, the storage helpers). K keeps those signatures stable.
+  - the existing exports of `@troupe/media` (`mediaDeps` face compare, the storage helpers). K keeps those signatures stable.
 - **The four new packages never import each other.** Cross-stream work goes through the four services on `StudioServices` (§5), the job queue and the database.
-  - `@ios/media` may import `@ios/production`.
-  - `@ios/production` never imports `@ios/media`, so there is no cycle.
-  - `@ios/generator` may import `@ios/production`. Only K edits the generator's `package.json`.
+  - `@troupe/media` may import `@troupe/production`.
+  - `@troupe/production` never imports `@troupe/media`, so there is no cycle.
+  - `@troupe/generator` may import `@troupe/production`. Only K edits the generator's `package.json`.
 - Add third-party dependencies to your own package's `package.json` only, pinned to exact versions.
 
 **Every package's `src/index.ts` exports a `StudioModule`** (`tools`, `jobs`, `schedules`, `liveProviders(env)`) **plus its service factory**:
@@ -169,10 +169,10 @@ After each merge the integrator runs `pnpm install`, `pnpm test` and `pnpm build
 
 A factory has the type `ServiceFactory<T> = (base, services) => T`. `services()` returns the finished `StudioServices` (with the runtime, registry and the other three services). Call it lazily, inside a method, never in the factory body.
 
-The stubs exist: replace their bodies and keep the names and signatures. `@ios/wiring` composes every module and throws on a duplicate tool, job kind, schedule or provider member. Nobody edits wiring.
+The stubs exist: replace their bodies and keep the names and signatures. `@troupe/wiring` composes every module and throws on a duplicate tool, job kind, schedule or provider member. Nobody edits wiring.
 
 **Tests:**
-- Build services with `createTestStudio()` / `makeTestPersona()` from `@ios/agents/testing`. `createTestStudio` takes the IOS-5 factories, for example `createTestStudio({ world: createWorldService })` to test with your real service.
+- Build services with `createTestStudio()` / `makeTestPersona()` from `@troupe/agents/testing`. `createTestStudio` takes the IOS-5 factories, for example `createTestStudio({ world: createWorldService })` to test with your real service.
 - The other streams' services are the null defaults, so never assume another stream's behaviour in your tests.
 - Never import another package's `test/` folder. Never depend on the seed's personas.
 
@@ -232,7 +232,7 @@ You may create and edit only what your stream owns. Anything not listed is froze
     - `media.ts` (look step: the 5-view sheet, BOPA, 4 core refs, the face check against `world.moodBoard` pins);
     - in `fake.ts`, only the look functions `placeholderLook` and `sheetPrompt`;
     - `score.ts` (the niche filter in producibility);
-    - the generator's `package.json` (to add `@ios/production`).
+    - the generator's `package.json` (to add `@troupe/production`).
   - In `packages/providers/src/fakes.ts`, the bodies of `FakeHiggsfield`, `FakeTalking` and `FakeVoice`, behaviour only.
   - New files under `apps/worker/src/media/` if the Mac worker needs them.
 - **`apps/web/` files:**
@@ -296,18 +296,18 @@ You may create and edit only what your stream owns. Anything not listed is froze
 
 | Contract | Where | Implemented by | Consumed by |
 |---|---|---|---|
-| `RadarService` (`formatBenchmarks`, `opportunityEvidence`, `monetisationPatterns`), `FormatBenchmark`, `OpportunityEvidence`, `MonetisationPattern`, `OUTLIER`, `INTERNAL_WINNER_LIFT` | `@ios/agents` `ios5.ts` | I (`createRadarService`) | L (`recommend`, lever), generator step 1 (hook in place), Studio Manager |
+| `RadarService` (`formatBenchmarks`, `opportunityEvidence`, `monetisationPatterns`), `FormatBenchmark`, `OpportunityEvidence`, `MonetisationPattern`, `OUTLIER`, `INTERNAL_WINNER_LIFT` | `@troupe/agents` `ios5.ts` | I (`createRadarService`) | L (`recommend`, lever), generator step 1 (hook in place), Studio Manager |
 | `WorldService` (`grounding`, `beatsForWeek`, `checkContent`, `recordApproved`, `checkConcept`, `draftWorld`, `adoptWorld`, `moodBoard`), `Grounding`, `SlotBeat`, `ConceptFingerprint`, `NoRepeatResult`, `WorldDraft`, `fingerprintOf` | `ios5.ts` | J (`createWorldService`) | content pipeline + calendar (hooks in place), K (grounding block, mood descriptors, face check vs pins), L (world frame, beat frame, ledger), I (`checkConcept` on remix briefs), generator (hooks in place) |
 | `PromptCompiler` (`image`, `video`), `ImagePromptSpec`, `VideoPromptSpec`, `CompiledPrompt`, `CAMERA_STYLES`, `IMAGE_PROMPT_BLOCKS`, `VIDEO_PROMPT_BLOCKS`, `SPEECH_WPS`, `speechSeconds`, `CLIP_MAX_S`, `NO_CAPTIONS` | `ios5.ts` | K (`createPromptCompiler`; `basicPromptCompiler` until then) | K's renderers, L's story-frame stills |
 | `FormatPlanService` (`recommend`, `planFor`, `adoptPlan`), `FormatPlan`, `FormatPlanLine`, `StoriesPlan`, `STORY_FRAME_KINDS`, `STORIES_PER_DAY`, `HIGHLIGHT_SETS` | `ios5.ts` | L (`createFormatPlanService`) | generator step 6 + launch (hooks in place), L's CadencePolicy, K (which formats a persona uses) |
-| `PostFormat` + `OptionalFormat` (6 new values), `FORMAT_SHAPE`, `scriptShape`, `isOptionalFormat`, `POST_FORMATS` | `@ios/core` `types.ts` | base commit (migration 0016) | all |
-| `FormatMix`, `CadenceTarget` | `@ios/agents` `contracts.ts` | L (the defaults, the policy) | calendar, levers |
-| `meteredApify`, `apifyWeekSpendUsd`, `ApifyWeeklyCapError`, `APIFY_PROVIDER`; studio setting `apify_weekly_cap_usd` | `ios5.ts`; `@ios/core` settings | base commit | I, J, the Monetization Agent's market scan |
+| `PostFormat` + `OptionalFormat` (6 new values), `FORMAT_SHAPE`, `scriptShape`, `isOptionalFormat`, `POST_FORMATS` | `@troupe/core` `types.ts` | base commit (migration 0016) | all |
+| `FormatMix`, `CadenceTarget` | `@troupe/agents` `contracts.ts` | L (the defaults, the policy) | calendar, levers |
+| `meteredApify`, `apifyWeekSpendUsd`, `ApifyWeeklyCapError`, `APIFY_PROVIDER`; studio setting `apify_weekly_cap_usd` | `ios5.ts`; `@troupe/core` settings | base commit | I, J, the Monetization Agent's market scan |
 | `ServiceFactory`, `CreateServicesOptions.radar/world/prompts/formatPlans` | `contracts.ts` | base commit | wiring, tests |
-| `setDraftExtension`, `DraftState.radar/world/formatPlan`, `withRadarEvidence` | `@ios/generator` | base commit | I, J, L (panels, actions, tools) |
-| `ScriptBrief.grounding/beat`, `draftText`, `q1WithFixes({ world })` | `@ios/content` | base commit (K owns `script.ts` from here) | K, J |
-| `saveQcReport` / `saveGateResult` with `subjectType 'story_frame'` | `@ios/content` | base commit | L |
-| `fenceUntrusted`, `runGate`, `gatePost`, `addSignal` | `@ios/content` | existing | I, J, L |
+| `setDraftExtension`, `DraftState.radar/world/formatPlan`, `withRadarEvidence` | `@troupe/generator` | base commit | I, J, L (panels, actions, tools) |
+| `ScriptBrief.grounding/beat`, `draftText`, `q1WithFixes({ world })` | `@troupe/content` | base commit (K owns `script.ts` from here) | K, J |
+| `saveQcReport` / `saveGateResult` with `subjectType 'story_frame'` | `@troupe/content` | base commit | L |
+| `fenceUntrusted`, `runGate`, `gatePost`, `addSignal` | `@troupe/content` | existing | I, J, L |
 
 ### 5.1 Jobs, schedules and the cross-stream flow
 
@@ -350,7 +350,7 @@ Generator: step 1 radar.opportunityEvidence · step 6 formatPlans.recommend + wo
   - story frames → `{ type: 'persona', id }` (L may add `ref_type 'story_frame'` rows; the ledger's `ref_type` is free text).
 - **Over a cap the governor refuses.** Defer. Never raise a cap: a raise is an Owner proposal.
 
-### 5.3 Providers (`@ios/providers`)
+### 5.3 Providers (`@troupe/providers`)
 
 | Member | IOS-5 change | Live owner | Fake |
 |---|---|---|---|

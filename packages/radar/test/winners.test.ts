@@ -1,4 +1,4 @@
-import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
+import { createTestStudio, makeTestPersona, type TestStudio } from '@troupe/agents/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as radar from '../src';
 

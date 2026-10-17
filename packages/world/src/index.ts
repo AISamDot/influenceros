@@ -1,11 +1,11 @@
-import type { JobHandlerMap, ProviderEnv, ScheduledTask, ToolDef } from '@ios/agents';
-import type { Providers } from '@ios/providers';
+import type { JobHandlerMap, ProviderEnv, ScheduledTask, ToolDef } from '@troupe/agents';
+import type { Providers } from '@troupe/providers';
 import { jobs as WORLD_JOB_HANDLERS, schedules as WORLD_SCHEDULES } from './jobs';
 import { OpenMeteoWeather, PinterestApiV5 } from './live';
 import { WORLD_TOOLS } from './tools';
 
 /**
- * @ios/world (IOS-5 stream J, docs/IOS-5-CONTRACTS.md): World Bible, real-time grounding (Open-Meteo), storyline,
+ * @troupe/world (IOS-5 stream J, docs/IOS-5-CONTRACTS.md): World Bible, real-time grounding (Open-Meteo), storyline,
  * fact / continuity ledger, no-repeat engine (pgvector), Pinterest publishing and inspiration boards.
  */
 
@@ -26,7 +26,7 @@ export { sunTimes, localParts, seasonOf } from './time';
 export { WORLD_JOBS } from './jobs';
 export { WORLD_TOOLS } from './tools';
 
-// StudioModule exports, composed by @ios/wiring.
+// StudioModule exports, composed by @troupe/wiring.
 export const tools: ReadonlyArray<ToolDef<any, any>> = WORLD_TOOLS;
 export const jobs: JobHandlerMap = WORLD_JOB_HANDLERS;
 export const schedules: readonly ScheduledTask[] = WORLD_SCHEDULES;
@@ -34,7 +34,7 @@ export const schedules: readonly ScheduledTask[] = WORLD_SCHEDULES;
 /**
  * Pinterest goes live with `pinterest.access_token`. Open-Meteo has no key: its integration entry is live
  * (`liveAdapter: true`, no secrets), so it is served live whenever the process doesn't force fakes
- * (IOS_FAKE_PROVIDERS: tests, demos).
+ * (TROUPE_FAKE_PROVIDERS: tests, demos).
  */
 export function liveProviders(env: ProviderEnv): Partial<Providers> {
   const out: { weather?: Providers['weather']; pinterest?: Providers['pinterest'] } = {};

@@ -1,4 +1,4 @@
-import type { PublishRequest } from '@ios/providers';
+import type { PublishRequest } from '@troupe/providers';
 import { describe, expect, it } from 'vitest';
 import { buildPostBody, ZERNIO_STORY_SUPPORT, ZernioPublisher } from '../src';
 import { parseStoryMetrics } from '../src/zernio';

@@ -1,10 +1,10 @@
-import { createToolRegistry, type JobContext } from '@ios/agents';
-import { OWNER, STUDIO_MANAGER, type JobRow } from '@ios/core';
+import { createToolRegistry, type JobContext } from '@troupe/agents';
+import { OWNER, STUDIO_MANAGER, type JobRow } from '@troupe/core';
 import { describe, expect, it } from 'vitest';
 import * as mod from '../src';
 import { linkStore, persona, post, product, studio } from './helpers';
 
-describe('@ios/commerce module', () => {
+describe('@troupe/commerce module', () => {
   it('exports a StudioModule within its namespaces', () => {
     expect(Array.isArray(mod.tools)).toBe(true);
     expect(typeof mod.jobs).toBe('object');

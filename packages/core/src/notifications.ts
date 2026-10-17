@@ -1,4 +1,4 @@
-import type { Db } from '@ios/db';
+import type { Db } from '@troupe/db';
 
 export type NotificationKind = 'approval' | 'escalation' | 'budget' | 'digest' | 'publish' | 'system';
 export type Severity = 'info' | 'warn' | 'critical';

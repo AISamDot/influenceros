@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { enqueueOnceFor, type JobContext, type JobHandlerMap, PRODUCT_BUILD_JOB, type ScheduledTask, type StudioServices } from '@ios/agents';
-import { BudgetExceededError, DeferJob } from '@ios/core';
+import { enqueueOnceFor, type JobContext, type JobHandlerMap, PRODUCT_BUILD_JOB, type ScheduledTask, type StudioServices } from '@troupe/agents';
+import { BudgetExceededError, DeferJob } from '@troupe/core';
 import { type BuildPayload, buildProduct } from './build';
 import { listInbox, manuscriptsDir, scanInbox } from './inbox';
 import { PdfRendererUnavailableError } from './pdf';

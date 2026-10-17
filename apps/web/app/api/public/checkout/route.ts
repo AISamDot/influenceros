@@ -1,4 +1,4 @@
-import { checkoutUrlFor } from '@ios/commerce';
+import { checkoutUrlFor } from '@troupe/commerce';
 import { baseFor, readCookieValue, seeOther, SLUG_RE } from '@/components/site-http';
 import { getServices } from '@/lib/services';
 

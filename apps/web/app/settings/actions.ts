@@ -1,6 +1,6 @@
 'use server';
 
-import { type Autonomy, getSettings, OWNER, updatePersonaControls, updateSettings } from '@ios/core';
+import { type Autonomy, getSettings, OWNER, updatePersonaControls, updateSettings } from '@troupe/core';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { authOff, currentSession } from '@/lib/auth';

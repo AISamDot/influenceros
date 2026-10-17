@@ -1,4 +1,4 @@
-import type { ScheduledTask, StudioServices } from '@ios/agents';
+import type { ScheduledTask, StudioServices } from '@troupe/agents';
 import { pendingEmbeddings } from './embed';
 import { KNOWLEDGE_JOBS } from './field-brain';
 import { NEWS_JOBS } from './news';

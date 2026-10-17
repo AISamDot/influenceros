@@ -1,4 +1,4 @@
-import { createTestStudio, makeTestPersona } from '@ios/agents/testing';
+import { createTestStudio, makeTestPersona } from '@troupe/agents/testing';
 import { describe, expect, it } from 'vitest';
 import {
   addSignal,

@@ -1,11 +1,11 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { StudioServices } from '@ios/agents';
-import { metered, meteredProviders } from '@ios/core';
-import { ELEVENLABS_DESIGN_USD, type FaceMatcher, mediaDeps } from '@ios/media';
-import { bopaPlan, type BopaPlan, type CharacterBrief, coreRefPrompts, detailStripPrompt, identityStackPrompts } from '@ios/production';
-import type { InspirationPin } from '@ios/providers';
+import type { StudioServices } from '@troupe/agents';
+import { metered, meteredProviders } from '@troupe/core';
+import { ELEVENLABS_DESIGN_USD, type FaceMatcher, mediaDeps } from '@troupe/media';
+import { bopaPlan, type BopaPlan, type CharacterBrief, coreRefPrompts, detailStripPrompt, identityStackPrompts } from '@troupe/production';
+import type { InspirationPin } from '@troupe/providers';
 import { placeholderLook, sampleLine, type Steer, sheetPrompt, type VoiceBrief, voiceBriefs } from './fake';
 import type { CharacterProfile, ConceptOption, LookCheck, LookProfile, LookStep, VoicePreview } from './types';
 
@@ -154,7 +154,7 @@ export async function checkLook(
     };
   }
   const hf = meteredProviders(services.db, services.providers, { studioId: input.studioId, agent: 'studio-manager', ref: { type: 'studio', id: input.studioId } }).imageVideo;
-  const dir = join(tmpdir(), 'ios-generator', `${Date.now()}-${Math.round(Math.random() * 1e6)}`);
+  const dir = join(tmpdir(), 'troupe-generator', `${Date.now()}-${Math.round(Math.random() * 1e6)}`);
   mkdirSync(dir, { recursive: true });
   const again = await hf.generateStill({ prompt: `${v.prompt} Same character, new angle.`, aspect: '1:1', model: 'nano-banana', resolution: '720p' });
   const a = await fetchTo(v.url, join(dir, 'a.png'));

@@ -1,5 +1,5 @@
-import type { Db } from '@ios/db';
-import { profitCard, type ProfitCardData } from '@ios/profit';
+import type { Db } from '@troupe/db';
+import { profitCard, type ProfitCardData } from '@troupe/profit';
 import Link from 'next/link';
 import { ActionList, Band, LeverLine, money } from './profit-bits';
 
@@ -7,7 +7,7 @@ const MONTH = new Intl.DateTimeFormat('en-US', { month: 'long', timeZone: 'UTC' 
 
 /**
  * Profit card on the Studio wall (PRD §3.11 outputs): this month's profit vs forecast, top three levers pulled, top
- * three opportunities. Data from @ios/profit; a failure here never takes the wall down.
+ * three opportunities. Data from @troupe/profit; a failure here never takes the wall down.
  */
 export async function ProfitCard({ db, studioId }: { db: Db; studioId: string }) {
   let data: ProfitCardData;

@@ -1,6 +1,6 @@
-import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
-import { enqueue } from '@ios/core';
-import { allJobs, allSchedules } from '@ios/wiring';
+import { createTestStudio, makeTestPersona, type TestStudio } from '@troupe/agents/testing';
+import { enqueue } from '@troupe/core';
+import { allJobs, allSchedules } from '@troupe/wiring';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs, runCommand } from '../src/app';
 
@@ -15,7 +15,7 @@ describe('pnpm worker', () => {
     expect(parseArgs([], {})).toEqual({ command: 'run', tick: true, concurrency: null });
     expect(parseArgs(['once', '--no-tick'], {})).toMatchObject({ command: 'once', tick: false });
     expect(parseArgs(['--concurrency', '3', 'run'], {})).toMatchObject({ command: 'run', concurrency: 3 });
-    expect(parseArgs(['run'], { IOS_TICKER: 'off', IOS_WORKER_CONCURRENCY: '2' })).toMatchObject({ tick: false, concurrency: 2 });
+    expect(parseArgs(['run'], { TROUPE_TICKER: 'off', TROUPE_WORKER_CONCURRENCY: '2' })).toMatchObject({ tick: false, concurrency: 2 });
     expect(parseArgs(['bogus'], {}).command).toBe('help');
   });
 

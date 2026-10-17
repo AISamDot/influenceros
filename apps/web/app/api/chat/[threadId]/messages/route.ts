@@ -1,5 +1,5 @@
-import { acceptOwnerMessage, newMessageId, respondToOwner } from '@ios/agents';
-import { getThread, listMessages, NotFoundError } from '@ios/core';
+import { acceptOwnerMessage, newMessageId, respondToOwner } from '@troupe/agents';
+import { getThread, listMessages, NotFoundError } from '@troupe/core';
 // Relative imports so the route can be exercised directly in tests (apps/web/test/routes.test.ts).
 import { requireOwner } from '../../../../../lib/auth';
 import { UUID_RE } from '../../../../../lib/http';

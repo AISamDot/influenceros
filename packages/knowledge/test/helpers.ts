@@ -1,7 +1,7 @@
-import type { StudioServices } from '@ios/agents';
-import { createTestStudio, type TestStudio } from '@ios/agents/testing';
-import { type JobHandler, runOnce } from '@ios/core';
-import { createFakeProviders, type FakeProviders, FakeFeeds, type FeedItem } from '@ios/providers';
+import type { StudioServices } from '@troupe/agents';
+import { createTestStudio, type TestStudio } from '@troupe/agents/testing';
+import { type JobHandler, runOnce } from '@troupe/core';
+import { createFakeProviders, type FakeProviders, FakeFeeds, type FeedItem } from '@troupe/providers';
 import { createKnowledgeService, jobs } from '../src';
 
 /** A Wednesday morning, a few hours after FakeFeeds' default timestamps. */

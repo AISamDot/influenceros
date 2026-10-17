@@ -1,6 +1,6 @@
-import type { JobContext, JobHandlerMap, ScheduledTask, StudioServices } from '@ios/agents';
-import { BudgetExceededError, DeferJob, enqueue, PUBLISHING_STATES } from '@ios/core';
-import { json } from '@ios/db';
+import type { JobContext, JobHandlerMap, ScheduledTask, StudioServices } from '@troupe/agents';
+import { BudgetExceededError, DeferJob, enqueue, PUBLISHING_STATES } from '@troupe/core';
+import { json } from '@troupe/db';
 import { bookReactionIdeas, planWeek, WEEK_MEMBER_SQL } from './calendar';
 import { runMonetizationCycle } from './monetization';
 import { processSlot } from './pipeline';

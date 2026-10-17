@@ -1,4 +1,4 @@
-import { fillTemplate, HOOK_TEMPLATES } from '@ios/content';
+import { fillTemplate, HOOK_TEMPLATES } from '@troupe/content';
 
 /**
  * The niche filter for the Persona Generator (PRD §3.15.7): "could a real creator build a personal brand by talking

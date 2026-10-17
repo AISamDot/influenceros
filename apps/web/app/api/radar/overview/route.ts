@@ -1,5 +1,5 @@
-import { getStudio } from '@ios/core';
-import { radarOverview } from '@ios/radar';
+import { getStudio } from '@troupe/core';
+import { radarOverview } from '@troupe/radar';
 // Relative imports so the route can be exercised directly in tests.
 import { requireOwner } from '../../../../lib/auth';
 import { getServices } from '../../../../lib/services';

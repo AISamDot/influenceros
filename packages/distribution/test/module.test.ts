@@ -1,8 +1,8 @@
-import { PUBLISH_PREPARE_JOB } from '@ios/agents';
+import { PUBLISH_PREPARE_JOB } from '@troupe/agents';
 import { describe, expect, it } from 'vitest';
 import * as mod from '../src';
 
-describe('@ios/distribution module', () => {
+describe('@troupe/distribution module', () => {
   it('exports a StudioModule inside stream F namespaces', () => {
     const ns = /^(?:publish|community|analytics|accounts)\./;
     expect(mod.tools.length).toBeGreaterThan(0);

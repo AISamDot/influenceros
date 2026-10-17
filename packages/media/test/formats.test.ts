@@ -1,6 +1,6 @@
-import { CAMERA_STYLES, type Grounding, NO_CAPTIONS, nullWorld, PUBLISH_PREPARE_JOB, type PublishPreparePayload, type WorldService } from '@ios/agents';
-import type { JobRow, PostFormat } from '@ios/core';
-import { CAMERA_SPEC, createPromptCompiler, ensureLocations, lockLocation, placeKey, PRODUCTION_JOB, slotProduction } from '@ios/production';
+import { CAMERA_STYLES, type Grounding, NO_CAPTIONS, nullWorld, PUBLISH_PREPARE_JOB, type PublishPreparePayload, type WorldService } from '@troupe/agents';
+import type { JobRow, PostFormat } from '@troupe/core';
+import { CAMERA_SPEC, createPromptCompiler, ensureLocations, lockLocation, placeKey, PRODUCTION_JOB, slotProduction } from '@troupe/production';
 import { describe, expect, it } from 'vitest';
 import { FakeFaceMatcher, FakeToolkit, gradeQ4, jobs, NEUTRAL_GRADE, PIP_BOX, placeText, renderSlot, slotMedia, videoArgs } from '../src';
 import { cardChrome, textSvg } from '../src/ffmpeg';

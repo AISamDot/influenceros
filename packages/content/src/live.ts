@@ -1,10 +1,10 @@
-import type { ProviderEnv } from '@ios/agents';
-import type { Providers, TranscribeProvider, TranscriptWord } from '@ios/providers';
+import type { ProviderEnv } from '@troupe/agents';
+import type { Providers, TranscribeProvider, TranscriptWord } from '@troupe/providers';
 
 /**
  * Live adapters stream B owns. `transcribe` (QC Q2) runs on ElevenLabs Speech-to-Text (Scribe): Whisper-style word
  * timestamps from the same key the voice uses (`elevenlabs.api_key`), so no extra account. It goes live only when
- * the ElevenLabs integration is live (key present, live adapter enabled, IOS_FAKE_PROVIDERS not set); otherwise the
+ * the ElevenLabs integration is live (key present, live adapter enabled, TROUPE_FAKE_PROVIDERS not set); otherwise the
  * FakeTranscriber reads back what FakeVoice synthesised.
  */
 

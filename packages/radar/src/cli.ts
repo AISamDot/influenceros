@@ -11,13 +11,13 @@
 //
 // Database commands open the local PGlite only when no other process holds it (the PGlite lock): while `pnpm dev`
 // runs, use a scratch PGLITE_DIR (docs/IOS-5-CONTRACTS.md §2), or the Radar page and the Studio chat instead.
-import { createServices, type ProviderEnv, type StudioServices } from '@ios/agents';
-import { createTestStudio, makeTestPersona } from '@ios/agents/testing';
-import { type JobRow, runOnce } from '@ios/core';
-import { type Db, exitOnOpenError, openDb } from '@ios/db';
-import { migrate } from '@ios/db/migrate';
-import { createFakeProviders, type Providers } from '@ios/providers';
-import { defaultBackend, integrationStates, isSecretName, readSecret } from '@ios/secrets';
+import { createServices, type ProviderEnv, type StudioServices } from '@troupe/agents';
+import { createTestStudio, makeTestPersona } from '@troupe/agents/testing';
+import { type JobRow, runOnce } from '@troupe/core';
+import { type Db, exitOnOpenError, openDb } from '@troupe/db';
+import { migrate } from '@troupe/db/migrate';
+import { createFakeProviders, type Providers } from '@troupe/providers';
+import { defaultBackend, integrationStates, isSecretName, readSecret } from '@troupe/secrets';
 import { addSeeds, loadConfig } from './config';
 import { liveProviders } from './index';
 import { enqueueWeekly, radarJobs } from './jobs';

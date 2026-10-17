@@ -1,5 +1,5 @@
-import { CADENCE_BOUNDS, DEFAULT_CADENCE, type FormatBenchmark, type FormatPlan, STORIES_PER_DAY } from '@ios/agents';
-import { CORE_FORMATS } from '@ios/core';
+import { CADENCE_BOUNDS, DEFAULT_CADENCE, type FormatBenchmark, type FormatPlan, STORIES_PER_DAY } from '@troupe/agents';
+import { CORE_FORMATS } from '@troupe/core';
 import { describe, expect, it } from 'vitest';
 import { dailyKinds, defaultPlan, editPlan, FORMAT_COST_USD, FormatPlanError, monthlyCostUsd, planMixOf, recommendPlan, storiesPlan, validatePlan } from '../src';
 

@@ -1,5 +1,5 @@
-import { decide, OWNER } from '@ios/core';
-import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
+import { decide, OWNER } from '@troupe/core';
+import { createTestStudio, makeTestPersona, type TestStudio } from '@troupe/agents/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { fitSeries, forecastStudio, HORIZON_WEEKS, latestForecast, proposeKillCandidates, storeForecasts } from '../src';
 import { addDebit, addWeeklyHistory, daysAgo, NOW } from './fixtures';

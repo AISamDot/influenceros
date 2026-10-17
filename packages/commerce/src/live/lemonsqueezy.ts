@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { inspect } from 'node:util';
-import type { StoreEvent, StoreInfo, StoreProduct, StoreProvider } from '@ios/providers';
+import type { StoreEvent, StoreInfo, StoreProduct, StoreProvider } from '@troupe/providers';
 import { asNumber, asRecord, asString, emailHash } from '../util';
 
 /**

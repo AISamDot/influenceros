@@ -1,4 +1,4 @@
-import { type Db, json } from '@ios/db';
+import { type Db, json } from '@troupe/db';
 import { propose } from '../approvals';
 import { portraitUri, thumbnailUri } from '../art';
 import { audit } from '../audit';
@@ -9,7 +9,7 @@ import type { FieldBrainSeed, LaunchPersona } from './launch';
 
 /**
  * Writes persona documents into a studio. Used by `seed({ personas })`, the `personas.import` job (an existing studio
- * picking up new folders or edited documents), archive restores and Persona Generator launches (@ios/generator).
+ * picking up new folders or edited documents), archive restores and Persona Generator launches (@troupe/generator).
  * Nothing here invents results: no metrics, orders, spend or followers. A new persona starts PROPOSED with an
  * Owner-only launch card (Owner decision, 16 Oct: the Owner approves every launch; no timer).
  */
@@ -293,7 +293,7 @@ export async function upsertFieldBrainSeed(db: Db, studioId: string, niche: stri
 /** A fresh studio holding the launch personas (`pnpm db:seed` when the persona folders exist). */
 export async function seedLaunchStudio(db: Db, personas: readonly LaunchPersona[], now: Date): Promise<{ studioId: string; personas: Array<{ slug: string; id: string; state: string }> }> {
   const studio = await db.one<{ id: string }>(
-    `INSERT INTO studio (slug, name, settings) VALUES ('main', 'Influencer OS Studio', $1::jsonb) RETURNING id`,
+    `INSERT INTO studio (slug, name, settings) VALUES ('main', 'Troupe House Studio', $1::jsonb) RETURNING id`,
     [json(DEFAULT_SETTINGS)],
   );
   const studioId = studio.id;

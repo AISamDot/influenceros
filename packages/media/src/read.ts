@@ -1,5 +1,5 @@
-import type { QcCheck } from '@ios/agents';
-import type { Db } from '@ios/db';
+import type { QcCheck } from '@troupe/agents';
+import type { Db } from '@troupe/db';
 import type { ColorGrade } from './toolkit';
 
 /** Read models for the dashboard: the slot page's media section and the persona page's media panel. */

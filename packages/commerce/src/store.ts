@@ -1,13 +1,13 @@
-import type { StudioServices } from '@ios/agents';
-import { buildListingPack } from '@ios/content';
-import { audit, notify, OWNER, SYSTEM, type Actor } from '@ios/core';
-import type { Db } from '@ios/db';
-import type { StoreInfo, StoreProduct } from '@ios/providers';
+import type { StudioServices } from '@troupe/agents';
+import { buildListingPack } from '@troupe/content';
+import { audit, notify, OWNER, SYSTEM, type Actor } from '@troupe/core';
+import type { Db } from '@troupe/db';
+import type { StoreInfo, StoreProduct } from '@troupe/providers';
 import { asRecord, asString } from './util';
 
 /**
  * Lemon Squeezy stores and products (FR-10.1). The products API is read-only, so the studio prefers an API-less
- * path: every approved product gets a listing pack (Gate-checked, from @ios/content), and goes live as soon as a
+ * path: every approved product gets a listing pack (Gate-checked, from @troupe/content), and goes live as soon as a
  * checkout URL is stored for it, either matched from the store's own products (read API) or pasted by the Owner.
  * Free lead magnets need no store: they are delivered by email. Status per product: none → listing_pack →
  * awaiting_listing (the Owner creates the store listing from the pack: the one unavoidable manual step) → linked.

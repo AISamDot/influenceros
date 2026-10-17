@@ -1,11 +1,11 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import type { FeedItem, FeedProvider } from '@ios/providers';
+import type { FeedItem, FeedProvider } from '@troupe/providers';
 import { parseFeedXml } from './rss';
 
 /**
  * Live FeedProvider: plain HTTPS GETs of RSS/Atom feeds, refused unless the host is on the allowlist (built-in
- * news hosts + the launch personas' feed hosts + IOS_FEED_ALLOWLIST + feeds the studio itself registered).
+ * news hosts + the launch personas' feed hosts + TROUPE_FEED_ALLOWLIST + feeds the studio itself registered).
  * Defence in depth on top of the allowlist: http(s) only, no credentials in URLs, no private or loopback
  * addresses, redirects re-checked hop by hop, a 10 s timeout and a 3 MB body cap. Free (no costUsd).
  */
@@ -127,7 +127,7 @@ export class HttpFeedProvider implements FeedProvider {
       res = await this.#fetch(url, {
         redirect: 'manual',
         signal: AbortSignal.timeout(this.#timeoutMs),
-        headers: { 'user-agent': 'InfluencerOS-NewsDesk/1.0 (+RSS reader)', accept: 'application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5' },
+        headers: { 'user-agent': 'TroupeHouse-NewsDesk/1.0 (+RSS reader)', accept: 'application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5' },
       });
       if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
         url = await this.#check(new URL(res.headers.get('location')!, url).toString());

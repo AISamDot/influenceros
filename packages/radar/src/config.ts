@@ -1,4 +1,4 @@
-import { type Db, json } from '@ios/db';
+import { type Db, json } from '@troupe/db';
 
 /**
  * Radar config (table `radar_config`, one row per studio): the Apify actor ids, their pay-per-result prices (the

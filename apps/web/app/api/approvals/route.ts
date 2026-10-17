@@ -1,4 +1,4 @@
-import { listPendingApprovals } from '@ios/core';
+import { listPendingApprovals } from '@troupe/core';
 import { requireOwner } from '@/lib/auth';
 import { studioContext } from '@/lib/server';
 

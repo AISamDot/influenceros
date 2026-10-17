@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { createFakeProviders } from '@ios/providers';
+import { createFakeProviders } from '@troupe/providers';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { decide, OWNER, propose, PublishBlockedError, publishPost, recoverPublishing, STUDIO_MANAGER, sweepAutoApprovals } from '../src';
 import { type Ctx, makePersona, setup } from './helpers';

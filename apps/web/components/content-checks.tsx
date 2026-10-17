@@ -1,4 +1,4 @@
-import type { GateCheck, QcCheck } from '@ios/agents';
+import type { GateCheck, QcCheck } from '@troupe/agents';
 import { IconCheck, IconFlag, IconX } from './icons';
 import { VERDICT_STYLE } from './pipeline-card';
 

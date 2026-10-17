@@ -1,7 +1,7 @@
-import { type FormatBenchmark, type MonetisationPattern, OUTLIER, type OpportunityEvidence } from '@ios/agents';
-import { addSignal } from '@ios/content';
-import type { PostFormat } from '@ios/core';
-import { type Db, json } from '@ios/db';
+import { type FormatBenchmark, type MonetisationPattern, OUTLIER, type OpportunityEvidence } from '@troupe/agents';
+import { addSignal } from '@troupe/content';
+import type { PostFormat } from '@troupe/core';
+import { type Db, json } from '@troupe/db';
 import { HOOK_LABEL, type HookType } from './classify';
 import { clusterTrends, type Trend, type TrendDimension } from './cluster';
 import { nicheKey } from './config';

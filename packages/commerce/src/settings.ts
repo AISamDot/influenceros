@@ -1,4 +1,5 @@
-import type { Db } from '@ios/db';
+import { studioDomain } from '@troupe/env';
+import type { Db } from '@troupe/db';
 
 /**
  * Studio commerce settings (Owner-set on /commerce): the physical-address footer every marketing email carries
@@ -36,7 +37,7 @@ export async function updateCommerceSettings(db: Db, studioId: string, patch: { 
 
 /** The sending identity of a persona's list. Falls back to the studio domain env, then a non-routable placeholder. */
 export function senderFor(persona: { slug: string; name: string }, settings: CommerceSettings, env: Readonly<Record<string, string | undefined>> = process.env) {
-  const domain = settings.senderDomain ?? env.IOS_STUDIO_DOMAIN?.trim().toLowerCase() ?? null;
+  const domain = settings.senderDomain ?? studioDomain(env);
   const email = `${persona.slug}@${domain ?? 'studio.invalid'}`;
   const name = persona.name.replace(/["<>\\]/g, '').trim() || persona.slug;
   return { fromEmail: email, fromName: name, from: `${name} <${email}>`, configured: Boolean(domain) };

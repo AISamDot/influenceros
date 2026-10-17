@@ -1,6 +1,6 @@
-import type { GateCheck, MediaRenderPayload, PipelineStage, QcCheck } from '@ios/agents';
-import type { GateVerdict, PostFormat, PostPurpose } from '@ios/core';
-import type { Db } from '@ios/db';
+import type { GateCheck, MediaRenderPayload, PipelineStage, QcCheck } from '@troupe/agents';
+import type { GateVerdict, PostFormat, PostPurpose } from '@troupe/core';
+import type { Db } from '@troupe/db';
 import type { Hook } from './hooks';
 import { stageOf } from './pipeline';
 

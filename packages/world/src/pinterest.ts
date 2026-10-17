@@ -1,5 +1,5 @@
-import type { StudioServices } from '@ios/agents';
-import { assertCanPublish } from '@ios/core';
+import type { StudioServices } from '@troupe/agents';
+import { assertCanPublish } from '@troupe/core';
 
 /**
  * Pinterest publishing (PRD §7: one studio Pinterest account, a board per persona; pins for products and

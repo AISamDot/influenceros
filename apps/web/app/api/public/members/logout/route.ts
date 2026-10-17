@@ -1,5 +1,5 @@
-import { endMemberSession, MEMBER_COOKIE } from '@ios/commerce';
-import { getDb } from '@ios/db';
+import { endMemberSession, MEMBER_COOKIE } from '@troupe/commerce';
+import { getDb } from '@troupe/db';
 import { baseFor, cookie, formFields, readCookieValue, seeOther, SLUG_RE } from '@/components/site-http';
 
 export const dynamic = 'force-dynamic';

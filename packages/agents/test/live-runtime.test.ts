@@ -1,6 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { BudgetExceededError, STUDIO_MANAGER } from '@ios/core';
-import { createFakeProviders } from '@ios/providers';
+import { BudgetExceededError, STUDIO_MANAGER } from '@troupe/core';
+import { createFakeProviders } from '@troupe/providers';
 import { describe, expect, it } from 'vitest';
 import {
   A_TOOLS,

@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { FakeZernio, type PublishProvider } from '@ios/providers';
+import { FakeZernio, type PublishProvider } from '@troupe/providers';
 import { describe, expect, it } from 'vitest';
 import { ZERNIO_ROUTES, ZernioPublisher } from '../src';
 import { formatSnapshot, getOnlyFetch } from '../src/zernio-check';

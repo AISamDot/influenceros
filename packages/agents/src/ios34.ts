@@ -5,8 +5,9 @@
  * Cross-stream work travels through the job queue (payload types below) and the database (tables in the contracts
  * doc, §5.6); no IOS-3/4 package imports another.
  */
-import { enqueue, type JobRow, type PostFormat } from '@ios/core';
-import type { Db } from '@ios/db';
+import { studioDomain, troupeEnv } from '@troupe/env';
+import { enqueue, type JobRow, type PostFormat } from '@troupe/core';
+import type { Db } from '@troupe/db';
 
 // ───────────────────────────── Enqueue once per subject ─────────────────────────────
 
@@ -171,24 +172,24 @@ function cleanPath(path: string): string {
   return p === '/' ? '' : p;
 }
 
-/** Origin of the dashboard / local server: IOS_PUBLIC_URL, else http://localhost:<PORT or 3100>. */
+/** Origin of the dashboard / local server: TROUPE_PUBLIC_URL, else http://localhost:<PORT or 3100>. */
 export function appOrigin(env: Env = process.env): string {
-  return (env.IOS_PUBLIC_URL?.trim() || `http://localhost:${env.PORT?.trim() || 3100}`).replace(/\/+$/, '');
+  return (troupeEnv('PUBLIC_URL', env)?.trim() || `http://localhost:${env.PORT?.trim() || 3100}`).replace(/\/+$/, '');
 }
 
 /**
- * Public URL of a page on a persona's site: `https://<slug>.<IOS_STUDIO_DOMAIN><path>` when the studio domain is set,
+ * Public URL of a page on a persona's site: `https://<slug>.<TROUPE_STUDIO_DOMAIN><path>` when the studio domain is set,
  * else `<appOrigin>/p/<slug><path>` (local dev).
  */
 export function personaSiteUrl(slug: string, path: string = SITE_PATHS.home, env: Env = process.env): string {
-  const domain = env.IOS_STUDIO_DOMAIN?.trim().toLowerCase();
+  const domain = studioDomain(env);
   if (domain) return `https://${slug}.${domain}${cleanPath(path) || '/'}`;
   return `${appOrigin(env)}/p/${slug}${cleanPath(path)}`;
 }
 
 /** Public URL of a short link (`short_link.slug`), served by G at `/l/<code>` on the persona's host. */
 export function shortLinkUrl(personaSlug: string, code: string, env: Env = process.env): string {
-  const domain = env.IOS_STUDIO_DOMAIN?.trim().toLowerCase();
+  const domain = studioDomain(env);
   if (domain) return `https://${personaSlug}.${domain}/l/${code}`;
   return `${appOrigin(env)}/l/${code}`;
 }

@@ -1,5 +1,5 @@
-import type { PostFormat } from '@ios/core';
-import { FORMAT_LABEL, HOOK_LABEL, type HookType, radarOverview, type RadarOverview } from '@ios/radar';
+import type { PostFormat } from '@troupe/core';
+import { FORMAT_LABEL, HOOK_LABEL, type HookType, radarOverview, type RadarOverview } from '@troupe/radar';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Flash } from '@/components/flash';

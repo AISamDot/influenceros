@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { SKILL_NAMES, type SkillName } from '@ios/agents';
-import { findRepoRoot } from '@ios/db';
-import type { LlmCacheBlock } from '@ios/providers';
+import { SKILL_NAMES, type SkillName } from '@troupe/agents';
+import { findRepoRoot } from '@troupe/db';
+import type { LlmCacheBlock } from '@troupe/providers';
 
 /**
  * The studio's own skills live in `<repo>/.claude/skills/<name>/SKILL.md`. In live mode the Agent SDK loads them

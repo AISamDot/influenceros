@@ -1,8 +1,8 @@
 import { requireOwner } from '@/lib/auth';
-import { enqueueSlot, pipelineBoard, planWeek, runSlot } from '@ios/content';
-import { PUBLISHING_STATES } from '@ios/core';
-import { rerenderSlot } from '@ios/media';
-import { createStudioServices } from '@ios/wiring';
+import { enqueueSlot, pipelineBoard, planWeek, runSlot } from '@troupe/content';
+import { PUBLISHING_STATES } from '@troupe/core';
+import { rerenderSlot } from '@troupe/media';
+import { createStudioServices } from '@troupe/wiring';
 import { backTo, isFormPost, isJson, UUID_RE } from '@/lib/http';
 import { studioContext } from '@/lib/server';
 

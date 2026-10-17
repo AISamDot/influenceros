@@ -22,7 +22,7 @@ describe('IOS-3/4 provider contracts', () => {
     expect(path && readFileSync(path, 'utf8')).toBe('hello');
     expect(await mem.get('nope')).toBeNull();
 
-    const dir = mkdtempSync(join(tmpdir(), 'ios-store-'));
+    const dir = mkdtempSync(join(tmpdir(), 'troupe-store-'));
     try {
       const disk = new LocalMediaStore(dir);
       const src = join(dir, 'src.bin');

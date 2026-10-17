@@ -137,7 +137,7 @@ export interface StudioSettings {
   formats: Record<OptionalFormat, number>;
   /**
    * (IOS-5) Weekly cap on Apify scraping spend (USD, trailing 7 days, every actor run: Growth Radar, Winner Finder,
-   * Pinterest fallback, market scans). Owner-only like every cap; enforced by `meteredApify` in @ios/agents.
+   * Pinterest fallback, market scans). Owner-only like every cap; enforced by `meteredApify` in @troupe/agents.
    */
   apify_weekly_cap_usd: number;
 }

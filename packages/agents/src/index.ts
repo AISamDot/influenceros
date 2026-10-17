@@ -1,4 +1,4 @@
-import type { Providers } from '@ios/providers';
+import type { Providers } from '@troupe/providers';
 import type { JobHandlerMap, ProviderEnv, ScheduledTask, ToolDef } from './contracts';
 import { A_JOBS, A_SCHEDULES } from './jobs';
 import { AnthropicLlm } from './live/anthropic';
@@ -6,7 +6,7 @@ import { ResendEmail } from './live/resend';
 import { A_TOOLS } from './tools';
 
 /**
- * @ios/agents: the IOS-2 contracts (frozen, contracts.ts) plus the agent runtime, tool registry, Studio Manager
+ * @troupe/agents: the IOS-2 contracts (frozen, contracts.ts) plus the agent runtime, tool registry, Studio Manager
  * and Persona Manager (stream A).
  */
 export * from './contracts';
@@ -40,7 +40,7 @@ export { FEEDBACK_EFFECTS_JOB, measureFeedbackEffects, RECOVER_PUBLISHING_JOB } 
 export { A_TOOLS } from './tools';
 export { ToolInputError } from './tools/schema';
 
-// StudioModule exports, composed by @ios/wiring.
+// StudioModule exports, composed by @troupe/wiring.
 export const tools: ReadonlyArray<ToolDef<any, any>> = A_TOOLS;
 export const jobs: JobHandlerMap = A_JOBS;
 export const schedules: readonly ScheduledTask[] = A_SCHEDULES;

@@ -1,8 +1,8 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { isDeployed } from '@ios/auth/guard';
-import { getDb } from '@ios/db';
-import { studioTick } from '@ios/profit';
-import { allSchedules, createStudioServices } from '@ios/wiring';
+import { isDeployed } from '@troupe/auth/guard';
+import { getDb } from '@troupe/db';
+import { studioTick } from '@troupe/profit';
+import { allSchedules, createStudioServices } from '@troupe/wiring';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -11,7 +11,7 @@ export const maxDuration = 60;
  * Scheduler tick (Vercel Cron every minute, see vercel.json; on the Mac the ticker in instrumentation.ts and
  * `pnpm worker`): the core tick (auto-approves due 24 h cards and veto-window posts, never kill or other Owner-only
  * kinds; reaps jobs whose worker died), then every due ScheduledTask from every package (they only enqueue jobs).
- * Protected by `Authorization: Bearer $CRON_SECRET`; when deployed (Vercel or IOS_DEPLOYED=1) the secret is required.
+ * Protected by `Authorization: Bearer $CRON_SECRET`; when deployed (Vercel or TROUPE_DEPLOYED=1) the secret is required.
  */
 const digest = (s: string) => createHash('sha256').update(s).digest();
 

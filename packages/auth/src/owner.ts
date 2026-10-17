@@ -1,6 +1,6 @@
 import { createHash, randomBytes, scrypt as scryptCb, type ScryptOptions, timingSafeEqual } from 'node:crypto';
-import type { Db } from '@ios/db';
-import type { EmailProvider } from '@ios/providers';
+import type { Db } from '@troupe/db';
+import type { EmailProvider } from '@troupe/providers';
 import { safeNext, SESSION_TTL_MS, signSession } from './guard';
 
 /**
@@ -172,8 +172,8 @@ export async function requestMagicLink(
   await email.send({
     from: input.from,
     to: owner,
-    subject: 'Sign in to Influencer OS',
-    html: `<p>Sign in to your Influencer OS dashboard:</p><p><a href="${link}">Sign in</a></p><p>The link works once and expires in 15 minutes. If you didn't ask for it, ignore this email.</p>`,
+    subject: 'Sign in to Troupe House',
+    html: `<p>Sign in to your Troupe House dashboard:</p><p><a href="${link}">Sign in</a></p><p>The link works once and expires in 15 minutes. If you didn't ask for it, ignore this email.</p>`,
     tags: { purpose: 'owner_sign_in' },
   });
   return { sent: true, link };

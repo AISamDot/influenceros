@@ -1,6 +1,6 @@
-import { ApifyWeeklyCapError, enqueueOnceFor, type JobContext, type JobHandlerMap, type ScheduledTask, type StudioServices } from '@ios/agents';
-import { BudgetExceededError, DeferJob } from '@ios/core';
-import type { Db } from '@ios/db';
+import { ApifyWeeklyCapError, enqueueOnceFor, type JobContext, type JobHandlerMap, type ScheduledTask, type StudioServices } from '@troupe/agents';
+import { BudgetExceededError, DeferJob } from '@troupe/core';
+import type { Db } from '@troupe/db';
 import { loadConfig, nicheKey } from './config';
 import { discoverNiche, nichesToScan } from './discovery';
 import { detectTrends, pushDemandSignals } from './insights';

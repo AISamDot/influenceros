@@ -120,8 +120,8 @@ describe('liveProviders', () => {
   });
 
   it('API-less (signing secret, no API key) verifies webhooks with the real secret, never the fake one', async () => {
-    const prev = process.env.IOS_FAKE_PROVIDERS;
-    process.env.IOS_FAKE_PROVIDERS = '';
+    const prev = process.env.TROUPE_FAKE_PROVIDERS;
+    process.env.TROUPE_FAKE_PROVIDERS = '';
     try {
       const out = liveProviders(env([], { 'lemonsqueezy.webhook_secret': 'whsec_real' }));
       expect(out.store?.name).toBe('lemonsqueezy-webhooks');
@@ -133,7 +133,7 @@ describe('liveProviders', () => {
       expect(await out.store!.listStores()).toEqual([]);
       await expect(out.store!.createCheckout({ storeId: '1', variantId: '2' })).rejects.toThrow(/API key/);
     } finally {
-      process.env.IOS_FAKE_PROVIDERS = prev;
+      process.env.TROUPE_FAKE_PROVIDERS = prev;
     }
     // Forced fakes (tests) stay fake.
     expect(liveProviders(env([], { 'lemonsqueezy.webhook_secret': 'whsec_real' }))).toEqual({});

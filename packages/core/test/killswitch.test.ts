@@ -1,4 +1,4 @@
-import { createFakeProviders } from '@ios/providers';
+import { createFakeProviders } from '@troupe/providers';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   clearKillSwitch,

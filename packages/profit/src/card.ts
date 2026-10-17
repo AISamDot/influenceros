@@ -1,4 +1,4 @@
-import type { Db } from '@ios/db';
+import type { Db } from '@troupe/db';
 import { rankActions } from './actions';
 import { forecastStudio, latestForecast } from './forecast';
 import { listLeverActions } from './levers';

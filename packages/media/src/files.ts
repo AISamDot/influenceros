@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
-import type { StudioServices } from '@ios/agents';
-import { json } from '@ios/db';
+import type { StudioServices } from '@troupe/agents';
+import { json } from '@troupe/db';
 import type { MediaToolkit } from './toolkit';
 
 /** Files between providers, the local toolkit and `providers.storage`, plus the `asset` rows that describe them. */

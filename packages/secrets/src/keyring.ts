@@ -1,6 +1,7 @@
+import { troupeEnv } from '@troupe/env';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { KEYCHAIN_SERVICE, NullBackend, type SecretBackend, SecretBackendError } from './store';
+import { FallbackBackend, KEYCHAIN_SERVICE, LEGACY_KEYCHAIN_SERVICE, NullBackend, type SecretBackend, SecretBackendError } from './store';
 
 /**
  * The macOS Keychain adapter over `@napi-rs/keyring` (Brand OS pattern): account = secret name. Loaded lazily, so
@@ -70,11 +71,12 @@ export class KeyringBackend implements SecretBackend {
 
 /**
  * The backend the app uses: the Keychain on macOS; nothing elsewhere (Vercel reads env vars) and never under
- * Vitest, so tests can't touch the real Keychain. `IOS_KEYCHAIN=off` disables it.
+ * Vitest, so tests can't touch the real Keychain. `TROUPE_KEYCHAIN=off` disables it. Reads fall back to the legacy
+ * Influencer OS service (`ai.influencer-os`) for items not yet migrated; writes go to `ai.troupe-house` only.
  */
 export function defaultBackend(env: Readonly<Record<string, string | undefined>> = process.env): SecretBackend {
-  if (env.VITEST || env.NODE_ENV === 'test' || env.IOS_KEYCHAIN === 'off' || process.platform !== 'darwin') {
+  if (env.VITEST || env.NODE_ENV === 'test' || troupeEnv('KEYCHAIN', env) === 'off' || process.platform !== 'darwin') {
     return new NullBackend();
   }
-  return new KeyringBackend(KEYCHAIN_SERVICE);
+  return new FallbackBackend(new KeyringBackend(KEYCHAIN_SERVICE), new KeyringBackend(LEGACY_KEYCHAIN_SERVICE));
 }

@@ -26,8 +26,8 @@ let built: Promise<string> | null = null;
 /** Compiles the helper once per source version. */
 export function visionBinary(): Promise<string> {
   built ??= (async () => {
-    const dir = join(tmpdir(), 'ios-media');
-    const out = join(dir, `ios-vision-${createHash('sha256').update(VISION_SWIFT).digest('hex').slice(0, 12)}`);
+    const dir = join(tmpdir(), 'troupe-media');
+    const out = join(dir, `troupe-vision-${createHash('sha256').update(VISION_SWIFT).digest('hex').slice(0, 12)}`);
     if (!existsSync(/*turbopackIgnore: true*/ out)) {
       await mkdir(dir, { recursive: true });
       const src = `${out}.swift`;

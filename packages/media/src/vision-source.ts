@@ -1,7 +1,7 @@
 /** Source of the Apple Vision helper (compiled once with the system `swiftc`; see vision.ts). */
 export const VISION_SWIFT = String.raw`// Apple Vision helper for stream E's QC (OCR for Q4 captions, face similarity for Q3). Runs on the Mac worker only.
-// Usage: ios-vision ocr <image>            -> {"text": "...", "confidence": 0.97}
-//        ios-vision face <reference> <image> -> {"faces": 1, "similarity": 0.83}
+// Usage: troupe-vision ocr <image>            -> {"text": "...", "confidence": 0.97}
+//        troupe-vision face <reference> <image> -> {"faces": 1, "similarity": 0.83}
 // Local OS frameworks only: no network, no model download, no third-party weights (commercial use is fine).
 import AppKit
 import Foundation
@@ -62,7 +62,7 @@ do {
     try pa.computeDistance(&d, to: pb)
     emit(["faces": found.count, "similarity": max(0, 1 - Double(min(d, 1.4)) / 1.4), "distance": Double(d)])
   } else {
-    emit(["error": "usage: ios-vision ocr <image> | face <reference> <image>"]); exit(64)
+    emit(["error": "usage: troupe-vision ocr <image> | face <reference> <image>"]); exit(64)
   }
 } catch {
   emit(["error": "\(error)"]); exit(1)

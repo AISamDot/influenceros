@@ -1,12 +1,12 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PRODUCT_BUILD_JOB, type ProductFile } from '@ios/agents';
-import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
-import { briefProduct } from '@ios/content';
-import { decide, type JobRow, OWNER, propose } from '@ios/core';
-import { json } from '@ios/db';
-import type { MemoryMediaStore } from '@ios/providers';
+import { PRODUCT_BUILD_JOB, type ProductFile } from '@troupe/agents';
+import { createTestStudio, makeTestPersona, type TestStudio } from '@troupe/agents/testing';
+import { briefProduct } from '@troupe/content';
+import { decide, type JobRow, OWNER, propose } from '@troupe/core';
+import { json } from '@troupe/db';
+import type { MemoryMediaStore } from '@troupe/providers';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FakePdfRenderer, importManuscript, inspectPdf, jobs, PRODUCT_JOBS, scanInbox, schedules, setProductBackends, sweepBriefs, tools } from '../src';
 import { MANUSCRIPT } from './fixtures';
@@ -181,7 +181,7 @@ describe('content import: manuscripts', () => {
   it('the inbox folder imports new files once, by persona subfolder, and tells the Owner about bad ones once', async () => {
     const t = await studio();
     setProductBackends({ pdf: new FakePdfRenderer() });
-    const dir = mkdtempSync(join(tmpdir(), 'ios-inbox-'));
+    const dir = mkdtempSync(join(tmpdir(), 'troupe-inbox-'));
     try {
       mkdirSync(join(dir, t.persona.slug));
       writeFileSync(join(dir, t.persona.slug, 'calm-budget.md'), MANUSCRIPT);
@@ -193,14 +193,14 @@ describe('content import: manuscripts', () => {
       expect(second).toMatchObject({ imported: [], skipped: 1 });
       expect(await t.db.query(`SELECT 1 FROM notification WHERE title LIKE 'Manuscript not imported: orphan.md%'`)).toHaveLength(1);
       // The schedule enqueues a scan only when something new is waiting.
-      process.env.IOS_MANUSCRIPTS_DIR = dir;
+      process.env.TROUPE_MANUSCRIPTS_DIR = dir;
       const inbox = schedules.find((s) => s.name === 'product.inbox')!;
       expect(await inbox.run(t.services, new Date())).toBe(1); // orphan.md is still unseen
       await t.db.query(`UPDATE job SET status = 'succeeded' WHERE kind = $1`, [PRODUCT_JOBS.scanInbox]);
       rmSync(join(dir, 'orphan.md'));
       expect(await inbox.run(t.services, new Date())).toBe(0);
     } finally {
-      delete process.env.IOS_MANUSCRIPTS_DIR;
+      delete process.env.TROUPE_MANUSCRIPTS_DIR;
       rmSync(dir, { recursive: true, force: true });
     }
     await t.db.close();

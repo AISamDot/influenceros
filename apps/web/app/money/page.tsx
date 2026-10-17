@@ -1,5 +1,5 @@
-import { creditPeriod, ledgerSummary } from '@ios/core';
-import { type Forecast, forecastStudio, isSyntheticRow, latestForecast, listLeverActions, type PnlGrain, type PnlRow, type PnlTotals, periodRange, pnlWithTotals, rankActions } from '@ios/profit';
+import { creditPeriod, ledgerSummary } from '@troupe/core';
+import { type Forecast, forecastStudio, isSyntheticRow, latestForecast, listLeverActions, type PnlGrain, type PnlRow, type PnlTotals, periodRange, pnlWithTotals, rankActions } from '@troupe/profit';
 import Link from 'next/link';
 import { Kpi } from '@/components/kpi';
 import { ForecastFan } from '@/components/money-forecast';

@@ -1,7 +1,7 @@
-import { CLIP_MAX_S, type QcCheck, SPEECH_WPS, speechSeconds, type StudioServices } from '@ios/agents';
-import { type CostRef, metered, type PostFormat, scriptShape } from '@ios/core';
-import { json } from '@ios/db';
-import type { TranscriptWord } from '@ios/providers';
+import { CLIP_MAX_S, type QcCheck, SPEECH_WPS, speechSeconds, type StudioServices } from '@troupe/agents';
+import { type CostRef, metered, type PostFormat, scriptShape } from '@troupe/core';
+import { json } from '@troupe/db';
+import type { TranscriptWord } from '@troupe/providers';
 import type { PersonaContext } from './persona';
 import { FACECAM_LINES, MEME_WORDS, mentionsOutlet, ON_SCREEN_WORDS, PHOTO_DUMP, SECONDS, showsHandle, SPOKEN, TEXT_NOTE_WORDS, uncitedClaims, WORDS, type ScriptDraft } from './script';
 import { residualTtsRisks, ttsNormalize, type TtsRisk } from './tts';

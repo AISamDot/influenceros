@@ -1,5 +1,5 @@
-import { type Db, json } from '@ios/db';
-import { createTestDb } from '@ios/db/testing';
+import { type Db, json } from '@troupe/db';
+import { createTestDb } from '@troupe/db/testing';
 import { DEFAULT_SETTINGS, type Autonomy, type PersonaState, type StudioSettings } from '../src';
 
 export interface Ctx {

@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
-import type { Db } from '@ios/db';
-import { productionOverview } from '@ios/production';
+import type { Db } from '@troupe/db';
+import { productionOverview } from '@troupe/production';
 import Link from 'next/link';
 
 const KIND_LABEL: Record<string, string> = {

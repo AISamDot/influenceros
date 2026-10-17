@@ -1,3 +1,4 @@
+import { troupeEnv } from '@troupe/env';
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -10,7 +11,7 @@ import { blockStrings, inlineLinks, PAGE_GEOMETRY, plainInline } from './model';
 /**
  * HTML → PDF behind an interface (docs/IOS-34-CONTRACTS.md §5.3: local tooling stays in the owning package, with a
  * fake). The live renderer is headless Chrome (`--print-to-pdf`, the system Chrome/Chromium/Edge/Brave or
- * IOS_CHROME_PATH); the fake writes a small valid PDF with the same pages and links, so tests never need a browser.
+ * TROUPE_CHROME_PATH); the fake writes a small valid PDF with the same pages and links, so tests never need a browser.
  */
 export interface PdfRenderRequest {
   readonly html: string;
@@ -39,9 +40,9 @@ const CHROME_CANDIDATES = [
   '/usr/bin/chromium-browser',
 ];
 
-/** The browser binary: IOS_CHROME_PATH, else the first installed candidate, else null. */
+/** The browser binary: TROUPE_CHROME_PATH, else the first installed candidate, else null. */
 export function findChrome(env: Readonly<Record<string, string | undefined>> = process.env): string | null {
-  const configured = env.IOS_CHROME_PATH?.trim();
+  const configured = troupeEnv('CHROME_PATH', env)?.trim();
   if (configured) return existsSync(configured) ? configured : null;
   return CHROME_CANDIDATES.find((p) => existsSync(p)) ?? null;
 }
@@ -63,7 +64,7 @@ export class ChromePdfRenderer implements PdfRenderer {
   ) {}
 
   async render(req: PdfRenderRequest): Promise<PdfRenderResult> {
-    const dir = await mkdtemp(join(tmpdir(), 'ios-pdf-'));
+    const dir = await mkdtemp(join(tmpdir(), 'troupe-pdf-'));
     try {
       const html = join(dir, 'product.html');
       const out = join(dir, 'product.pdf');
@@ -172,7 +173,7 @@ function writeFakePdf(req: PdfRenderRequest, opts: FakePdfOptions): Uint8Array {
   }
   objs[pagesObj - 1] = `<< /Type /Pages /Kids [${pageNums.map((n) => `${n} 0 R`).join(' ')}] /Count ${pageNums.length} >>`;
   objs[catalog - 1] = `<< /Type /Catalog /Pages ${pagesObj} 0 R >>`;
-  const info = add(`<< /Title ${pdfStr(req.title)} /Producer (Influencer OS fake-pdf) >>`);
+  const info = add(`<< /Title ${pdfStr(req.title)} /Producer (Troupe House fake-pdf) >>`);
   let out = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
   const offsets: number[] = [];
   for (const [i, body] of objs.entries()) {
@@ -193,17 +194,17 @@ export class PdfRendererUnavailableError extends Error {
 class UnavailablePdfRenderer implements PdfRenderer {
   readonly name = 'unavailable';
   async render(): Promise<PdfRenderResult> {
-    throw new PdfRendererUnavailableError('no headless Chrome on this machine: install Google Chrome (or Chromium/Edge/Brave) or set IOS_CHROME_PATH; product builds run on the Mac worker');
+    throw new PdfRendererUnavailableError('no headless Chrome on this machine: install Google Chrome (or Chromium/Edge/Brave) or set TROUPE_CHROME_PATH; product builds run on the Mac worker');
   }
 }
 
 /**
- * The renderer to use: the fake under IOS_FAKE_PROVIDERS=1 (tests) or IOS_PRODUCTS_PDF=fake; otherwise headless
+ * The renderer to use: the fake under TROUPE_FAKE_PROVIDERS=1 (tests) or TROUPE_PRODUCTS_PDF=fake; otherwise headless
  * Chrome (a local binary, not a paid provider, so no key). Without a browser, renders throw
  * PdfRendererUnavailableError and the build waits (never a fake PDF outside fake mode).
  */
 export function defaultPdfRenderer(env: Readonly<Record<string, string | undefined>> = process.env): PdfRenderer {
-  if (env.IOS_FAKE_PROVIDERS === '1' || env.IOS_PRODUCTS_PDF === 'fake') return new FakePdfRenderer();
+  if (troupeEnv('FAKE_PROVIDERS', env) === '1' || troupeEnv('PRODUCTS_PDF', env) === 'fake') return new FakePdfRenderer();
   const bin = findChrome(env);
   return bin ? new ChromePdfRenderer(bin) : new UnavailablePdfRenderer();
 }

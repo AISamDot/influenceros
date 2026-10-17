@@ -10,9 +10,9 @@ import type {
   WorldDraftRequest,
   WorldRecordRequest,
   WorldService,
-} from '@ios/agents';
-import { type Actor, actorRef } from '@ios/core';
-import { type Db, json } from '@ios/db';
+} from '@troupe/agents';
+import { type Actor, actorRef } from '@troupe/core';
+import { type Db, json } from '@troupe/db';
 import { bibleFacts, contradictions, continuityChecks, extractFacts, type Fact, FACTS_SCHEMA, type LedgerFact, mergeFacts, parseFacts } from './continuity';
 import { buildBible, buildStoryline, draftSummary, fakeWorldDraft, inputOf, resolvePlace } from './draft';
 import { placeFromText } from './geo';

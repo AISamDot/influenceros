@@ -1,4 +1,4 @@
-import { activeKillSwitches, clearKillSwitch, type KillScope, OWNER, PLATFORMS, type Platform, setKillSwitch } from '@ios/core';
+import { activeKillSwitches, clearKillSwitch, type KillScope, OWNER, PLATFORMS, type Platform, setKillSwitch } from '@troupe/core';
 import { backTo, isFormPost, isJson, UUID_RE } from '@/lib/http';
 import { requireOwner } from '@/lib/auth';
 import { studioContext } from '@/lib/server';

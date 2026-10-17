@@ -1,4 +1,4 @@
-import { sameOriginPath } from '@ios/auth/guard';
+import { sameOriginPath } from '@troupe/auth/guard';
 
 /** Small helpers shared by the API routes. */
 

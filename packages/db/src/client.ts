@@ -193,7 +193,7 @@ export async function openDb(lock: { role?: string; origin?: string | null } = {
   return createPglite(defaultPgliteDir(), undefined, lock);
 }
 
-const GLOBAL_KEY = Symbol.for('influencer-os.db');
+const GLOBAL_KEY = Symbol.for('troupe-house.db');
 type GlobalWithDb = typeof globalThis & { [GLOBAL_KEY]?: Promise<Db> };
 
 /** Process-wide singleton (survives Next.js hot reloads). */

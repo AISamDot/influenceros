@@ -1,8 +1,8 @@
-import { MEDIA_RENDER_JOB } from '@ios/agents';
+import { MEDIA_RENDER_JOB } from '@troupe/agents';
 import { describe, expect, it } from 'vitest';
 import * as mod from '../src';
 
-describe('@ios/media module', () => {
+describe('@troupe/media module', () => {
   it('exports a StudioModule within its namespaces', () => {
     expect(mod.tools.map((t) => t.name).sort()).toEqual(['media.probe_costs', 'media.rerender', 'media.slot', 'media.status', 'voice.redesign']);
     // IOS-5 stream K: the production identity and location-lock jobs run here (they buy stills).

@@ -1,6 +1,6 @@
-import { SKILL_NAMES, type ToolContext, ToolPermissionError } from '@ios/agents';
-import { makeTestPersona } from '@ios/agents/testing';
-import { OWNER, SYSTEM } from '@ios/core';
+import { SKILL_NAMES, type ToolContext, ToolPermissionError } from '@troupe/agents';
+import { makeTestPersona } from '@troupe/agents/testing';
+import { OWNER, SYSTEM } from '@troupe/core';
 import { describe, expect, it } from 'vitest';
 import { buildFieldBrain, jobs, schedules, skillBlock, tools, validateSkills, validateSkillText } from '../src';
 import { dailyAt, every } from '../src/schedules';

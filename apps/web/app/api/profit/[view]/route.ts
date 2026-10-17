@@ -1,5 +1,5 @@
 import { requireOwner } from '@/lib/auth';
-import { forecastStudio, latestForecast, listLeverActions, type PnlGrain, periodRange, pnlWithTotals, profitCard, rankActions } from '@ios/profit';
+import { forecastStudio, latestForecast, listLeverActions, type PnlGrain, periodRange, pnlWithTotals, profitCard, rankActions } from '@troupe/profit';
 import { UUID_RE } from '@/lib/http';
 import { studioContext } from '@/lib/server';
 

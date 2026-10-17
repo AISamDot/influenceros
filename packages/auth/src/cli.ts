@@ -1,8 +1,9 @@
 // `pnpm owner <command>`: Owner account commands. Input is hidden; nothing secret is printed except the one-time
 // sign-in link `login-link` exists to print (on the Owner's own machine).
-import { DbLockedError, openDb } from '@ios/db';
-import { migrate } from '@ios/db/migrate';
-import { promptSecret } from '@ios/secrets';
+import { troupeEnv } from '@troupe/env';
+import { DbLockedError, openDb } from '@troupe/db';
+import { migrate } from '@troupe/db/migrate';
+import { promptSecret } from '@troupe/secrets';
 import { authStatus, issueLoginLink, MAGIC_LINK_TTL_MS, MIN_PASSWORD_LENGTH, revokeAllSessions, setOwnerPassword } from './owner';
 
 const USAGE = `Usage: pnpm owner <command>
@@ -12,11 +13,11 @@ const USAGE = `Usage: pnpm owner <command>
   status             password set?, active sessions, email sign-in configured?`;
 
 /**
- * The dashboard origin links point at: IOS_PUBLIC_URL, else http://localhost:<PORT>, else port 3100 (the same rule as
- * `appOrigin()` in @ios/agents, which this package can't import).
+ * The dashboard origin links point at: TROUPE_PUBLIC_URL, else http://localhost:<PORT>, else port 3100 (the same rule as
+ * `appOrigin()` in @troupe/agents, which this package can't import).
  */
 function loginBaseUrl(env: Readonly<Record<string, string | undefined>> = process.env): string {
-  return (env.IOS_PUBLIC_URL?.trim() || `http://localhost:${env.PORT?.trim() || 3100}`).replace(/\/+$/, '');
+  return (troupeEnv('PUBLIC_URL', env)?.trim() || `http://localhost:${env.PORT?.trim() || 3100}`).replace(/\/+$/, '');
 }
 
 /** What to do instead while another process (normally the dev server) has the local database open. */

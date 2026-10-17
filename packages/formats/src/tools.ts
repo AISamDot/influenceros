@@ -1,5 +1,5 @@
-import { type Caller, HIGHLIGHT_SETS, STORY_FRAME_KINDS, type StoryFrameKind, type ToolContext, type ToolDef } from '@ios/agents';
-import { OWNER, POST_FORMATS, type PostFormat } from '@ios/core';
+import { type Caller, HIGHLIGHT_SETS, STORY_FRAME_KINDS, type StoryFrameKind, type ToolContext, type ToolDef } from '@troupe/agents';
+import { OWNER, POST_FORMATS, type PostFormat } from '@troupe/core';
 import { curateHighlights, highlightsFor } from './curate';
 import { defaultPlan, editPlan, type PlanPatch, recommendPlan } from './plan';
 import { mediaBudgetUsd, benchmarkFor } from './service';

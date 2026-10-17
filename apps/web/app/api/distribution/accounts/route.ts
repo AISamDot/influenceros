@@ -1,6 +1,6 @@
-import { OWNER } from '@ios/core';
-import { syncAccounts, updateAccount, upsertAccount } from '@ios/distribution';
-import type { Platform } from '@ios/providers';
+import { OWNER } from '@troupe/core';
+import { syncAccounts, updateAccount, upsertAccount } from '@troupe/distribution';
+import type { Platform } from '@troupe/providers';
 import { requireOwner } from '@/lib/auth';
 import { backTo, isFormPost, isJson, UUID_RE } from '@/lib/http';
 import { getServices } from '@/lib/services';

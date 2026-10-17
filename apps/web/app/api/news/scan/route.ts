@@ -1,6 +1,6 @@
 import { requireOwner } from '@/lib/auth';
-import { OWNER } from '@ios/core';
-import { requestNewsScan } from '@ios/knowledge';
+import { OWNER } from '@troupe/core';
+import { requestNewsScan } from '@troupe/knowledge';
 import { backTo, isFormPost, isJson } from '@/lib/http';
 import { studioContext } from '@/lib/server';
 import { NICHE_RE } from '@/app/knowledge/_data';

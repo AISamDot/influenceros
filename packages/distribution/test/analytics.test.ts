@@ -1,6 +1,6 @@
-import { METRIC_WINDOW_MS } from '@ios/agents';
-import { pnlWithTotals } from '@ios/profit';
-import type { PostMetrics } from '@ios/providers';
+import { METRIC_WINDOW_MS } from '@troupe/agents';
+import { pnlWithTotals } from '@troupe/profit';
+import type { PostMetrics } from '@troupe/providers';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { detectAnomalies, dueWindows, ingestEvents, personaScorecard, pullMetrics } from '../src';
 import { account, type Ctx, persona, setup } from './helpers';

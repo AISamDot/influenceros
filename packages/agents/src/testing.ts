@@ -1,12 +1,12 @@
-import { DEFAULT_SETTINGS, type Autonomy, type PersonaState, type StudioSettings } from '@ios/core';
-import { type Db, json } from '@ios/db';
-import { createTestDb } from '@ios/db/testing';
-import { createFakeProviders, type FakeProviders } from '@ios/providers';
+import { DEFAULT_SETTINGS, type Autonomy, type PersonaState, type StudioSettings } from '@troupe/core';
+import { type Db, json } from '@troupe/db';
+import { createTestDb } from '@troupe/db/testing';
+import { createFakeProviders, type FakeProviders } from '@troupe/providers';
 import type { CreateServicesOptions, StudioServices } from './contracts';
 import { createServices } from './runtime';
 
 /**
- * Shared test fixtures for every IOS-2 package (import from '@ios/agents/testing'). Fresh in-memory PGlite, one
+ * Shared test fixtures for every IOS-2 package (import from '@troupe/agents/testing'). Fresh in-memory PGlite, one
  * studio, fake providers, fake runtime. Tests never depend on the seed's personas (only stream C tests the seed).
  */
 export interface TestStudio {

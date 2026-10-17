@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
-import type { SlotMedia, SlotMediaAsset } from '@ios/media';
+import type { SlotMedia, SlotMediaAsset } from '@troupe/media';
 import { QcChecks } from './content-checks';
 import { SubmitButton } from './submit-button';
 

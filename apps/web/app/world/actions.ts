@@ -1,7 +1,7 @@
 'use server';
 
-import { OWNER } from '@ios/core';
-import { backfillWorld, steerStoryline, updateBible, loadWorld } from '@ios/world';
+import { OWNER } from '@troupe/core';
+import { backfillWorld, steerStoryline, updateBible, loadWorld } from '@troupe/world';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { authOff, currentSession } from '@/lib/auth';

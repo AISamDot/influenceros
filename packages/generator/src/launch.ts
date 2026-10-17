@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { DEFAULT_CADENCE, enqueueOnceFor, type FormatPlan, type StudioServices } from '@ios/agents';
-import { type Actor, actorRef, addMessage, ApprovalError, type ApprovalRow, decide, ensureThreads, findThread, isOptionalFormat, notify, payloadHash, POST_FORMATS, type PostFormat, type PostPurpose } from '@ios/core';
-import { BIBLE_SECTIONS, type FieldBrainSeed, importLaunchPersona, type LaunchPersona, type LaunchProduct, type LaunchSlot, listArchivedPersonas, zonedTimeToUtc } from '@ios/core/seed';
-import { type Db, json } from '@ios/db';
+import { DEFAULT_CADENCE, enqueueOnceFor, type FormatPlan, type StudioServices } from '@troupe/agents';
+import { type Actor, actorRef, addMessage, ApprovalError, type ApprovalRow, decide, ensureThreads, findThread, isOptionalFormat, notify, payloadHash, POST_FORMATS, type PostFormat, type PostPurpose } from '@troupe/core';
+import { BIBLE_SECTIONS, type FieldBrainSeed, importLaunchPersona, type LaunchPersona, type LaunchProduct, type LaunchSlot, listArchivedPersonas, zonedTimeToUtc } from '@troupe/core/seed';
+import { type Db, json } from '@troupe/db';
 import { archetypeFor } from './fake';
 import { firstName, nicheByKey, slugify } from './library';
 import { nicheOf } from './steps';

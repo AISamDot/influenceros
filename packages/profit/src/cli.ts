@@ -1,7 +1,7 @@
 // `pnpm profit <command>`: Profit Engine commands. With local PGlite, stop `pnpm dev` first (one process per data
 // dir) or set DATABASE_URL.
-import { getStudio, OWNER } from '@ios/core';
-import { exitOnOpenError, openDb } from '@ios/db';
+import { getStudio, OWNER } from '@troupe/core';
+import { exitOnOpenError, openDb } from '@troupe/db';
 import { rankActions } from './actions';
 import { forecastStudio, storeForecasts } from './forecast';
 import { leverInputs, measureLevers, planLevers, runLevers } from './levers';

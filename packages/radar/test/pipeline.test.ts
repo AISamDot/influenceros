@@ -1,7 +1,7 @@
-import { apifyWeekSpendUsd, nullWorld, type StudioServices } from '@ios/agents';
-import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
-import { DeferJob, type JobRow, runOnce } from '@ios/core';
-import { FakeApify } from '@ios/providers';
+import { apifyWeekSpendUsd, nullWorld, type StudioServices } from '@troupe/agents';
+import { createTestStudio, makeTestPersona, type TestStudio } from '@troupe/agents/testing';
+import { DeferJob, type JobRow, runOnce } from '@troupe/core';
+import { FakeApify } from '@troupe/providers';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as radar from '../src';
 

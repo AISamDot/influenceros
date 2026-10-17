@@ -1,6 +1,6 @@
-import { getDb } from '@ios/db';
-import type { DraftRow } from '@ios/generator';
-import { asBible, asStoryline, listPins, moodBoard } from '@ios/world';
+import { getDb } from '@troupe/db';
+import type { DraftRow } from '@troupe/generator';
+import { asBible, asStoryline, listPins, moodBoard } from '@troupe/world';
 import { editDraftWorldAction, pickPinsAction, searchPinsAction } from '@/app/generator/world-actions';
 import { SubmitButton } from './submit-button';
 

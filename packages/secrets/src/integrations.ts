@@ -1,3 +1,4 @@
+import { troupeEnv } from '@troupe/env';
 import { type SecretBackend, type SecretName, type SecretSource, secretSource } from './store';
 
 /**
@@ -35,7 +36,7 @@ export const INTEGRATIONS: readonly IntegrationDef[] = [
   { id: 'apify', name: 'Apify', purpose: 'Growth Radar and Winner Finder scrapers (public data, low volume, weekly cap)', secrets: ['apify.token'], liveAdapter: true, milestone: 'IOS-5', kind: 'provider' },
   // <<< stream I integrations
   // >>> stream J integrations
-  { id: 'open-meteo', name: 'Open-Meteo', purpose: 'Local weather and sun times for real-time grounding (no key needed; live unless IOS_FAKE_PROVIDERS)', secrets: [], liveAdapter: true, milestone: 'IOS-5', kind: 'provider' },
+  { id: 'open-meteo', name: 'Open-Meteo', purpose: 'Local weather and sun times for real-time grounding (no key needed; live unless TROUPE_FAKE_PROVIDERS)', secrets: [], liveAdapter: true, milestone: 'IOS-5', kind: 'provider' },
   { id: 'pinterest', name: 'Pinterest', purpose: 'Boards and pins for products and carousels; inspiration search (mood only)', secrets: ['pinterest.access_token'], liveAdapter: true, milestone: 'IOS-5', kind: 'provider' },
   // <<< stream J integrations
   // >>> stream K integrations
@@ -62,14 +63,14 @@ export interface IntegrationState {
 }
 
 /**
- * `IOS_FAKE_PROVIDERS=1` (or a comma list of ids) forces fake mode even when keys exist.
+ * `TROUPE_FAKE_PROVIDERS=1` (or a comma list of ids) forces fake mode even when keys exist.
  * Never reads more than presence: no value leaves the backend.
  */
 export function integrationStates(
   backend: SecretBackend,
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): IntegrationState[] {
-  const forced = (env.IOS_FAKE_PROVIDERS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const forced = (troupeEnv('FAKE_PROVIDERS', env) ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   return INTEGRATIONS.map((def) => {
     const secrets = def.secrets.map((name) => ({ name, source: secretSource(name, backend, env) }));
     const keysPresent = secrets.every((s) => s.source !== null);

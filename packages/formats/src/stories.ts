@@ -11,12 +11,12 @@ import {
   type StoriesPlan,
   type StoryFrameKind,
   type StudioServices,
-} from '@ios/agents';
-import { fenceUntrusted, loadPersonaContext, type PersonaContext, qcPass, qcScore, runGate, saveGateResult, saveQcReport, sellQueue } from '@ios/content';
-import { type Actor, actorRef, assertCanPublish, audit, type Autonomy, BudgetExceededError, DeferJob, notify, type PersonaState, type Platform, PublishBlockedError, PUBLISHING_STATES } from '@ios/core';
-import { json } from '@ios/db';
-import { EXPORT, getProfile, gradeFromKit, hfSpend, mediaDeps, mediaModels, SAFE_ZONE, type TextBox } from '@ios/media';
-import { isPublishRefused } from '@ios/providers';
+} from '@troupe/agents';
+import { fenceUntrusted, loadPersonaContext, type PersonaContext, qcPass, qcScore, runGate, saveGateResult, saveQcReport, sellQueue } from '@troupe/content';
+import { type Actor, actorRef, assertCanPublish, audit, type Autonomy, BudgetExceededError, DeferJob, notify, type PersonaState, type Platform, PublishBlockedError, PUBLISHING_STATES } from '@troupe/core';
+import { json } from '@troupe/db';
+import { EXPORT, getProfile, gradeFromKit, hfSpend, mediaDeps, mediaModels, SAFE_ZONE, type TextBox } from '@troupe/media';
+import { isPublishRefused } from '@troupe/providers';
 import { STORY_FRAME_COST_USD } from './catalog';
 import { defaultPlan } from './plan';
 import { planInForce } from './store';

@@ -1,11 +1,11 @@
-import type { JobHandlerMap, ProviderEnv, ScheduledTask, ToolDef } from '@ios/agents';
-import type { Providers } from '@ios/providers';
+import type { JobHandlerMap, ProviderEnv, ScheduledTask, ToolDef } from '@troupe/agents';
+import type { Providers } from '@troupe/providers';
 import { ApifyResearch } from './apify';
 import { radarJobs, radarSchedules } from './jobs';
 import { radarTools } from './tools';
 
 /**
- * @ios/radar (IOS-5 stream I): the Growth Radar, Winner Finder and Viral Remix (PRD §3.15 items 1, 9–12). Apify
+ * @troupe/radar (IOS-5 stream I): the Growth Radar, Winner Finder and Viral Remix (PRD §3.15 items 1, 9–12). Apify
  * scrapers (public data, low volume, every run through meteredApify and the weekly cap) → tracked accounts and
  * weekly snapshots → outlier scoring and growth curves → content reviews (Trend Scout, untrusted) → trend clusters →
  * the weekly Trend Report, format/cadence benchmarks for the Format Plan, monetisation patterns, Generator evidence,
@@ -30,7 +30,7 @@ export { postTrendReport, radarSummary, reportText, type RadarSummary } from './
 export { enqueueWeekly, JOB as RADAR_JOB } from './jobs';
 export { radarOverview, type RadarOverview } from './queries';
 
-// StudioModule exports, composed by @ios/wiring.
+// StudioModule exports, composed by @troupe/wiring.
 export const tools: ReadonlyArray<ToolDef<any, any>> = radarTools;
 export const jobs: JobHandlerMap = radarJobs;
 export const schedules: readonly ScheduledTask[] = radarSchedules;

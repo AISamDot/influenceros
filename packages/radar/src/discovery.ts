@@ -1,5 +1,5 @@
-import { OUTLIER, type ServiceBase } from '@ios/agents';
-import type { Db } from '@ios/db';
+import { OUTLIER, type ServiceBase } from '@troupe/agents';
+import type { Db } from '@troupe/db';
 import { normalizeIgPost, normalizeIgProfile, normalizeTikTok, normHandle, type ScrapedPost, type ScrapedProfile, tiktokAuthor } from './apify';
 import { nicheKey, type RadarConfig } from './config';
 import { median } from './scoring';

@@ -1,6 +1,6 @@
-import type { Briefing, BriefingItem, Citation, KnowledgeHit, KnowledgeService, ReactionIdea, ServiceBase } from '@ios/agents';
-import type { Db } from '@ios/db';
-import { EMBEDDING_DIM } from '@ios/providers';
+import type { Briefing, BriefingItem, Citation, KnowledgeHit, KnowledgeService, ReactionIdea, ServiceBase } from '@troupe/agents';
+import type { Db } from '@troupe/db';
+import { EMBEDDING_DIM } from '@troupe/providers';
 import { clamp, shortQuote, toVector, trimText } from './util';
 
 /**

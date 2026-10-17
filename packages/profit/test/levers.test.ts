@@ -1,6 +1,6 @@
-import { CADENCE_BOUNDS, DEFAULT_CADENCE, WINNER_CADENCE } from '@ios/agents';
-import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
-import { json } from '@ios/db';
+import { CADENCE_BOUNDS, DEFAULT_CADENCE, WINNER_CADENCE } from '@troupe/agents';
+import { createTestStudio, makeTestPersona, type TestStudio } from '@troupe/agents/testing';
+import { json } from '@troupe/db';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createCadencePolicy, createRoutingPolicy, formatBounds, leverInputs, listLeverActions, measureLevers, planCadence, planFormatMix, runLevers, scaleTarget, validTarget } from '../src';
 import { addDebit, addOrder, addPost, addWeeklyHistory, DAY, daysAgo, NOW } from './fixtures';

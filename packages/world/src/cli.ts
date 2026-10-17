@@ -1,7 +1,7 @@
 // `pnpm world <command>`: stream J from the terminal (docs/IOS-5-CONTRACTS.md).
 //
 //   place <home base text>           the gazetteer's place for a home base (no database)
-//   weather <city>                   Open-Meteo geocode + current weather (no key, no database; fake under IOS_FAKE_PROVIDERS)
+//   weather <city>                   Open-Meteo geocode + current weather (no key, no database; fake under TROUPE_FAKE_PROVIDERS)
 //   show <persona-slug>              World Bible summary, today's grounding and the storyline
 //   grounding <persona-slug> [--at <ISO time>]
 //   facts <persona-slug>             the continuity ledger
@@ -9,11 +9,12 @@
 //   steer <persona-slug> "<instruction>"
 //
 // With local PGlite only one process may open the data dir: use a scratch PGLITE_DIR, never the dev server's.
-import { createServices, type StudioServices } from '@ios/agents';
-import { OWNER } from '@ios/core';
-import { exitOnOpenError, openDb } from '@ios/db';
-import { migrate } from '@ios/db/migrate';
-import { createFakeProviders, type Providers } from '@ios/providers';
+import { troupeEnv } from '@troupe/env';
+import { createServices, type StudioServices } from '@troupe/agents';
+import { OWNER } from '@troupe/core';
+import { exitOnOpenError, openDb } from '@troupe/db';
+import { migrate } from '@troupe/db/migrate';
+import { createFakeProviders, type Providers } from '@troupe/providers';
 import { placeFromText } from './geo';
 import { liveProviders } from './index';
 import { OpenMeteoWeather } from './live';
@@ -38,7 +39,7 @@ const HELP = `pnpm world <command>
   backfill <persona-slug>          draft + adopt a World Bible for a persona that has none
   steer <persona-slug> "<instruction>"`;
 
-const fakeForced = () => /(^|,)\s*(1|all|open-meteo)\s*(,|$)/.test(process.env.IOS_FAKE_PROVIDERS ?? '');
+const fakeForced = () => /(^|,)\s*(1|all|open-meteo)\s*(,|$)/.test(troupeEnv('FAKE_PROVIDERS') ?? '');
 
 function providers(): Providers {
   const env = {

@@ -1,6 +1,6 @@
 /**
  * The production character sheet, the identity stack, the core references and the BOPA look pack (PRD §3.12 step 4
- * notes and §3.15.2). Pure prompt builders: @ios/media runs the generations (Higgsfield, governor) and stores the
+ * notes and §3.15.2). Pure prompt builders: @troupe/media runs the generations (Higgsfield, governor) and stores the
  * results in `production_identity`; the prompt compiler then puts the identity stack into every persona generation.
  *
  * Character prompt order (Dan Kieft method, PRD §3.12): camera angle → character (age, hair, 2–3 distinctive

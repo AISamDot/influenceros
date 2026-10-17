@@ -6,19 +6,20 @@
 //   sample [--out <dir>] [--fake]   the same for a built-in sample brief
 //   import <file.md> --persona <slug> [--now]
 //                                   import a manuscript on the database (the worker builds it; --now builds here)
-//   inbox                           import every new manuscript in the inbox folder (IOS_MANUSCRIPTS_DIR)
+//   inbox                           import every new manuscript in the inbox folder (TROUPE_MANUSCRIPTS_DIR)
 //   build <product-id>              (re)build one product here
 //   status [<persona-slug>]         products, builds and QP results
 //
 // Database commands open the local PGlite only when no other process holds it (the PGlite lock): while `pnpm dev`
 // runs, drop manuscripts into the inbox folder instead (the server imports and builds them within minutes).
+import { troupeEnv } from '@troupe/env';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
-import { createServices, kitColors, liveProviders as agentsLiveProviders, type PersonaKitColor, type ProviderEnv, type StudioServices } from '@ios/agents';
-import type { ProductBrief } from '@ios/content';
-import { type Db, exitOnOpenError, findRepoRoot, openDb } from '@ios/db';
-import { migrate } from '@ios/db/migrate';
-import { createFakeProviders, LocalMediaStore, type Providers } from '@ios/providers';
+import { createServices, kitColors, liveProviders as agentsLiveProviders, type PersonaKitColor, type ProviderEnv, type StudioServices } from '@troupe/agents';
+import type { ProductBrief } from '@troupe/content';
+import { type Db, exitOnOpenError, findRepoRoot, openDb } from '@troupe/db';
+import { migrate } from '@troupe/db/migrate';
+import { createFakeProviders, LocalMediaStore, type Providers } from '@troupe/providers';
 import { productBackends, setProductBackends } from './backends';
 import { type BuildPayload, buildProduct, previewDoc } from './build';
 import { withNextStepAndCredits } from './content';
@@ -53,8 +54,8 @@ const HELP = `pnpm products <command>
   build <product-id>              (re)build one product here
   status [<persona-slug>]         products, builds and QP results`;
 
-/** Files the CLI writes go to the media dir the server uses (IOS_MEDIA_DIR, else <repo>/.data/media). */
-const mediaDir = () => process.env.IOS_MEDIA_DIR?.trim() || join(findRepoRoot(), '.data', 'media');
+/** Files the CLI writes go to the media dir the server uses (TROUPE_MEDIA_DIR, else <repo>/.data/media). */
+const mediaDir = () => troupeEnv('MEDIA_DIR')?.trim() || join(findRepoRoot(), '.data', 'media');
 const previewDir = () => resolve(opt('out') ?? join(findRepoRoot(), '.data', 'products-preview'));
 
 /** Renders a doc to <out> without a database and prints the QP report. */
@@ -85,7 +86,7 @@ function colorsFrom(hexes: readonly string[] | undefined): ReturnType<typeof kit
   return kitColors(palette, null);
 }
 
-/** Env-only providers for database commands (the server and worker use @ios/wiring with the Keychain). */
+/** Env-only providers for database commands (the server and worker use @troupe/wiring with the Keychain). */
 function cliServices(db: Db): StudioServices {
   const penv: ProviderEnv = {
     isLive: (id) => id === 'anthropic' && !!process.env.ANTHROPIC_API_KEY,

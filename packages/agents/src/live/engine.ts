@@ -1,4 +1,4 @@
-import { LLM_PRICES, type LlmCacheBlock, llmCostUsd, type ModelTier } from '@ios/providers';
+import { LLM_PRICES, type LlmCacheBlock, llmCostUsd, type ModelTier } from '@troupe/providers';
 import type { ToolCallRecord, ToolDef } from '../contracts';
 
 /**

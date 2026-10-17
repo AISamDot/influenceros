@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { upsellFor } from '@ios/commerce';
+import { upsellFor } from '@troupe/commerce';
 import { ProductCard, SiteFooter, siteFor, SiteHeader, SitePage, sitePageMetadata } from '@/components/site-shell';
 
 export const dynamic = 'force-dynamic';

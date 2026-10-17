@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { activeKillSwitches, addMessage, findThread, listPendingApprovals, STUDIO_MANAGER } from '@ios/core';
+import { activeKillSwitches, addMessage, findThread, listPendingApprovals, STUDIO_MANAGER } from '@troupe/core';
 import { describe, expect, it } from 'vitest';
 import {
   A_TOOLS,

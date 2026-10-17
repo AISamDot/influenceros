@@ -1,8 +1,8 @@
 'use server';
 
-import { OWNER } from '@ios/core';
-import { getDraft, setDraftExtension } from '@ios/generator';
-import { asBible, asStoryline, mergeBible, pickPins, searchInspiration, type WorldBible } from '@ios/world';
+import { OWNER } from '@troupe/core';
+import { getDraft, setDraftExtension } from '@troupe/generator';
+import { asBible, asStoryline, mergeBible, pickPins, searchInspiration, type WorldBible } from '@troupe/world';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { authOff, currentSession } from '@/lib/auth';

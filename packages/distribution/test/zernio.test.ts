@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { FakeZernio, isPublishRefused, type PublishRequest } from '@ios/providers';
+import { FakeZernio, isPublishRefused, type PublishRequest } from '@troupe/providers';
 import { describe, expect, it } from 'vitest';
 import { buildPostBody, DEFAULT_ZERNIO_PLATFORMS, echoedAiFlag, instagramAudioOptions, liveProviders, parseZernioEvent, TIKTOK_ORIGINAL_SOUND_VOLUME, tiktokMusicOptions, ZERNIO_AI_FIELD, ZernioPublisher, type ZernioPublishRequest } from '../src';
 
@@ -82,7 +82,7 @@ describe('Zernio request mapping', () => {
     expect(body).toEqual({
       content: 'hello #budget',
       mediaItems: [{ type: 'video', url: 'https://cdn.zernio.test/v.mp4' }],
-      metadata: { source: 'influencer-os', idempotency_key: 'post-1' },
+      metadata: { source: 'troupe-house', idempotency_key: 'post-1' },
       platforms: [
         {
           platform: 'tiktok',

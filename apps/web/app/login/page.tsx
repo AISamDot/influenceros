@@ -1,4 +1,4 @@
-import { authSecret, LOGIN_ERRORS, loginErrorMessage, safeNext } from '@ios/auth';
+import { authSecret, LOGIN_ERRORS, loginErrorMessage, safeNext } from '@troupe/auth';
 import { redirect } from 'next/navigation';
 import { AuthNotice } from '@/components/auth-notice';
 import { SubmitButton } from '@/components/submit-button';
@@ -22,7 +22,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
       <div className="flex items-center gap-2.5">
         <span className="grid size-10 place-items-center rounded-xl bg-ink font-[family-name:var(--font-display)] text-[21px] leading-none text-on-ink">io</span>
         <div>
-          <h1 className="text-[20px] font-semibold tracking-tight">Influencer OS</h1>
+          <h1 className="text-[20px] font-semibold tracking-tight">Troupe House</h1>
           <p className="text-[12.5px] text-muted">Owner sign-in</p>
         </div>
       </div>

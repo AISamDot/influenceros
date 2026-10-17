@@ -1,4 +1,4 @@
-import type { JobHandlerMap, StudioJobHandler } from '@ios/agents';
+import type { JobHandlerMap, StudioJobHandler } from '@troupe/agents';
 import { embedPending } from './embed';
 import { buildFieldBrain, KNOWLEDGE_JOBS, researchNode } from './field-brain';
 import { buildBriefing, NEWS_JOBS, scanNiche } from './news';

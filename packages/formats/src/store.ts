@@ -1,7 +1,7 @@
-import { type FormatPlan, WINNER_STATES } from '@ios/agents';
-import { type Actor, actorRef, audit, isOptionalFormat, type PersonaState, POST_FORMATS, type PostFormat } from '@ios/core';
-import { type Db, json } from '@ios/db';
-import { planTarget } from '@ios/profit';
+import { type FormatPlan, WINNER_STATES } from '@troupe/agents';
+import { type Actor, actorRef, audit, isOptionalFormat, type PersonaState, POST_FORMATS, type PostFormat } from '@troupe/core';
+import { type Db, json } from '@troupe/db';
+import { planTarget } from '@troupe/profit';
 import { FORMAT_COST_USD, round2 } from './catalog';
 import { defaultPlan, feedCostPerWeek, parsePlan, planLines, validatePlan } from './plan';
 import { isoDate, mondayOf } from './time';

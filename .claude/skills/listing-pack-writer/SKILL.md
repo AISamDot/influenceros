@@ -17,7 +17,7 @@ A listing converts when a buyer can see in five seconds what they get, who it is
   2. What's inside: a bulleted list of every file, page count and format.
   3. How it works: three steps from purchase to first use.
   4. Who it's for and who it's not for.
-  5. About the creator: "[Persona] is an AI character from the Influencer OS studio. The stories are fiction; the tools are real."
+  5. About the creator: "[Persona] is an AI character from the Troupe House studio. The stories are fiction; the tools are real."
   6. Refund line: the actual policy (for example "14-day no-questions refund").
 - **Delivery**: file names, formats, and the email the buyer receives.
 

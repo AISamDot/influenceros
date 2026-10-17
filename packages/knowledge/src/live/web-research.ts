@@ -8,7 +8,7 @@ import {
   type ResearchCitation,
   type TopicResearch,
   type WebResearchProvider,
-} from '@ios/providers';
+} from '@troupe/providers';
 
 /**
  * Live WebResearchProvider: Claude with the web_search / web_fetch server tools (dynamic filtering versions), one

@@ -1,4 +1,4 @@
-import type { ServiceBase } from '@ios/agents';
+import type { ServiceBase } from '@troupe/agents';
 import { toVector, trimText } from './util';
 
 /**

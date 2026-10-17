@@ -1,7 +1,7 @@
-import { type ConceptFingerprint, fingerprintOf, type NoRepeatResult, type StudioServices } from '@ios/agents';
-import { fenceUntrusted, loadPersonaContext } from '@ios/content';
-import { type Actor, FORMAT_SHAPE, isOptionalFormat, type OptionalFormat, type PostFormat, SYSTEM } from '@ios/core';
-import { json } from '@ios/db';
+import { type ConceptFingerprint, fingerprintOf, type NoRepeatResult, type StudioServices } from '@troupe/agents';
+import { fenceUntrusted, loadPersonaContext } from '@troupe/content';
+import { type Actor, FORMAT_SHAPE, isOptionalFormat, type OptionalFormat, type PostFormat, SYSTEM } from '@troupe/core';
+import { json } from '@troupe/db';
 import { HOOK_LABEL, type HookType } from './classify';
 import { loadConfig } from './config';
 import { FORMAT_LABEL } from './insights';

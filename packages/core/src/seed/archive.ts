@@ -1,20 +1,22 @@
+import { troupeEnv } from '@troupe/env';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
-import { findRepoRoot } from '@ios/db';
+import { findRepoRoot } from '@troupe/db';
 import { defaultPersonasDir, type LaunchDoc, type LaunchPersona, loadLaunchPersonas, readLaunchDoc, readManifest } from './launch';
 
 /**
  * The persona archive on disk (Owner decision, 16 Oct): `packages/knowledge/seed/archive/<YYYY-MM-DD>/<slug>/` holds
  * archived personas' documents exactly as they were (bible, look prompts, content plan, Field Brain seed, product
  * manuscripts, `manifest.json`). The 14 Oct launch five live in `2026-10-16`. Restoring one goes through the Persona
- * Generator's review step (@ios/generator `restoreFromArchive`); nothing here writes to the database.
+ * Generator's review step (@troupe/generator `restoreFromArchive`); nothing here writes to the database.
  */
 
 const LABEL_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** `packages/knowledge/seed/archive` (or IOS_ARCHIVE_DIR). */
+/** `packages/knowledge/seed/archive` (or TROUPE_ARCHIVE_DIR). */
 export function archiveRootDir(): string {
-  if (process.env.IOS_ARCHIVE_DIR) return resolve(process.env.IOS_ARCHIVE_DIR);
+  const configured = troupeEnv('ARCHIVE_DIR');
+  if (configured) return resolve(configured);
   return join(/*turbopackIgnore: true*/ findRepoRoot(), 'packages', 'knowledge', 'seed', 'archive');
 }
 
@@ -114,7 +116,7 @@ export function archivedManuscripts(slug: string, from?: string): string[] {
 
 /**
  * One of a persona's source documents wherever it lives: the live persona folder (`dir`, default seed/personas or
- * IOS_PERSONAS_DIR) first, then the archive (newest label first). A persona restored from the archive reads its look
+ * TROUPE_PERSONAS_DIR) first, then the archive (newest label first). A persona restored from the archive reads its look
  * prompts, content plan and Field Brain seed from there. `archive: false` for a persona that never came from files
  * (a Persona Generator launch), so a shared slug can't pick up another character's documents. '' when none has it.
  */

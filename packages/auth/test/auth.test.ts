@@ -1,5 +1,5 @@
-import { createTestDb } from '@ios/db/testing';
-import { FakeResend } from '@ios/providers';
+import { createTestDb } from '@troupe/db/testing';
+import { FakeResend } from '@troupe/providers';
 import { describe, expect, it } from 'vitest';
 import {
   AuthError,
@@ -10,6 +10,7 @@ import {
   loginErrorMessage,
   loginWithMagicToken,
   loginWithPassword,
+  personaHostSlug,
   readCookie,
   requestMagicLink,
   revokeSession,
@@ -59,13 +60,23 @@ describe('request guard (proxy)', () => {
     expect(verifySession(`${payload}.${sig}.x`, SECRET, now)).toBeNull();
   });
 
-  it('fails closed when deployed without AUTH_SECRET; IOS_AUTH=off works only on loopback, never deployed', () => {
+  it('fails closed when deployed without AUTH_SECRET; TROUPE_AUTH=off works only on loopback, never deployed', () => {
     const deployed = { VERCEL: '1' };
     expect(authorize({ pathname: '/api/chat/x', cookie: null, host: 'app.example.com' }, { env: deployed })).toMatchObject({ action: 'deny', status: 503 });
     expect(authorize({ pathname: '/chat', cookie: null, host: 'app.example.com' }, { env: deployed })).toEqual({ action: 'redirect', location: '/login?error=config' });
+    expect(authorize({ pathname: '/chat', cookie: null, host: HOST }, { env: { TROUPE_AUTH: 'off' }, secret: SECRET })).toMatchObject({ action: 'allow' });
+    expect(authorize({ pathname: '/chat', cookie: null, host: 'evil.example.com' }, { env: { TROUPE_AUTH: 'off' }, secret: SECRET })).toMatchObject({ action: 'redirect' });
+    expect(authorize({ pathname: '/chat', cookie: null, host: 'localhost' }, { env: { TROUPE_AUTH: 'off', VERCEL: '1', AUTH_SECRET: SECRET } })).toMatchObject({ action: 'redirect' });
+    // The pre-rename IOS_AUTH still works for one release, with the same limits.
     expect(authorize({ pathname: '/chat', cookie: null, host: HOST }, { env: { IOS_AUTH: 'off' }, secret: SECRET })).toMatchObject({ action: 'allow' });
-    expect(authorize({ pathname: '/chat', cookie: null, host: 'evil.example.com' }, { env: { IOS_AUTH: 'off' }, secret: SECRET })).toMatchObject({ action: 'redirect' });
-    expect(authorize({ pathname: '/chat', cookie: null, host: 'localhost' }, { env: { IOS_AUTH: 'off', VERCEL: '1', AUTH_SECRET: SECRET } })).toMatchObject({ action: 'redirect' });
+    expect(authorize({ pathname: '/chat', cookie: null, host: 'localhost' }, { env: { IOS_AUTH: 'off', IOS_DEPLOYED: '1', AUTH_SECRET: SECRET } })).toMatchObject({ action: 'redirect' });
+  });
+
+  it('persona hosts: <slug>.troupehouse.com when deployed, none locally unless a studio domain is set', () => {
+    expect(personaHostSlug('rosa.troupehouse.com', { VERCEL: '1' })).toBe('rosa');
+    expect(personaHostSlug('www.troupehouse.com', { VERCEL: '1' })).toBeNull();
+    expect(personaHostSlug('rosa.troupehouse.com', {})).toBeNull();
+    expect(personaHostSlug('rosa.studio.example:3100', { IOS_STUDIO_DOMAIN: 'studio.example' })).toBe('rosa');
   });
 
   it('cookies are HttpOnly, SameSite=Lax, Secure on https; ?next= never leaves the site', () => {
@@ -114,7 +125,7 @@ describe('Owner sign-in', () => {
   it("magic link: sent only to OWNER_EMAIL (same answer otherwise), single use, expires", async () => {
     const db = await createTestDb();
     const email = new FakeResend();
-    const base = { ownerEmail: 'Hossam@Example.com', from: 'Influencer OS <login@example.com>', baseUrl: 'http://127.0.0.1:3100' };
+    const base = { ownerEmail: 'Hossam@Example.com', from: 'Troupe House <login@example.com>', baseUrl: 'http://127.0.0.1:3100' };
     expect(await requestMagicLink(db, email, { ...base, email: 'someone@else.com' })).toEqual({ sent: false, link: null });
     expect(email.calls).toHaveLength(0);
     const r = await requestMagicLink(db, email, { ...base, email: ' hossam@example.com ' });

@@ -1,8 +1,8 @@
-import type { StudioServices } from '@ios/agents';
-import { getDb } from '@ios/db';
-import { createStudioServices } from '@ios/wiring';
+import type { StudioServices } from '@troupe/agents';
+import { getDb } from '@troupe/db';
+import { createStudioServices } from '@troupe/wiring';
 
-const KEY = Symbol.for('influencer-os.services');
+const KEY = Symbol.for('troupe-house.services');
 type G = typeof globalThis & { [KEY]?: Promise<StudioServices> };
 
 /**

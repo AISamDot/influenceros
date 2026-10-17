@@ -1,4 +1,4 @@
-import type { StudioServices } from '@ios/agents';
+import type { StudioServices } from '@troupe/agents';
 import { isPublicAssetUrl } from './sites';
 import { memberFromSession } from './membership';
 import { productFileKey } from './store';

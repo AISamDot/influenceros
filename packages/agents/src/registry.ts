@@ -1,4 +1,4 @@
-import { audit } from '@ios/core';
+import { audit } from '@troupe/core';
 import { type Caller, type RunTrust, type ToolContext, type ToolDef, ToolPermissionError, type ToolRegistry } from './contracts';
 
 /**

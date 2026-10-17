@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
-import { listThreads } from '@ios/core';
+import { listThreads } from '@troupe/core';
 import Link from 'next/link';
 import { ChatPanel } from '@/components/chat-panel';
 import { loadChat, studioContext } from '@/lib/server';

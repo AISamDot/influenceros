@@ -1,4 +1,4 @@
-import type { Db } from '@ios/db';
+import type { Db } from '@troupe/db';
 import { audit } from './audit';
 import { ForbiddenError, PublishBlockedError } from './errors';
 import { PUBLISHING_STATES } from './lifecycle';

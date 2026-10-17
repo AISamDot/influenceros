@@ -1,4 +1,4 @@
-import type { Forecast } from '@ios/profit';
+import type { Forecast } from '@troupe/profit';
 import { money } from './profit-bits';
 
 const SHORT = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });

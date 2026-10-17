@@ -1,8 +1,9 @@
-import { meteredApify, type StudioServices } from '@ios/agents';
-import { fenceUntrusted } from '@ios/content';
-import type { CostRef } from '@ios/core';
-import type { Db } from '@ios/db';
-import type { InspirationPin } from '@ios/providers';
+import { troupeEnv } from '@troupe/env';
+import { meteredApify, type StudioServices } from '@troupe/agents';
+import { fenceUntrusted } from '@troupe/content';
+import type { CostRef } from '@troupe/core';
+import type { Db } from '@troupe/db';
+import type { InspirationPin } from '@troupe/providers';
 import { pinFromItem } from './live';
 
 /**
@@ -13,9 +14,9 @@ import { pinFromItem } from './live';
  * Pin titles and descriptions are third-party text: fenced, and the descriptor run is untrusted with no tools.
  */
 
-/** The Apify fallback actor (pay per result) and its price; override the actor with IOS_PINTEREST_ACTOR. */
+/** The Apify fallback actor (pay per result) and its price; override the actor with TROUPE_PINTEREST_ACTOR. */
 export const PINTEREST_APIFY = {
-  actor: process.env.IOS_PINTEREST_ACTOR || 'silentflow/pinterest-scraper-ppr',
+  actor: troupeEnv('PINTEREST_ACTOR') || 'silentflow/pinterest-scraper-ppr',
   usdPerItem: 0.0025,
   maxItems: 30,
   input: (query: string, maxItems: number) => ({ search: query, maxItems }),

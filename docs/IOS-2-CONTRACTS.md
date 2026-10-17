@@ -34,7 +34,7 @@ Four builders work in parallel on IOS-2. This file is what they share: who owns 
   - Model tiers: fast = `claude-haiku-5-5`, standard = `claude-sonnet-5-5`, strong = `claude-opus-5-5`.
   - Prompt caching is on.
   - Per-persona caps go through the existing governor.
-- **Everything runs end to end on fakes.** Tests never reach a live provider: `vitest.config.ts` sets `IOS_FAKE_PROVIDERS=1` and `IOS_KEYCHAIN=off`.
+- **Everything runs end to end on fakes.** Tests never reach a live provider: `vitest.config.ts` sets `TROUPE_FAKE_PROVIDERS=1` and `TROUPE_KEYCHAIN=off`.
 
 ## 2. Streams, branches and the tests to keep green
 
@@ -60,14 +60,14 @@ While working, `pnpm vitest run packages/<yours>` is the quick loop. Never leave
 ## 3. How the packages fit together
 
 ```
-@ios/db ← @ios/core ← @ios/agents (contracts + runtime) ← @ios/content / @ios/knowledge / @ios/profit
+@troupe/db ← @troupe/core ← @troupe/agents (contracts + runtime) ← @troupe/content / @troupe/knowledge / @troupe/profit
                                      ↑                                   ↑
-                         @ios/providers (interfaces + fakes)      @ios/wiring (composition root)
+                         @troupe/providers (interfaces + fakes)      @troupe/wiring (composition root)
                                                                         ↑
                                                        apps/web, apps/worker, cron tick
 ```
 
-- **B, C and D depend only on `@ios/agents`, `@ios/core`, `@ios/db` and `@ios/providers`.** They never import each other. Cross-stream calls go through the service interfaces in §5.4, the tool registry (§5.2) or the database (§5.7).
+- **B, C and D depend only on `@troupe/agents`, `@troupe/core`, `@troupe/db` and `@troupe/providers`.** They never import each other. Cross-stream calls go through the service interfaces in §5.4, the tool registry (§5.2) or the database (§5.7).
 - **Every package's `src/index.ts` exports a `StudioModule`:**
 
   ```ts
@@ -78,14 +78,14 @@ While working, `pnpm vitest run packages/<yours>` is the quick loop. Never leave
   ```
 
   plus its factories:
-  - `@ios/knowledge` → `createKnowledgeService(base)`;
-  - `@ios/profit` → `createCadencePolicy(base)` and `createRoutingPolicy(base)`.
+  - `@troupe/knowledge` → `createKnowledgeService(base)`;
+  - `@troupe/profit` → `createCadencePolicy(base)` and `createRoutingPolicy(base)`.
 
   Stubs of all of these exist; replace their bodies, keep the names and signatures.
-- **`@ios/wiring` composes all four.** It has `allTools()`, `allJobs()`, `allSchedules()`, `resolveProviders()` and `createStudioServices(db)`, and it throws on a duplicate tool, job kind, schedule or provider member.
+- **`@troupe/wiring` composes all four.** It has `allTools()`, `allJobs()`, `allSchedules()`, `resolveProviders()` and `createStudioServices(db)`, and it throws on a duplicate tool, job kind, schedule or provider member.
   - Nobody edits wiring during IOS-2. Plugging in happens through your own exports.
   - `packages/wiring/test/wiring.test.ts` is the merge guard.
-- **Tests** build services with `createTestStudio()` / `makeTestPersona()` from `@ios/agents/testing`: a fresh PGlite, one studio, fake providers and the fake runtime.
+- **Tests** build services with `createTestStudio()` / `makeTestPersona()` from `@troupe/agents/testing`: a fresh PGlite, one studio, fake providers and the fake runtime.
   - Never import another package's `test/` folder.
   - Never depend on the seed's personas. Only stream C tests the seed.
 
@@ -173,22 +173,22 @@ You may create and edit only what your stream owns. Anything not listed is froze
 
 | Contract | Package / file | Implemented by | Consumed by |
 |---|---|---|---|
-| `AgentRuntime`, `AgentTask`, `AgentResult` | `@ios/agents` `contracts.ts` | A (fake runtime already works) | A, B, C, D |
-| `ToolDef`, `ToolRegistry`, `ToolPermissionError` | `@ios/agents` `contracts.ts`, `registry.ts` | A | all (each registers its own tools) |
-| `StudioServices`, `createServices`, `ServiceBase` | `@ios/agents` | A | all |
-| `KnowledgeService`, `KnowledgeHit`, `Briefing` | `@ios/agents` `contracts.ts` | C (`createKnowledgeService`) | B, A |
-| `CadencePolicy`, `CadenceTarget`, `DEFAULT_CADENCE`, `CADENCE_BOUNDS` | `@ios/agents` `contracts.ts` | D (`createCadencePolicy`) | B |
-| `RoutingPolicy`, `DEFAULT_ROUTING`, `MODEL_IDS` | `@ios/agents` `contracts.ts` | D (`createRoutingPolicy`) | A |
-| `JobContext`, `StudioJobHandler`, `ScheduledTask`, `StudioModule`, `ProviderEnv` | `@ios/agents` `contracts.ts` | all export them; D runs them | D (worker, tick) |
-| `PipelineStage`, `GateCheck`, `QcCheck`, `MEDIA_RENDER_JOB`, `MediaRenderPayload` | `@ios/agents` `contracts.ts` | B | D, dashboard, IOS-3 |
-| `LlmProvider` (+ `LlmCacheBlock`), `LLM_PRICES`, `llmCostUsd` | `@ios/providers` | A (live) | A |
-| `TranscribeProvider` (Whisper) | `@ios/providers` | B (live optional) | B (QC Q2) |
-| `EmbeddingProvider`, `EMBEDDING_DIM = 384` | `@ios/providers` | C | C |
-| `WebResearchProvider`, `FeedProvider` | `@ios/providers` | C | C |
-| `CostRef`, `MeterContext.ref` | `@ios/core` | A owns `metered.ts` | all (writes), D (reads) |
-| Profit read models (`PnlRow`, `LeverAction`, `Forecast`, `ProfitAction`, `ProfitCardData`) | `@ios/profit` `types.ts` | D | D pages, Studio Manager via `profit.*` tools |
+| `AgentRuntime`, `AgentTask`, `AgentResult` | `@troupe/agents` `contracts.ts` | A (fake runtime already works) | A, B, C, D |
+| `ToolDef`, `ToolRegistry`, `ToolPermissionError` | `@troupe/agents` `contracts.ts`, `registry.ts` | A | all (each registers its own tools) |
+| `StudioServices`, `createServices`, `ServiceBase` | `@troupe/agents` | A | all |
+| `KnowledgeService`, `KnowledgeHit`, `Briefing` | `@troupe/agents` `contracts.ts` | C (`createKnowledgeService`) | B, A |
+| `CadencePolicy`, `CadenceTarget`, `DEFAULT_CADENCE`, `CADENCE_BOUNDS` | `@troupe/agents` `contracts.ts` | D (`createCadencePolicy`) | B |
+| `RoutingPolicy`, `DEFAULT_ROUTING`, `MODEL_IDS` | `@troupe/agents` `contracts.ts` | D (`createRoutingPolicy`) | A |
+| `JobContext`, `StudioJobHandler`, `ScheduledTask`, `StudioModule`, `ProviderEnv` | `@troupe/agents` `contracts.ts` | all export them; D runs them | D (worker, tick) |
+| `PipelineStage`, `GateCheck`, `QcCheck`, `MEDIA_RENDER_JOB`, `MediaRenderPayload` | `@troupe/agents` `contracts.ts` | B | D, dashboard, IOS-3 |
+| `LlmProvider` (+ `LlmCacheBlock`), `LLM_PRICES`, `llmCostUsd` | `@troupe/providers` | A (live) | A |
+| `TranscribeProvider` (Whisper) | `@troupe/providers` | B (live optional) | B (QC Q2) |
+| `EmbeddingProvider`, `EMBEDDING_DIM = 384` | `@troupe/providers` | C | C |
+| `WebResearchProvider`, `FeedProvider` | `@troupe/providers` | C | C |
+| `CostRef`, `MeterContext.ref` | `@troupe/core` | A owns `metered.ts` | all (writes), D (reads) |
+| Profit read models (`PnlRow`, `LeverAction`, `Forecast`, `ProfitAction`, `ProfitCardData`) | `@troupe/profit` `types.ts` | D | D pages, Studio Manager via `profit.*` tools |
 
-### 5.1 Agent runtime (`@ios/agents`)
+### 5.1 Agent runtime (`@troupe/agents`)
 
 ```ts
 interface AgentRuntime {
@@ -252,7 +252,7 @@ The registry enforces permissions in code:
 
 Tool outputs are plain JSON-serialisable data.
 
-### 5.3 Providers (`@ios/providers`)
+### 5.3 Providers (`@troupe/providers`)
 
 | Member | Interface | Live adapter owner | Fake |
 |---|---|---|---|
@@ -263,7 +263,7 @@ Tool outputs are plain JSON-serialisable data.
 | `feeds` | `fetchFeed({ url, limit? }) → FeedItem[]`; the live adapter refuses hosts outside its allowlist | C | `FakeFeeds` |
 
 Rules:
-- **Live adapters live in your own package** and are returned from your `liveProviders(env)`. `@ios/wiring` overlays them on the fakes, and two packages supplying the same member is an error.
+- **Live adapters live in your own package** and are returned from your `liveProviders(env)`. `@troupe/wiring` overlays them on the fakes, and two packages supplying the same member is an error.
 - **Read keys through `env.secret(name)`.** Never log them, store them or put them in prompts.
 - **Every paid call is metered.** The LLM is metered by the runtime. Other paid methods return `costUsd`, and the caller wraps them in core `metered(db, ctx, spec, call, actual)`:
   - `llm_usd` for Anthropic-backed research;
@@ -304,7 +304,7 @@ interface ScheduledTask { name; due(now, lastRunAt | null): boolean; run(service
 - **D's scheduler** records each schedule's last successful run in a D table and runs `allSchedules()` on every tick.
   - Ticks come from Vercel Cron → `/api/cron/tick` with `Authorization: Bearer $CRON_SECRET`, and on the Mac from the dev ticker.
   - Schedules must be cheap (enqueue, don't work inline) and idempotent.
-- **With local PGlite only one process can open the data directory.** So in dev the worker loop runs inside the Next server (`instrumentation.ts`, `IOS_WORKER=inline`), and the standalone `pnpm worker` needs `DATABASE_URL` or a stopped dev server.
+- **With local PGlite only one process can open the data directory.** So in dev the worker loop runs inside the Next server (`instrumentation.ts`, `TROUPE_WORKER=inline`), and the standalone `pnpm worker` needs `DATABASE_URL` or a stopped dev server.
 
 ### 5.6 Content pipeline (B produces; D, the dashboard and IOS-3 consume)
 

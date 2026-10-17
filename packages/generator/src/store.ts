@@ -1,5 +1,5 @@
-import { type Actor, actorRef, audit, NotFoundError } from '@ios/core';
-import { type Db, json } from '@ios/db';
+import { type Actor, actorRef, audit, NotFoundError } from '@troupe/core';
+import { type Db, json } from '@troupe/db';
 import { type DraftMessage, type DraftRow, type DraftSeed, type DraftState, emptyState, type Scorecard } from './types';
 
 /** Persistence for persona drafts: the row, a version snapshot per change, and the draft's chat. */

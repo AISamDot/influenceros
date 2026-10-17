@@ -1,4 +1,4 @@
-import { FakeApify, type Providers } from '@ios/providers';
+import { FakeApify, type Providers } from '@troupe/providers';
 import { DEFAULT_ACTORS, type RadarConfig, type ScraperKind } from './config';
 
 /**

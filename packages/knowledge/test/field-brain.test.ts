@@ -1,5 +1,5 @@
-import { makeTestPersona } from '@ios/agents/testing';
-import { DeferJob, updateSettings, OWNER } from '@ios/core';
+import { makeTestPersona } from '@troupe/agents/testing';
+import { DeferJob, updateSettings, OWNER } from '@troupe/core';
 import { describe, expect, it } from 'vitest';
 import { buildFieldBrain, embedPending, fieldBrainStatus, KNOWLEDGE_JOBS, pendingEmbeddings, researchNode } from '../src';
 import { drain, knowledgeStudio } from './helpers';

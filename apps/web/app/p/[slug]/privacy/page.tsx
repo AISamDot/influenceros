@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { getCommerceSettings } from '@ios/commerce';
+import { getCommerceSettings } from '@troupe/commerce';
 import { SiteFooter, siteFor, SiteHeader, SitePage, sitePageMetadata } from '@/components/site-shell';
 import { studioContext } from '@/lib/server';
 

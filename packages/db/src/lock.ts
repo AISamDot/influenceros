@@ -1,3 +1,4 @@
+import { troupeEnv } from '@troupe/env';
 import { closeSync, linkSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { basename, dirname, relative, resolve } from 'node:path';
@@ -82,11 +83,11 @@ export function lockHolder(dataDir: string): LockInfo | null {
   return liveHolder(info) ? info : null;
 }
 
-/** Defaults for the lock record: a Next server is 'server' with its origin (IOS_PUBLIC_URL, else PORT, else 3100). */
+/** Defaults for the lock record: a Next server is 'server' with its origin (TROUPE_PUBLIC_URL, else PORT, else 3100). */
 export function defaultLockRole(argv: readonly string[] = process.argv, env: NodeJS.ProcessEnv = process.env): { role: string; origin: string | null } {
   const cmd = argv.join(' ');
   if (env.NEXT_RUNTIME || /\bnext\b|next-server|start-server/.test(cmd)) {
-    return { role: 'server', origin: (env.IOS_PUBLIC_URL?.trim() || `http://localhost:${env.PORT?.trim() || 3100}`).replace(/\/+$/, '') };
+    return { role: 'server', origin: (troupeEnv('PUBLIC_URL', env)?.trim() || `http://localhost:${env.PORT?.trim() || 3100}`).replace(/\/+$/, '') };
   }
   if (/apps[\\/]worker/.test(cmd)) return { role: 'worker', origin: null };
   return { role: 'cli', origin: null };

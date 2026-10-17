@@ -12,11 +12,11 @@ import {
   type QcCheck,
   type RenderedMedia,
   type StudioServices,
-} from '@ios/agents';
-import { anonymiseHandle, gateRules, loadPersonaContext, newsDeskHeadline, type PersonaContext, sanitizeOverlay, saveQcReport, voiceCheck } from '@ios/content';
-import { BudgetExceededError, DeferJob, notify, type PostFormat, propose, TEXT_LOOP_FORMATS } from '@ios/core';
-import { cameraStylesFor, chainFrame, checkVideoPrompt, locationLocks, pickCamera, recentCameras, recordFrame, recordSlotProduction, setFrameStatus } from '@ios/production';
-import { json } from '@ios/db';
+} from '@troupe/agents';
+import { anonymiseHandle, gateRules, loadPersonaContext, newsDeskHeadline, type PersonaContext, sanitizeOverlay, saveQcReport, voiceCheck } from '@troupe/content';
+import { BudgetExceededError, DeferJob, notify, type PostFormat, propose, TEXT_LOOP_FORMATS } from '@troupe/core';
+import { cameraStylesFor, chainFrame, checkVideoPrompt, locationLocks, pickCamera, recentCameras, recordFrame, recordSlotProduction, setFrameStatus } from '@troupe/production';
+import { json } from '@troupe/db';
 import {
   ACTIVITY_LOOP_S,
   BUDGET_DEFER_MS,
@@ -903,7 +903,7 @@ class Render {
       grade,
       sharpen: true,
       loudnorm: audio ? 'single' : 'none',
-      metadata: { comment: 'AI-generated (Influencer OS). Platform AI flag: true.', title: this.title.slice(0, 120) },
+      metadata: { comment: 'AI-generated (Troupe House). Platform AI flag: true.', title: this.title.slice(0, 120) },
     };
     const out = join(this.dir, `final-${n}.mp4`);
     const info = await this.deps.toolkit.renderVideo(comp, out);
@@ -1199,7 +1199,7 @@ class Render {
       grade: NEUTRAL_GRADE,
       sharpen: false,
       loudnorm: 'none',
-      metadata: { comment: 'AI-generated (Influencer OS). Platform AI flag: true.', title: this.title.slice(0, 120) },
+      metadata: { comment: 'AI-generated (Troupe House). Platform AI flag: true.', title: this.title.slice(0, 120) },
     };
     const n = this.state.version ?? 0;
     const out = join(this.dir, `slideshow-${n}.mp4`);

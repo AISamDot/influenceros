@@ -1,5 +1,5 @@
 {
-  "name": "@ios/providers",
+  "name": "@troupe/providers",
   "version": "0.0.0",
   "private": true,
   "type": "module",

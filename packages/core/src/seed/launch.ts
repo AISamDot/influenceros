@@ -1,7 +1,8 @@
+import { troupeEnv } from '@troupe/env';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { findRepoRoot } from '@ios/db';
+import { findRepoRoot } from '@troupe/db';
 import type { PostFormat, PostPurpose } from '../types';
 import { cleanInline, col, firstUrl, mdToValue, type MdTable, type MdValue, parseTables, slugify, splitSections } from './markdown';
 
@@ -156,11 +157,12 @@ export interface ManifestEntry {
 // ───────────────────────────── Locating and loading ─────────────────────────────
 
 /**
- * `packages/knowledge/seed/personas` (or IOS_PERSONAS_DIR). Resolved at call time from the repo root, so it works
+ * `packages/knowledge/seed/personas` (or TROUPE_PERSONAS_DIR). Resolved at call time from the repo root, so it works
  * the same under tsx, Vitest and a bundled Next server.
  */
 export function defaultPersonasDir(): string {
-  if (process.env.IOS_PERSONAS_DIR) return resolve(process.env.IOS_PERSONAS_DIR);
+  const configured = troupeEnv('PERSONAS_DIR');
+  if (configured) return resolve(configured);
   return join(/*turbopackIgnore: true*/ findRepoRoot(), 'packages', 'knowledge', 'seed', 'personas');
 }
 

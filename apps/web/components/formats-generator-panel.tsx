@@ -1,4 +1,4 @@
-import type { DraftRow } from '@ios/generator';
+import type { DraftRow } from '@troupe/generator';
 import { resetDraftPlan, saveDraftPlan } from '@/app/generator/formats-actions';
 import { SubmitButton } from './submit-button';
 import { FormatPlanForm, FormatPlanView } from './formats-plan-view';

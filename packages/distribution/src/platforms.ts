@@ -1,5 +1,5 @@
-import type { PostFormat } from '@ios/core';
-import { AI_FLAG_FIELDS, type Platform, type StoryCapability } from '@ios/providers';
+import type { PostFormat } from '@troupe/core';
+import { AI_FLAG_FIELDS, type Platform, type StoryCapability } from '@troupe/providers';
 import { DAY_MS } from './util';
 
 /**

@@ -1,13 +1,13 @@
 import { type SecretBackend, type SecretName, writeSecret } from './store';
 
-/** Brand OS secrets Influencer OS can reuse (same names in service `ai.brandos`). */
+/** Brand OS secrets Troupe House can reuse (same names in service `ai.brandos`). */
 export const BRANDOS_IMPORTABLE: readonly SecretName[] = ['apify.token', 'elevenlabs.api_key', 'pixabay.api_key'];
 
 export type ImportOutcome = 'copied' | 'missing_in_brandos' | 'already_set' | 'unreadable';
 
 /**
- * Copies named secrets from the Brand OS Keychain service into Influencer OS's, without returning or printing the
- * values. Existing Influencer OS items are kept unless `overwrite`.
+ * Copies named secrets from the Brand OS Keychain service into Troupe House's, without returning or printing the
+ * values. Existing Troupe House items are kept unless `overwrite`.
  */
 export function importFromBrandOs(
   source: SecretBackend,

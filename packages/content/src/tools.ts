@@ -1,5 +1,5 @@
-import type { Caller, ToolDef } from '@ios/agents';
-import type { PostFormat, PostPurpose } from '@ios/core';
+import type { Caller, ToolDef } from '@troupe/agents';
+import type { PostFormat, PostPurpose } from '@troupe/core';
 import { mondayUtc } from './util';
 import { pipelineBoard, slotDetail } from './board';
 import { planWeek } from './calendar';

@@ -1,5 +1,5 @@
-import { NotFoundError, studioTotals, studioWall } from '@ios/core';
-import { listDrafts } from '@ios/generator';
+import { NotFoundError, studioTotals, studioWall } from '@troupe/core';
+import { listDrafts } from '@troupe/generator';
 import Link from 'next/link';
 import { ChatPanel } from '@/components/chat-panel';
 import { Kpi } from '@/components/kpi';

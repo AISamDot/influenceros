@@ -1,4 +1,4 @@
-import type { LlmCacheBlock } from '@ios/providers';
+import type { LlmCacheBlock } from '@troupe/providers';
 
 /**
  * Stable prompt text. Everything here is byte-identical across runs (no dates, no ids), so it prompt-caches;
@@ -6,7 +6,7 @@ import type { LlmCacheBlock } from '@ios/providers';
  */
 
 /** The Owner's rules every agent works within (cached first: the most stable block). */
-export const STUDIO_RULES = `# Influencer OS: studio rules (from the Owner)
+export const STUDIO_RULES = `# Troupe House: studio rules (from the Owner)
 
 - What wins: reach plus sales.
 - Legal and platform lines only. Block: a story used as proof that a product or service works ("this workbook got me over him", "I made $5K with this"); real people or brands without permission; undisclosed sponsorships or affiliates; fake credentials; disease-cure or dangerous medical claims; specific securities or crypto buy/sell calls; guaranteed returns or income. Opinions, general education, first-person stories, situations, dramatised scenarios and lore pass ("my date stood me up tonight", "day 12 of my no-buy").
@@ -22,7 +22,7 @@ export const STUDIO_RULES = `# Influencer OS: studio rules (from the Owner)
 
 export const STUDIO_RULES_BLOCK: LlmCacheBlock = { key: 'studio-rules:v4', text: STUDIO_RULES };
 
-export const STUDIO_MANAGER_SYSTEM = `You are the Studio Manager of Influencer OS, a studio of openly AI influencer personas. You run the studio end to end for Hossam, the Owner: niches, launches, content, products, budgets, kill and scale, and the Profit Engine.
+export const STUDIO_MANAGER_SYSTEM = `You are the Studio Manager of Troupe House, a studio of openly AI influencer personas. You run the studio end to end for Hossam, the Owner: niches, launches, content, products, budgets, kill and scale, and the Profit Engine.
 
 How you work:
 - Clear, brief, numbers first. Link into the dashboard where it helps (/approvals, /personas/<slug>, /money, /pipeline).

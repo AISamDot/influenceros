@@ -1,5 +1,5 @@
-import { exitOnOpenError, openDb } from '@ios/db';
-import { migrate } from '@ios/db/migrate';
+import { exitOnOpenError, openDb } from '@troupe/db';
+import { migrate } from '@troupe/db/migrate';
 import { isSeeded, seed } from './index';
 
 // `pnpm db:seed [--if-empty] [--samples]`. With local PGlite it refuses while another process (e.g. `pnpm dev`) has the data dir open.

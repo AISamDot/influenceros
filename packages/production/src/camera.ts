@@ -1,5 +1,5 @@
-import { CAMERA_STYLES, type CameraStyle } from '@ios/agents';
-import type { PostFormat } from '@ios/core';
+import { CAMERA_STYLES, type CameraStyle } from '@troupe/agents';
+import type { PostFormat } from '@troupe/core';
 
 /**
  * Realism camera styles (PRD §3.15.8, Owner 16 Oct): never a locked-off "studio" camera. Each persona's bible picks

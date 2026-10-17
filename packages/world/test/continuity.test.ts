@@ -1,6 +1,6 @@
-import { createTestStudio, makeTestPersona } from '@ios/agents/testing';
-import { fingerprintOf, type ConceptFingerprint } from '@ios/agents';
-import { BudgetExceededError } from '@ios/core';
+import { createTestStudio, makeTestPersona } from '@troupe/agents/testing';
+import { fingerprintOf, type ConceptFingerprint } from '@troupe/agents';
+import { BudgetExceededError } from '@troupe/core';
 import { describe, expect, it, vi } from 'vitest';
 import { contradictions, createWorldService, extractFacts, seriesOf, WORLD_TOOLS } from '../src';
 import { clock, personaWithWorld, worldStudio } from './helpers';

@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { loadPersonaKit, type ProductBuildPayload, type ProductFile, type StudioServices } from '@ios/agents';
-import { type Actor, audit, notify, propose } from '@ios/core';
-import { buildListingPack, type ProductBrief, runGate, saveGateResult } from '@ios/content';
-import { json } from '@ios/db';
+import { loadPersonaKit, type ProductBuildPayload, type ProductFile, type StudioServices } from '@troupe/agents';
+import { type Actor, audit, notify, propose } from '@troupe/core';
+import { buildListingPack, type ProductBrief, runGate, saveGateResult } from '@troupe/content';
+import { json } from '@troupe/db';
 import { type ProductBackends, productBackends } from './backends';
 import { fakeDoc, promisedFromBrief, withNextStepAndCredits, writeFromBrief } from './content';
 import { coverSvg, renderHtml } from './html';

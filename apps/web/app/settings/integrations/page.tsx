@@ -1,4 +1,4 @@
-import { defaultBackend, integrationStates, SECRETS } from '@ios/secrets';
+import { defaultBackend, integrationStates, SECRETS } from '@troupe/secrets';
 import Link from 'next/link';
 import { requireOwnerPage } from '@/lib/auth';
 
@@ -59,11 +59,12 @@ export default async function Integrations() {
 
       <section className="card p-5 text-[13.5px]">
         <h2 className="font-[family-name:var(--font-display)] text-[24px] leading-none">Adding keys</h2>
-        <p className="mt-2 text-muted">Keys live in the macOS Keychain (service ai.influencer-os) on the Mac and in environment variables on Vercel. Claude never types or sees them.</p>
+        <p className="mt-2 text-muted">Keys live in the macOS Keychain (service ai.troupe-house) on the Mac and in environment variables on Vercel. Claude never types or sees them.</p>
         <pre className="mt-3 overflow-x-auto rounded-xl bg-surface-2 p-3 text-[12.5px] leading-relaxed">
-          {`pnpm ios secrets status
-pnpm ios secrets set anthropic.api_key        # hidden input
-pnpm ios secrets import-brandos               # copies Apify, ElevenLabs, Pixabay (asks y/n each)`}
+          {`pnpm troupe secrets status
+pnpm troupe secrets set anthropic.api_key        # hidden input
+pnpm troupe secrets import-brandos               # copies Apify, ElevenLabs, Pixabay (asks y/n each)
+pnpm troupe secrets migrate-service              # one time: copies keys saved under ai.influencer-os`}
         </pre>
       </section>
     </div>

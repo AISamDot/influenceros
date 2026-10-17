@@ -1,5 +1,5 @@
 {
-  "name": "@ios/auth",
+  "name": "@troupe/auth",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,9 +13,10 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@ios/core": "workspace:*",
-    "@ios/db": "workspace:*",
-    "@ios/providers": "workspace:*",
-    "@ios/secrets": "workspace:*"
+    "@troupe/core": "workspace:*",
+    "@troupe/db": "workspace:*",
+    "@troupe/env": "workspace:*",
+    "@troupe/providers": "workspace:*",
+    "@troupe/secrets": "workspace:*"
   }
 }

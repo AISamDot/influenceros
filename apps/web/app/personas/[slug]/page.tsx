@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
-import { type BudgetStatus, localDayKey, personaPage } from '@ios/core';
+import { type BudgetStatus, localDayKey, personaPage } from '@troupe/core';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { AutonomyBadge, KillFlag, LifecycleBadge } from '@/components/badges';

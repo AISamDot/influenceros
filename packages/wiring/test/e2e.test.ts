@@ -1,16 +1,16 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MEDIA_RENDER_JOB, PUBLISH_PREPARE_JOB } from '@ios/agents';
-import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
-import { handleStoreWebhook } from '@ios/commerce';
-import { attachSampleBible, planWeek, processSlot } from '@ios/content';
-import { decide, OWNER, payloadHash, STUDIO_MANAGER } from '@ios/core';
-import { json } from '@ios/db';
-import { enqueueDuePosts, personaScorecard, pullMetrics } from '@ios/distribution';
-import { FakeFaceMatcher, FakeOcr, FakeToolkit, setMediaDeps } from '@ios/media';
-import { createWorker, pnlWithTotals, profitCard, runWeeklyCycle } from '@ios/profit';
-import { createFakeProviders, type PostMetrics } from '@ios/providers';
+import { MEDIA_RENDER_JOB, PUBLISH_PREPARE_JOB } from '@troupe/agents';
+import { createTestStudio, makeTestPersona, type TestStudio } from '@troupe/agents/testing';
+import { handleStoreWebhook } from '@troupe/commerce';
+import { attachSampleBible, planWeek, processSlot } from '@troupe/content';
+import { decide, OWNER, payloadHash, STUDIO_MANAGER } from '@troupe/core';
+import { json } from '@troupe/db';
+import { enqueueDuePosts, personaScorecard, pullMetrics } from '@troupe/distribution';
+import { FakeFaceMatcher, FakeOcr, FakeToolkit, setMediaDeps } from '@troupe/media';
+import { createWorker, pnlWithTotals, profitCard, runWeeklyCycle } from '@troupe/profit';
+import { createFakeProviders, type PostMetrics } from '@troupe/providers';
 import { afterEach, describe, expect, it } from 'vitest';
 import { allJobs } from '../src';
 
@@ -47,7 +47,7 @@ describe('IOS-3/4 end to end (fakes)', () => {
     const providers = createFakeProviders();
     t = await createTestStudio({ now: () => clock.now, providers });
     const { db, studioId, services } = t;
-    setMediaDeps(services, { toolkit: new FakeToolkit(), ocr: new FakeOcr(), face: new FakeFaceMatcher(), workRoot: mkdtempSync(join(tmpdir(), 'ios-e2e-')) });
+    setMediaDeps(services, { toolkit: new FakeToolkit(), ocr: new FakeOcr(), face: new FakeFaceMatcher(), workRoot: mkdtempSync(join(tmpdir(), 'troupe-e2e-')) });
     const worker = createWorker({ services, handlers: allJobs(), workerId: 'e2e' });
 
     const p = await makeTestPersona(t, { name: 'Nora Vale', state: 'MONETISING', autonomy: 'L0' });

@@ -1,5 +1,5 @@
-import type { ProductFile } from '@ios/agents';
-import type { Db } from '@ios/db';
+import type { ProductFile } from '@troupe/agents';
+import type { Db } from '@troupe/db';
 
 /** Read model for the Products page and the persona panel (stream H). */
 export interface ProductCardRow {

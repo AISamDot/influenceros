@@ -1,10 +1,10 @@
-import type { JobHandlerMap, ScheduledTask, StudioServices } from '@ios/agents';
-import { heartbeat, type JobHandler, type JobRow, runOnce } from '@ios/core';
+import type { JobHandlerMap, ScheduledTask, StudioServices } from '@troupe/agents';
+import { heartbeat, type JobHandler, type JobRow, runOnce } from '@troupe/core';
 import { studioTick } from './scheduler';
 
 /**
  * The queue worker loop (docs/IOS-2-CONTRACTS.md §5.5). `pnpm worker` (apps/worker) runs it on the Mac; in dev the
- * Next server runs it inline (instrumentation.ts, IOS_WORKER) because only one process can open a PGlite dir.
+ * Next server runs it inline (instrumentation.ts, TROUPE_WORKER) because only one process can open a PGlite dir.
  * It claims only the kinds it has handlers for (so `media.render` waits for IOS-3), gives each handler its
  * JobContext (services, the claimed row untouched, a heartbeat bound to the lease), and keeps the per-persona
  * isolation and retry rules of the core queue. Optionally it also runs the local tick every minute.

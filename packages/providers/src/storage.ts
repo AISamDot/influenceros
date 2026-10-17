@@ -48,7 +48,7 @@ export class MemoryMediaStore implements MediaStore {
   async localPath(key: string): Promise<string | null> {
     const o = await this.get(key);
     if (!o) return null;
-    const file = join(tmpdir(), 'ios-media', ...key.split('/'));
+    const file = join(tmpdir(), 'troupe-media', ...key.split('/'));
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, o.data);
     return file;
@@ -58,7 +58,7 @@ export class MemoryMediaStore implements MediaStore {
   }
 }
 
-/** Files under a root directory (the Mac: `IOS_MEDIA_DIR`, default `<repo>/.data/media`). Content types sit beside each file. */
+/** Files under a root directory (the Mac: `TROUPE_MEDIA_DIR`, default `<repo>/.data/media`). Content types sit beside each file. */
 export class LocalMediaStore implements MediaStore {
   readonly name = 'local-media';
   readonly root: string;

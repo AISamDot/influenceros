@@ -1,5 +1,5 @@
-import { addMessage, ApprovalError, getThread, NotFoundError, OWNER } from '@ios/core';
-import { ToolPermissionError } from '@ios/agents';
+import { addMessage, ApprovalError, getThread, NotFoundError, OWNER } from '@troupe/core';
+import { ToolPermissionError } from '@troupe/agents';
 import { requireOwner } from '@/lib/auth';
 import { isJson, UUID_RE } from '@/lib/http';
 import { getServices } from '@/lib/services';

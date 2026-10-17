@@ -1,4 +1,4 @@
-import { markRead } from '@ios/core';
+import { markRead } from '@troupe/core';
 import { backTo, isFormPost, redirectTo, safePath, UUID_RE } from '@/lib/http';
 import { requireOwner } from '@/lib/auth';
 import { studioContext } from '@/lib/server';

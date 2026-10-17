@@ -1,4 +1,4 @@
-import { MEMBER_COOKIE, MEMBER_SESSION_DAYS, verifyMemberLink } from '@ios/commerce';
+import { MEMBER_COOKIE, MEMBER_SESSION_DAYS, verifyMemberLink } from '@troupe/commerce';
 import { baseFor, cookie, formFields, seeOther, SLUG_RE } from '@/components/site-http';
 import { getServices } from '@/lib/services';
 

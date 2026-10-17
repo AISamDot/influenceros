@@ -3,17 +3,18 @@
 // Commands that cost money queue jobs by default; the worker runs them with the Keychain keys. `--inline` runs here
 // instead, with live research only when ANTHROPIC_API_KEY is set in this shell (the CLI never reads the Keychain).
 // Local PGlite allows one process per data dir: while `pnpm dev` runs these commands refuse (lock), so stop it first or set DATABASE_URL.
-import { createServices, type ProviderEnv, type StudioServices } from '@ios/agents';
-import { getStudio, OWNER } from '@ios/core';
-import { type Db, exitOnOpenError, openDb } from '@ios/db';
-import { migrate } from '@ios/db/migrate';
-import { createFakeProviders, type Providers } from '@ios/providers';
+import { troupeEnv } from '@troupe/env';
+import { createServices, type ProviderEnv, type StudioServices } from '@troupe/agents';
+import { getStudio, OWNER } from '@troupe/core';
+import { type Db, exitOnOpenError, openDb } from '@troupe/db';
+import { migrate } from '@troupe/db/migrate';
+import { createFakeProviders, type Providers } from '@troupe/providers';
 import { buildFieldBrain, fieldBrainStatus } from './field-brain';
 import { embedPending } from './embed';
 import { knowledgeLiveProviders } from './live';
 import { buildBriefing, scanNiche } from './news';
 import { importPersonas, personasSourceDir, syncPersonaDocs } from './personas';
-import { archiveOverview, archiveStudioPersona, restoreFromArchive } from '@ios/generator';
+import { archiveOverview, archiveStudioPersona, restoreFromArchive } from '@troupe/generator';
 import { createKnowledgeService } from './service';
 import { validateSkills } from './skills';
 import { requestFieldBrainBuild, requestNewsScan } from './requests';
@@ -46,7 +47,7 @@ const opt = (name: string) => {
 };
 const positional = args.filter((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1]!.startsWith('--') && ['--max-nodes', '--from', '--dir', '--confirm', '--reason'].includes(args[i - 1]!)));
 
-/** Env-only ProviderEnv for the CLI (the worker and the web app use @ios/wiring, which also reads the Keychain). */
+/** Env-only ProviderEnv for the CLI (the worker and the web app use @troupe/wiring, which also reads the Keychain). */
 const envOnly: ProviderEnv = {
   isLive: (id) => id === 'anthropic' && !!process.env.ANTHROPIC_API_KEY,
   secret: (name) => (name === 'anthropic.api_key' ? process.env.ANTHROPIC_API_KEY ?? null : name === 'voyage.api_key' ? process.env.VOYAGE_API_KEY ?? null : null),
@@ -115,8 +116,8 @@ async function main(): Promise<void> {
     }
     case 'personas': {
       if (sub === 'sync') {
-        const from = opt('--from') ?? process.env.IOS_PERSONAS_SOURCE;
-        if (!from) throw new Error('usage: pnpm knowledge personas sync --from <dir> (or set IOS_PERSONAS_SOURCE)');
+        const from = opt('--from') ?? troupeEnv('PERSONAS_SOURCE');
+        if (!from) throw new Error('usage: pnpm knowledge personas sync --from <dir> (or set TROUPE_PERSONAS_SOURCE)');
         return print({ copied: syncPersonaDocs(from) });
       }
       if (sub === 'import') {

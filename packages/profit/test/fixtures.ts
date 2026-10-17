@@ -1,5 +1,5 @@
-import { type Db, json } from '@ios/db';
-import type { Platform, PostFormat } from '@ios/core';
+import { type Db, json } from '@troupe/db';
+import type { Platform, PostFormat } from '@troupe/core';
 
 /** Ledger and commerce fixtures for Profit Engine tests (rows inserted directly, at chosen times). */
 

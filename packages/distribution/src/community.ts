@@ -1,8 +1,8 @@
-import { COMMUNITY_CLASSES, type CommunityClass, enqueueOnceFor, personaSiteUrl, shortLinkUrl, SITE_PATHS, type StudioServices } from '@ios/agents';
-import { asksIfAi, gateReply, loadPersonaContext, type PersonaContext } from '@ios/content';
-import { type Actor, ApprovalError, audit, BudgetExceededError, DeferJob, notify, propose } from '@ios/core';
-import { json } from '@ios/db';
-import type { DistributionEvent, DmMessage, Platform, PublishComment } from '@ios/providers';
+import { COMMUNITY_CLASSES, type CommunityClass, enqueueOnceFor, personaSiteUrl, shortLinkUrl, SITE_PATHS, type StudioServices } from '@troupe/agents';
+import { asksIfAi, gateReply, loadPersonaContext, type PersonaContext } from '@troupe/content';
+import { type Actor, ApprovalError, audit, BudgetExceededError, DeferJob, notify, propose } from '@troupe/core';
+import { json } from '@troupe/db';
+import type { DistributionEvent, DmMessage, Platform, PublishComment } from '@troupe/providers';
 import { applyPostStatus } from './publishing';
 import { COMMUNITY_ACTOR, DAY_MS, errorText, excerpt, fenceUntrusted, HOUR_MS } from './util';
 

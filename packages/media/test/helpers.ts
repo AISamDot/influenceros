@@ -1,11 +1,11 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type CreateServicesOptions, MEDIA_RENDER_JOB, type MediaRenderPayload } from '@ios/agents';
-import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
-import { attachSampleBible, planWeek, processSlot } from '@ios/content';
-import type { PostFormat } from '@ios/core';
-import { createFakeProviders } from '@ios/providers';
+import { type CreateServicesOptions, MEDIA_RENDER_JOB, type MediaRenderPayload } from '@troupe/agents';
+import { createTestStudio, makeTestPersona, type TestStudio } from '@troupe/agents/testing';
+import { attachSampleBible, planWeek, processSlot } from '@troupe/content';
+import type { PostFormat } from '@troupe/core';
+import { createFakeProviders } from '@troupe/providers';
 import { FakeFaceMatcher, FakeOcr, FakeToolkit, type MediaDeps, setMediaDeps } from '../src';
 
 export const NOW = new Date('2026-10-14T10:00:00Z');
@@ -41,7 +41,7 @@ export async function mediaFixture(
   await attachSampleBible(t.db, p.id);
   const { slotIds } = await planWeek(t.services, p.id, NEXT_MONDAY);
   const toolkit = o.toolkit ?? new FakeToolkit();
-  const deps: MediaDeps = { toolkit, ocr: o.ocr ?? new FakeOcr(), face: o.face ?? new FakeFaceMatcher(), workRoot: mkdtempSync(join(tmpdir(), 'ios-media-test-')) };
+  const deps: MediaDeps = { toolkit, ocr: o.ocr ?? new FakeOcr(), face: o.face ?? new FakeFaceMatcher(), workRoot: mkdtempSync(join(tmpdir(), 'troupe-media-test-')) };
   setMediaDeps(t.services, deps);
   const used = new Set<string>();
   return {

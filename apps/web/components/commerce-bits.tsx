@@ -1,4 +1,4 @@
-import type { StoreStatus } from '@ios/commerce';
+import type { StoreStatus } from '@troupe/commerce';
 
 const STORE_LABEL: Record<StoreStatus, { label: string; cls: string; hint: string }> = {
   none: { label: 'Not started', cls: 'bg-surface-3 text-muted', hint: 'Becomes a listing pack once approved' },

@@ -1,6 +1,6 @@
-import { makeTestPersona } from '@ios/agents/testing';
-import { json } from '@ios/db';
-import type { FeedItem } from '@ios/providers';
+import { makeTestPersona } from '@troupe/agents/testing';
+import { json } from '@troupe/db';
+import type { FeedItem } from '@troupe/providers';
 import { describe, expect, it } from 'vitest';
 import {
   buildBriefing,

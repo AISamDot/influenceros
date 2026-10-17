@@ -1,5 +1,5 @@
-import { authSecret, readCookie, revokeSession, verifySession } from '@ios/auth';
-import { getDb } from '@ios/db';
+import { authSecret, readCookie, revokeSession, verifySession } from '@troupe/auth';
+import { getDb } from '@troupe/db';
 import { redirectWithSession } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';

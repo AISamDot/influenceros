@@ -1,4 +1,4 @@
-import type { Db } from '@ios/db';
+import type { Db } from '@troupe/db';
 import { budgetStatus, type BudgetStatus } from './governor';
 import { PUBLISHING_STATES } from './lifecycle';
 import type { PersonaRow, PostFormat, PostPurpose } from './types';

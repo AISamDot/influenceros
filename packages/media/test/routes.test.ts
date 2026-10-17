@@ -1,4 +1,4 @@
-import { isPublicMediaKey, MemoryMediaStore } from '@ios/providers';
+import { isPublicMediaKey, MemoryMediaStore } from '@troupe/providers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { keyFrom, serveMedia } from '../../../apps/web/app/api/media/serve';
 

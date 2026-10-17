@@ -1,5 +1,5 @@
 {
-  "name": "@ios/distribution",
+  "name": "@troupe/distribution",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,12 +13,12 @@
     "zernio:check": "tsx src/zernio-check.ts"
   },
   "dependencies": {
-    "@ios/agents": "workspace:*",
-    "@ios/content": "workspace:*",
-    "@ios/core": "workspace:*",
-    "@ios/db": "workspace:*",
-    "@ios/profit": "workspace:*",
-    "@ios/providers": "workspace:*",
-    "@ios/secrets": "workspace:*"
+    "@troupe/agents": "workspace:*",
+    "@troupe/content": "workspace:*",
+    "@troupe/core": "workspace:*",
+    "@troupe/db": "workspace:*",
+    "@troupe/profit": "workspace:*",
+    "@troupe/providers": "workspace:*",
+    "@troupe/secrets": "workspace:*"
   }
 }

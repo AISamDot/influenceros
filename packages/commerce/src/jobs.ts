@@ -1,5 +1,5 @@
-import { enqueueOnceFor, type JobContext, type JobHandlerMap, type ScheduledTask, type StudioServices } from '@ios/agents';
-import { BudgetExceededError, DeferJob, enqueue } from '@ios/core';
+import { enqueueOnceFor, type JobContext, type JobHandlerMap, type ScheduledTask, type StudioServices } from '@troupe/agents';
+import { BudgetExceededError, DeferJob, enqueue } from '@troupe/core';
 import { SEND_DUE_JOB, syncPendingOptOuts, WRITE_WELCOME_JOB } from './audience';
 import { sweepPostLinks } from './attribution';
 import { ensureMonthlyDrop, MEMBERSHIP_DROP_JOB } from './membership';

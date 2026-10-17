@@ -1,5 +1,5 @@
-import type { Db } from '@ios/db';
-import { json } from '@ios/db';
+import type { Db } from '@troupe/db';
+import { json } from '@troupe/db';
 import type { ScrapedPost, ScrapedProfile } from './apify';
 import { classifyFormat, classifyHook, classifyTopic } from './classify';
 import { nicheKey } from './config';

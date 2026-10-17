@@ -1,4 +1,4 @@
-import { STORY_KIND_LABEL, type StoryFrameRow } from '@ios/formats';
+import { STORY_KIND_LABEL, type StoryFrameRow } from '@troupe/formats';
 import { approveFrame } from '@/app/generator/formats-actions';
 import { SubmitButton } from './submit-button';
 

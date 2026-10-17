@@ -1,6 +1,6 @@
-import { ToolPermissionError } from '@ios/agents';
-import { makeTestPersona } from '@ios/agents/testing';
-import { OWNER } from '@ios/core';
+import { ToolPermissionError } from '@troupe/agents';
+import { makeTestPersona } from '@troupe/agents/testing';
+import { OWNER } from '@troupe/core';
 import { describe, expect, it } from 'vitest';
 import { schedules, WORLD_JOBS, WORLD_TOOLS } from '../src';
 import { clock, personaWithWorld, worldStudio } from './helpers';

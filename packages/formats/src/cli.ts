@@ -1,7 +1,7 @@
 // `pnpm formats <command>`: stream L's CLI (docs/IOS-5-CONTRACTS.md). With local PGlite only one process may open the
 // data dir: use a scratch PGLITE_DIR, never the dev server's.
-import { getStudio } from '@ios/core';
-import { exitOnOpenError, openDb } from '@ios/db';
+import { getStudio } from '@troupe/core';
+import { exitOnOpenError, openDb } from '@troupe/db';
 import { FORMAT_LABEL, usd } from './catalog';
 import { monthlyCostUsd, recommendPlan } from './plan';
 import { planHistory, planInForce } from './store';

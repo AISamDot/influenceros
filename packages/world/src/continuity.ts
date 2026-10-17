@@ -1,4 +1,4 @@
-import type { QcCheck } from '@ios/agents';
+import type { QcCheck } from '@troupe/agents';
 import { GENDER_OF, type Gender, type WorldBible } from './model';
 
 /**

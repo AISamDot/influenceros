@@ -1,6 +1,6 @@
-import type { StudioServices } from '@ios/agents';
-import { type Actor, ApprovalError, archivePersona, ensureThreads, NotFoundError, notify, portraitUri, restoreArchivedPersona } from '@ios/core';
-import { type ArchivedPersonaInfo, archiveDir, archivedManuscripts, importLaunchPersona, type LaunchPersona, listArchivedPersonas, loadArchivedPersonas } from '@ios/core/seed';
+import type { StudioServices } from '@troupe/agents';
+import { type Actor, ApprovalError, archivePersona, ensureThreads, NotFoundError, notify, portraitUri, restoreArchivedPersona } from '@troupe/core';
+import { type ArchivedPersonaInfo, archiveDir, archivedManuscripts, importLaunchPersona, type LaunchPersona, listArchivedPersonas, loadArchivedPersonas } from '@troupe/core/seed';
 import { nicheByKey, nicheForText, slugify } from './library';
 import { computeReview } from './review';
 import { textOf } from './score';

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { consentWording } from '@ios/commerce';
+import { consentWording } from '@troupe/commerce';
 import { SiteFooter, siteFor, SiteHeader, SitePage, sitePageMetadata, srcParam } from '@/components/site-shell';
 import { SubmitButton } from '@/components/submit-button';
 

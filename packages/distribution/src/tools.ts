@@ -1,4 +1,4 @@
-import type { Caller, ToolDef } from '@ios/agents';
+import type { Caller, ToolDef } from '@troupe/agents';
 import { accountSetupSheet } from './accounts';
 import { enqueuePull, personaScorecard } from './analytics';
 import { enqueueHandle } from './community';

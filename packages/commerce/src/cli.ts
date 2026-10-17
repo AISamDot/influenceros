@@ -1,8 +1,9 @@
 // `pnpm commerce <command>`: stream G's CLI (docs/IOS-34-CONTRACTS.md).
 // With local PGlite only one process may open the data dir: never open it while the dev server is running
 // (use a scratch PGLITE_DIR for manual runs).
-import { personaSiteUrl, SITE_PATHS } from '@ios/agents';
-import { defaultBackend, integrationStates } from '@ios/secrets';
+import { studioDomain } from '@troupe/env';
+import { personaSiteUrl, SITE_PATHS } from '@troupe/agents';
+import { defaultBackend, integrationStates } from '@troupe/secrets';
 
 const [cmd, ...args] = process.argv.slice(2);
 
@@ -12,7 +13,7 @@ function status(): void {
     const missing = s.secrets.filter((x) => !x.source).map((x) => x.name);
     console.log(`${s.def.name.padEnd(14)} ${s.mode === 'live' ? 'live' : 'fake'}  (${s.status.replace('_', ' ')}${missing.length ? `; pending key: ${missing.join(', ')}` : ''})`);
   }
-  console.log(`Studio domain   ${process.env.IOS_STUDIO_DOMAIN?.trim() || '(not set: sites are served at /p/<slug>)'}`);
+  console.log(`Studio domain   ${studioDomain() ?? '(not set: sites are served at /p/<slug>)'}`);
   console.log(`Resend webhooks ${process.env.RESEND_WEBHOOK_SECRET ? 'signed' : 'off until resend.webhook_secret is set (unsubscribes still work through the studio links)'}`);
 }
 

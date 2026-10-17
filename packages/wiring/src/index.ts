@@ -1,23 +1,23 @@
-import * as agents from '@ios/agents';
-import { createServices, type JobHandlerMap, type ProviderEnv, type ScheduledTask, type StudioModule, type StudioServices, type ToolDef } from '@ios/agents';
-import * as commerce from '@ios/commerce';
-import * as content from '@ios/content';
-import type { Db } from '@ios/db';
-import * as distribution from '@ios/distribution';
-import * as formats from '@ios/formats';
-import * as generator from '@ios/generator';
-import * as knowledge from '@ios/knowledge';
-import * as media from '@ios/media';
-import * as production from '@ios/production';
-import * as products from '@ios/products';
-import * as profit from '@ios/profit';
-import * as radar from '@ios/radar';
-import * as world from '@ios/world';
-import { createFakeProviders, type Providers } from '@ios/providers';
-import { defaultBackend, integrationStates, isSecretName, readSecret, type SecretBackend } from '@ios/secrets';
+import * as agents from '@troupe/agents';
+import { createServices, type JobHandlerMap, type ProviderEnv, type ScheduledTask, type StudioModule, type StudioServices, type ToolDef } from '@troupe/agents';
+import * as commerce from '@troupe/commerce';
+import * as content from '@troupe/content';
+import type { Db } from '@troupe/db';
+import * as distribution from '@troupe/distribution';
+import * as formats from '@troupe/formats';
+import * as generator from '@troupe/generator';
+import * as knowledge from '@troupe/knowledge';
+import * as media from '@troupe/media';
+import * as production from '@troupe/production';
+import * as products from '@troupe/products';
+import * as profit from '@troupe/profit';
+import * as radar from '@troupe/radar';
+import * as world from '@troupe/world';
+import { createFakeProviders, type Providers } from '@troupe/providers';
+import { defaultBackend, integrationStates, isSecretName, readSecret, type SecretBackend } from '@troupe/secrets';
 
 /**
- * @ios/wiring: the composition root. The web app, the cron tick and the worker build their services here, so no
+ * @troupe/wiring: the composition root. The web app, the cron tick and the worker build their services here, so no
  * stream edits a shared file to plug in its tools, jobs, schedules, live adapters or policies: each package
  * exports them from its own index (StudioModule) and this file composes them all (IOS-2: agents, content, knowledge,
  * profit; IOS-3/4: media, distribution, commerce, products; the generator; IOS-5: radar, world, production, formats).
@@ -77,7 +77,7 @@ export function allSchedules(): ScheduledTask[] {
   return [...mergeUnique('schedule', all).values()];
 }
 
-/** ProviderEnv over @ios/secrets: env vars win, then the Keychain; IOS_FAKE_PROVIDERS forces fakes. */
+/** ProviderEnv over @troupe/secrets: env vars win, then the Keychain; TROUPE_FAKE_PROVIDERS forces fakes. */
 export function providerEnv(
   env: Readonly<Record<string, string | undefined>> = process.env,
   backend: SecretBackend = defaultBackend(env),

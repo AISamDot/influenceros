@@ -1,5 +1,5 @@
-import { budgetStatus } from '@ios/core';
-import type { Db } from '@ios/db';
+import { budgetStatus } from '@troupe/core';
+import type { Db } from '@troupe/db';
 import { forecastStudio, weekForecasts } from './forecast';
 import { type LeverProposal, leverInputs, planLevers } from './levers';
 import { aggregate, FORMAT_LABELS, isSyntheticRow } from './pnl';

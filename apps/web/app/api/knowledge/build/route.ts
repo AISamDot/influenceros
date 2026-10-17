@@ -1,6 +1,6 @@
 import { requireOwner } from '@/lib/auth';
-import { OWNER } from '@ios/core';
-import { requestFieldBrainBuild } from '@ios/knowledge';
+import { OWNER } from '@troupe/core';
+import { requestFieldBrainBuild } from '@troupe/knowledge';
 import { backTo, isFormPost, isJson } from '@/lib/http';
 import { studioContext } from '@/lib/server';
 import { NICHE_RE } from '@/app/knowledge/_data';

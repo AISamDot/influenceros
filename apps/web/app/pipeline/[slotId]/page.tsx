@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
-import { slotDetail } from '@ios/content';
-import { slotMedia } from '@ios/media';
+import { slotDetail } from '@troupe/content';
+import { slotMedia } from '@troupe/media';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';

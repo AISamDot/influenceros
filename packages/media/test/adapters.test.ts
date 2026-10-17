@@ -1,5 +1,5 @@
-import { createTestStudio, makeTestPersona } from '@ios/agents/testing';
-import { MemoryMediaStore } from '@ios/providers';
+import { createTestStudio, makeTestPersona } from '@troupe/agents/testing';
+import { MemoryMediaStore } from '@troupe/providers';
 import { describe, expect, it } from 'vitest';
 import { ElevenLabsVoice, ensureProfile, estimateCredits, type Exec, FalKlingAvatar, HiggsfieldCli, HiggsfieldCliError, HiggsfieldSeedanceTalking, HiggsfieldTtsVoice, hfSpend, mediaDeps, mediaLiveProviders, mp3Seconds, parseCliJson, probePrices, readJob, SOUL_ID_MAX_FAILURES } from '../src';
 
@@ -203,19 +203,19 @@ describe('live providers', () => {
     expect(mediaLiveProviders(penv(['higgsfield', 'elevenlabs']), { VITEST: 'true' })).toEqual({});
   });
   it('switch on with keys: Higgsfield CLI, Seedance talking, ElevenLabs voice, local storage', () => {
-    const p = mediaLiveProviders(penv(['higgsfield', 'elevenlabs']), { IOS_MEDIA_DIR: '/tmp/ios-media-live-test' });
+    const p = mediaLiveProviders(penv(['higgsfield', 'elevenlabs']), { TROUPE_MEDIA_DIR: '/tmp/troupe-media-live-test' });
     expect(p.imageVideo?.name).toBe('higgsfield-cli');
     expect(p.talking?.name).toBe('higgsfield-seedance');
     expect(p.voice?.name).toBe('elevenlabs');
     expect(p.storage?.name).toBe('local-media');
   });
-  it('fal takes talking with IOS_TALKING_PROVIDER=fal; Higgsfield TTS with IOS_VOICE_PROVIDER=higgsfield', () => {
-    const p = mediaLiveProviders(penv(['higgsfield', 'fal', 'elevenlabs']), { IOS_TALKING_PROVIDER: 'fal', IOS_VOICE_PROVIDER: 'higgsfield', IOS_MEDIA_DIR: '/tmp/x' });
+  it('fal takes talking with TROUPE_TALKING_PROVIDER=fal; Higgsfield TTS with TROUPE_VOICE_PROVIDER=higgsfield', () => {
+    const p = mediaLiveProviders(penv(['higgsfield', 'fal', 'elevenlabs']), { TROUPE_TALKING_PROVIDER: 'fal', TROUPE_VOICE_PROVIDER: 'higgsfield', TROUPE_MEDIA_DIR: '/tmp/x' });
     expect(p.talking?.name).toBe('fal-kling-avatar');
     expect(p.voice?.name).toBe('higgsfield-tts');
   });
   it('without keys only storage is live', () => {
-    const p = mediaLiveProviders(penv([]), { IOS_MEDIA_DIR: '/tmp/x' });
+    const p = mediaLiveProviders(penv([]), { TROUPE_MEDIA_DIR: '/tmp/x' });
     expect(Object.keys(p)).toEqual(['storage']);
   });
 });

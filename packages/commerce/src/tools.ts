@@ -1,4 +1,4 @@
-import { personaSiteUrl, SITE_PATHS, type Caller, type ToolDef } from '@ios/agents';
+import { personaSiteUrl, SITE_PATHS, type Caller, type ToolDef } from '@troupe/agents';
 import { postAttribution, sweepPostLinks } from './attribution';
 import { membershipStats } from './membership';
 import { listStats, sendBroadcast, writeWelcomeSequence } from './sequences';

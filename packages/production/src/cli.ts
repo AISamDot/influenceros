@@ -1,8 +1,8 @@
 // `pnpm production <command>`: stream K's CLI (docs/IOS-5-CONTRACTS.md). Pure commands only: they never open a
 // database (with local PGlite only one process may open the data dir; use a scratch PGLITE_DIR for anything else).
-import { CAMERA_STYLES, type CameraStyle, NO_CAPTIONS } from '@ios/agents';
-import { fillTemplate, templatesFor } from '@ios/content';
-import { POST_FORMATS, type PostFormat } from '@ios/core';
+import { CAMERA_STYLES, type CameraStyle, NO_CAPTIONS } from '@troupe/agents';
+import { fillTemplate, templatesFor } from '@troupe/content';
+import { POST_FORMATS, type PostFormat } from '@troupe/core';
 import { CAMERA_SPEC } from './camera';
 import { checkVideoPrompt, compileImage, compileVideo, type CompileContext } from './compiler';
 import { nicheFilter } from './niche';

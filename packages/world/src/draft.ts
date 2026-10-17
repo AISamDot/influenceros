@@ -1,4 +1,4 @@
-import type { WorldDraft, WorldDraftRequest } from '@ios/agents';
+import type { WorldDraft, WorldDraftRequest } from '@troupe/agents';
 import { type CountryCode, currencyOf, DEFAULT_PLACE, dwellingOf, eraOf, type Place, placeForTimezone, placeFromText } from './geo';
 import { addDays, holidayCalendar } from './holidays';
 import { ARC_WEEKS, type CastMember, type Gender, hashInt, pickFrom, type RecurringPlace, type StoryBeat, type StoryChapter, type Storyline, type WorldBible } from './model';

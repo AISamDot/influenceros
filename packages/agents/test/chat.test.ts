@@ -1,4 +1,4 @@
-import { activeKillSwitches, findThread, listMessages, listPendingApprovals } from '@ios/core';
+import { activeKillSwitches, findThread, listMessages, listPendingApprovals } from '@troupe/core';
 import { describe, expect, it } from 'vitest';
 import { A_TOOLS, acceptOwnerMessage, newMessageId, respondToOwner } from '../src';
 import { createTestStudio, makeTestPersona } from '../src/testing';

@@ -1,7 +1,7 @@
-import { type AgentName, CADENCE_BOUNDS, type CadenceTarget, DEFAULT_ROUTING, type FormatMix } from '@ios/agents';
-import { audit, getSettings, isOptionalFormat, personaCaps, type PostFormat } from '@ios/core';
-import { type Db, json } from '@ios/db';
-import { LLM_PRICES, type ModelTier } from '@ios/providers';
+import { type AgentName, CADENCE_BOUNDS, type CadenceTarget, DEFAULT_ROUTING, type FormatMix } from '@troupe/agents';
+import { audit, getSettings, isOptionalFormat, personaCaps, type PostFormat } from '@troupe/core';
+import { type Db, json } from '@troupe/db';
+import { LLM_PRICES, type ModelTier } from '@troupe/providers';
 import { aggregate, type Facts, isSyntheticRow, loadFacts } from './pnl';
 import { cadenceTarget, formatBounds, formatsOn, latestPlanRow, planMix, routingOverride, scaleTarget } from './policies';
 import { getProfitSettings, type ProfitSettings } from './settings';

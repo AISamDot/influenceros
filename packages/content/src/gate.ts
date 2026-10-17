@@ -1,6 +1,6 @@
-import type { GateCheck, StudioServices } from '@ios/agents';
-import { type CostRef, type GateVerdict, type PostPurpose } from '@ios/core';
-import { json } from '@ios/db';
+import type { GateCheck, StudioServices } from '@troupe/agents';
+import { type CostRef, type GateVerdict, type PostPurpose } from '@troupe/core';
+import { json } from '@troupe/db';
 import { sentences } from './util';
 
 /**

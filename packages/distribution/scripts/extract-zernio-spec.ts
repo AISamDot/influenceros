@@ -3,7 +3,7 @@
  * (test/fixtures/zernio-spec.json): the property names and types of each *PlatformData schema the adapter writes, and
  * every /v1 path. The spec conformance tests read that fixture, so a renamed field or a moved path fails them.
  *
- *   pnpm --filter @ios/distribution exec tsx scripts/extract-zernio-spec.ts <openapi.yaml> [out.json]
+ *   pnpm --filter @troupe/distribution exec tsx scripts/extract-zernio-spec.ts <openapi.yaml> [out.json]
  *
  * A line scanner, not a YAML parser: the spec is block-style YAML with two-space indents (components.schemas at 4,
  * a schema's properties at 8, paths at 2).

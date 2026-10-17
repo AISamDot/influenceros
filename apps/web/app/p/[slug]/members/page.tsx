@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { MEMBER_COOKIE, memberDrops, memberFilePath, memberFromSession } from '@ios/commerce';
+import { MEMBER_COOKIE, memberDrops, memberFilePath, memberFromSession } from '@troupe/commerce';
 import { cookies } from 'next/headers';
 import { SiteFooter, siteFor, SiteHeader, SitePage, sitePageMetadata } from '@/components/site-shell';
 import { studioContext } from '@/lib/server';

@@ -1,4 +1,4 @@
-import { ingestEvents } from '@ios/distribution';
+import { ingestEvents } from '@troupe/distribution';
 import { getServices } from '@/lib/services';
 import { fakeWebhooksRefused } from '@/lib/webhook-guard';
 

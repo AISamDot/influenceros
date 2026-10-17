@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
-import { BOARD_COLUMNS, type BoardItem, columnOf, pipelineBoard } from '@ios/content';
-import { PUBLISHING_STATES } from '@ios/core';
+import { BOARD_COLUMNS, type BoardItem, columnOf, pipelineBoard } from '@troupe/content';
+import { PUBLISHING_STATES } from '@troupe/core';
 import Link from 'next/link';
 import { Empty } from '@/components/stub';
 import { Flash } from '@/components/flash';

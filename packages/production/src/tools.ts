@@ -1,7 +1,7 @@
-import { CAMERA_STYLES, type CameraStyle, type Caller, type ToolDef } from '@ios/agents';
-import { fillTemplate, templatesFor } from '@ios/content';
-import { enqueue, POST_FORMATS, type PostFormat } from '@ios/core';
-import { json } from '@ios/db';
+import { CAMERA_STYLES, type CameraStyle, type Caller, type ToolDef } from '@troupe/agents';
+import { fillTemplate, templatesFor } from '@troupe/content';
+import { enqueue, POST_FORMATS, type PostFormat } from '@troupe/core';
+import { json } from '@troupe/db';
 import { checkVideoPrompt } from './compiler';
 import { nicheFilter } from './niche';
 import { productionOverview } from './read';
@@ -13,7 +13,7 @@ import { locationLocks } from './store';
  * queue a job for the makers; re-picking a grid cell is the Owner's call.
  */
 
-/** Job kinds stream K queues; @ios/media runs them (generations go through the governor there). */
+/** Job kinds stream K queues; @troupe/media runs them (generations go through the governor there). */
 export const PRODUCTION_JOB = {
   /** Character sheet + detail strip + identity stack + 4 core refs + BOPA for one persona. */
   lookBuild: 'look.build',

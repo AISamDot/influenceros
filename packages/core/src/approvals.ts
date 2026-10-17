@@ -1,4 +1,4 @@
-import { type Db, json } from '@ios/db';
+import { type Db, json } from '@troupe/db';
 import { audit } from './audit';
 import { addMessage, findThread } from './chat';
 import { capFor, creditPeriod, type Unit } from './governor';

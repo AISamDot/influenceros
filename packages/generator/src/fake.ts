@@ -1,5 +1,5 @@
-import { portraitUri } from '@ios/core';
-import { characterSheetPrompt } from '@ios/production';
+import { portraitUri } from '@troupe/core';
+import { characterSheetPrompt } from '@troupe/production';
 import {
   type Archetype,
   type ArchetypeFamily,

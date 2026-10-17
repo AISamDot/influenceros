@@ -1,4 +1,4 @@
-import type { PostFormat, Platform } from '@ios/core';
+import type { PostFormat, Platform } from '@troupe/core';
 
 /**
  * Profit Engine read models (PRD §3.11, FR-24). Stream D owns and implements them; the Money page, the Profit card

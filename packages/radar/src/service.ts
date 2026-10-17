@@ -1,4 +1,4 @@
-import type { RadarService, ServiceFactory } from '@ios/agents';
+import type { RadarService, ServiceFactory } from '@troupe/agents';
 import { formatBenchmarks, monetisationPatterns, opportunityEvidence } from './insights';
 
 /**

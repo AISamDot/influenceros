@@ -1,4 +1,4 @@
-import type { ForecastBand, LeverAction, ProfitAction } from '@ios/profit';
+import type { ForecastBand, LeverAction, ProfitAction } from '@troupe/profit';
 import type { ReactNode } from 'react';
 
 /** Small shared pieces for the Profit card and the Money page (stream D). */

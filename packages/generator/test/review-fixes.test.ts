@@ -1,9 +1,9 @@
-import { ownerAsked } from '@ios/agents';
-import { createTestStudio } from '@ios/agents/testing';
-import { OWNER, propose, STUDIO_MANAGER } from '@ios/core';
-import { importLaunchPersona, loadArchivedPersonas, readPersonaDoc } from '@ios/core/seed';
-import { lookPromptsFor } from '@ios/media';
-import { createFakeProviders } from '@ios/providers';
+import { ownerAsked } from '@troupe/agents';
+import { createTestStudio } from '@troupe/agents/testing';
+import { OWNER, propose, STUDIO_MANAGER } from '@troupe/core';
+import { importLaunchPersona, loadArchivedPersonas, readPersonaDoc } from '@troupe/core/seed';
+import { lookPromptsFor } from '@troupe/media';
+import { createFakeProviders } from '@troupe/providers';
 import { describe, expect, it } from 'vitest';
 import {
   addOwnerIdea,

@@ -1,4 +1,4 @@
-# Influencer OS
+# Troupe House
 
 A studio of openly AI influencer personas, each run by its own Persona Manager agent. A Studio Manager runs the whole studio end to end.
 
@@ -14,7 +14,7 @@ pnpm dev        # migrates + seeds local PGlite if empty (an empty studio), then
 pnpm test       # Vitest
 pnpm build      # typecheck + Next.js build
 pnpm db:reset   # wipe and reseed local PGlite (stop `pnpm dev` first)
-pnpm ios secrets status
+pnpm troupe secrets status
 pnpm knowledge personas archived|restore <slug|all>|archive <slug|all>   # the persona archive
 ```
 

@@ -1,5 +1,5 @@
-import { enqueueOnceFor, METRIC_WINDOW_MS, METRIC_WINDOWS, type MetricWindow, type StudioServices } from '@ios/agents';
-import type { Platform, PostMetrics } from '@ios/providers';
+import { enqueueOnceFor, METRIC_WINDOW_MS, METRIC_WINDOWS, type MetricWindow, type StudioServices } from '@troupe/agents';
+import type { Platform, PostMetrics } from '@troupe/providers';
 import { DAY_MS, errorText, isoDate } from './util';
 
 /**

@@ -9,10 +9,10 @@
  *   KnowledgeService .................................. stream C (packages/knowledge)
  *   CadencePolicy, RoutingPolicy, scheduler ........... stream D (packages/profit, apps/worker)
  */
-import type { Db } from '@ios/db';
-import type { Actor, CoreFormat, CostRef, GateVerdict, JobRow, OptionalFormat, PostFormat, PostPurpose } from '@ios/core';
+import type { Db } from '@troupe/db';
+import type { Actor, CoreFormat, CostRef, GateVerdict, JobRow, OptionalFormat, PostFormat, PostPurpose } from '@troupe/core';
 import type { FormatPlanService, PromptCompiler, RadarService, WorldService } from './ios5';
-import { LLM_PRICES, type LlmCacheBlock, type ModelTier, type Providers } from '@ios/providers';
+import { LLM_PRICES, type LlmCacheBlock, type ModelTier, type Providers } from '@troupe/providers';
 
 // ───────────────────────────── Agents and model routing ─────────────────────────────
 
@@ -64,7 +64,7 @@ export type AgentName =
 /** Who can call a tool: an agent, the Owner (dashboard action) or the system (jobs, cron). */
 export type Caller = AgentName | 'owner' | 'system';
 
-/** Tier → model id. Haiku 5.5 / Sonnet 5.5 / Opus 5.5; prices live in LLM_PRICES (@ios/providers). */
+/** Tier → model id. Haiku 5.5 / Sonnet 5.5 / Opus 5.5; prices live in LLM_PRICES (@troupe/providers). */
 export const MODEL_IDS: Readonly<Record<ModelTier, string>> = {
   fast: LLM_PRICES.fast.model,
   standard: LLM_PRICES.standard.model,
@@ -214,7 +214,7 @@ export interface AgentResult<T> {
 export interface AgentRuntime {
   readonly mode: 'live' | 'fake';
   /**
-   * Runs one task. Throws BudgetExceededError (from @ios/core) when the governor refuses; the run is logged with
+   * Runs one task. Throws BudgetExceededError (from @troupe/core) when the governor refuses; the run is logged with
    * outcome 'refused'. A ToolPermissionError inside a live run goes back to the model as a tool error, it does not
    * end the run.
    */
@@ -397,7 +397,7 @@ export interface ServiceBase {
   readonly now: () => Date;
 }
 
-/** Everything a tool, job or agent needs. Built once by `createServices` (tests) or `createStudioServices` (@ios/wiring). */
+/** Everything a tool, job or agent needs. Built once by `createServices` (tests) or `createStudioServices` (@troupe/wiring). */
 export interface StudioServices extends ServiceBase {
   readonly runtime: AgentRuntime;
   readonly tools: ToolRegistry;
@@ -462,16 +462,16 @@ export interface ScheduledTask {
   run(services: StudioServices, now: Date): Promise<unknown>;
 }
 
-/** What a package's `liveProviders()` gets to decide live vs fake. Implemented by @ios/wiring over @ios/secrets. */
+/** What a package's `liveProviders()` gets to decide live vs fake. Implemented by @troupe/wiring over @troupe/secrets. */
 export interface ProviderEnv {
-  /** The integration's keys are present, it has a live adapter, and IOS_FAKE_PROVIDERS doesn't force it fake. */
+  /** The integration's keys are present, it has a live adapter, and TROUPE_FAKE_PROVIDERS doesn't force it fake. */
   isLive(integrationId: string): boolean;
   /** Secret value (env first, then the Keychain). Pass straight to the SDK; never log, persist or prompt with it. */
   secret(name: string): string | null;
 }
 
 /**
- * The exports every IOS-2 package index provides, so @ios/wiring composes them without anyone editing a shared
+ * The exports every IOS-2 package index provides, so @troupe/wiring composes them without anyone editing a shared
  * file: `tools`, `jobs`, `schedules` and `liveProviders`.
  */
 export interface StudioModule {

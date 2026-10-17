@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
-import type { Db } from '@ios/db';
-import { personaMedia } from '@ios/media';
+import type { Db } from '@troupe/db';
+import { personaMedia } from '@troupe/media';
 import Link from 'next/link';
 
 const SOUL: Record<string, string> = { ready: 'Soul ID ready', failed: 'Soul ID failed', none: 'Soul ID not trained yet' };

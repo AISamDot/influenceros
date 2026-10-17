@@ -1,6 +1,6 @@
-import type { QcCheck } from '@ios/agents';
-import type { Db } from '@ios/db';
-import { json } from '@ios/db';
+import type { QcCheck } from '@troupe/agents';
+import type { Db } from '@troupe/db';
+import { json } from '@troupe/db';
 import type { PdfInspection } from './inspect';
 import type { Layout } from './layout';
 import { blockStrings, docLinks, docStrings, PAGE_GEOMETRY, type PageSize, plainInline, type ProductDoc, titleMatches } from './model';
@@ -56,7 +56,7 @@ export class HttpLinkChecker implements LinkChecker {
     if (host === 'localhost' || this.ownHosts.some((h) => host === h || host.endsWith(`.${h}`))) return null;
     for (const method of ['HEAD', 'GET'] as const) {
       try {
-        const res = await this.fetchImpl(url, { method, redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh) InfluencerOS-LinkCheck/1.0' }, signal: AbortSignal.timeout(this.timeoutMs) });
+        const res = await this.fetchImpl(url, { method, redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh) TroupeHouse-LinkCheck/1.0' }, signal: AbortSignal.timeout(this.timeoutMs) });
         if ((res.status === 405 || res.status === 501) && method === 'HEAD') continue;
         // 401/403/429: the page exists but blocks robots (common on government and shop sites). 404/410/5xx are broken.
         return res.status < 400 || res.status === 401 || res.status === 403 || res.status === 429 ? null : `HTTP ${res.status}`;

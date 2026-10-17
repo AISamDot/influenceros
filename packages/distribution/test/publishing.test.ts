@@ -1,5 +1,5 @@
-import { PUBLISH_PREPARE_JOB } from '@ios/agents';
-import { DeferJob, decide, OWNER, recoverPublishing, setKillSwitch, sweepAutoApprovals } from '@ios/core';
+import { PUBLISH_PREPARE_JOB } from '@troupe/agents';
+import { DeferJob, decide, OWNER, recoverPublishing, setKillSwitch, sweepAutoApprovals } from '@troupe/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { enqueueDuePosts, jobs, parsePreparePayload, PREPARE_DEAD_LIMIT, preparePublish, publishOne, sweepStuckPrepares } from '../src';
 import { account, type Ctx, persona, preparePayload, setup, slot, status, stored } from './helpers';

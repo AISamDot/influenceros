@@ -64,7 +64,7 @@ export function Nav({ pending, kills, unread, signedIn = false }: { pending: num
       <div className="mx-auto flex h-14 max-w-[1440px] items-center gap-4 px-4 sm:px-6">
         <Link href="/" className="flex shrink-0 items-center gap-2.5">
           <span className="grid size-8 place-items-center rounded-[10px] bg-ink font-[family-name:var(--font-display)] text-[17px] leading-none text-on-ink">io</span>
-          <span className="hidden text-[15px] font-semibold tracking-tight sm:block">Influencer OS</span>
+          <span className="hidden text-[15px] font-semibold tracking-tight sm:block">Troupe House</span>
         </Link>
         <nav ref={navRef} className="no-scrollbar fade-x -mx-1 flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1 pr-6 2xl:[mask-image:none]" aria-label="Main">
           {LINKS.map((l) => (

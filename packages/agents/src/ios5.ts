@@ -3,20 +3,20 @@
  * against in parallel. Integrator-only: a stream that needs a change asks for it (§8); nothing here changes on a
  * stream branch.
  *
- *   RadarService ........ stream I (@ios/radar)       → read by L (Format Plan benchmarks), the generator (step 1),
+ *   RadarService ........ stream I (@troupe/radar)       → read by L (Format Plan benchmarks), the generator (step 1),
  *                                                       the Studio Manager and the Monetization Agent
- *   WorldService ........ stream J (@ios/world)       → read by K (grounding block in every prompt), L (story frames,
+ *   WorldService ........ stream J (@troupe/world)       → read by K (grounding block in every prompt), L (story frames,
  *                                                       continuity), I (no-repeat check on remix briefs), the content
  *                                                       pipeline (Q1 world checks, ledger) and the generator (step 6)
- *   PromptCompiler ...... stream K (@ios/production)  → read by L (story-frame stills), K's own renderers
- *   FormatPlanService ... stream L (@ios/formats)     → read by the generator (step 6, launch), the CadencePolicy
- *                                                       (L owns it in @ios/profit) and K (which formats are on)
+ *   PromptCompiler ...... stream K (@troupe/production)  → read by L (story-frame stills), K's own renderers
+ *   FormatPlanService ... stream L (@troupe/formats)     → read by the generator (step 6, launch), the CadencePolicy
+ *                                                       (L owns it in @troupe/profit) and K (which formats are on)
  *
  * Each service has a null / basic default in `defaults.ts`, so every stream compiles and tests without the others.
  */
-import { type Actor, type CostRef, getSettings, metered, type PersonaState, type Platform, type PostFormat, type PostPurpose } from '@ios/core';
-import type { Db } from '@ios/db';
-import type { InspirationPin } from '@ios/providers';
+import { type Actor, type CostRef, getSettings, metered, type PersonaState, type Platform, type PostFormat, type PostPurpose } from '@troupe/core';
+import type { Db } from '@troupe/db';
+import type { InspirationPin } from '@troupe/providers';
 import type { QcCheck, ServiceBase } from './contracts';
 
 // ───────────────────────────── Formats and Stories (stream L owns the meaning; K renders) ─────────────────────────────

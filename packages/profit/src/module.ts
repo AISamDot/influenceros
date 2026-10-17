@@ -1,4 +1,4 @@
-import type { JobContext, JobHandlerMap, ScheduledTask, StudioServices } from '@ios/agents';
+import type { JobContext, JobHandlerMap, ScheduledTask, StudioServices } from '@troupe/agents';
 import { runWeeklyCycle } from './cycle';
 import { forecastStudio, storeForecasts } from './forecast';
 import { measureLevers } from './levers';

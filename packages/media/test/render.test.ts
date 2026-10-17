@@ -1,7 +1,7 @@
-import { decide, OWNER } from '@ios/core';
-import { MEDIA_RENDER_JOB, PUBLISH_PREPARE_JOB, type PublishPreparePayload } from '@ios/agents';
-import { pipelineBoard } from '@ios/content';
-import { DeferJob, type JobRow, type PostFormat } from '@ios/core';
+import { decide, OWNER } from '@troupe/core';
+import { MEDIA_RENDER_JOB, PUBLISH_PREPARE_JOB, type PublishPreparePayload } from '@troupe/agents';
+import { pipelineBoard } from '@troupe/content';
+import { DeferJob, type JobRow, type PostFormat } from '@troupe/core';
 import { describe, expect, it, vi } from 'vitest';
 import { FakeFaceMatcher, FakeToolkit, jobs, renderSlot, slotMedia } from '../src';
 import { mediaFixture } from './helpers';
@@ -266,8 +266,8 @@ describe('media.render: live and fake never mix on a spoken post', () => {
 });
 
 describe('media.render: pluggable talking provider', () => {
-  it('IOS_TALKING_PROVIDER=fal renders talking clips through providers.talking, billed in USD', async () => {
-    vi.stubEnv('IOS_TALKING_PROVIDER', 'fal');
+  it('TROUPE_TALKING_PROVIDER=fal renders talking clips through providers.talking, billed in USD', async () => {
+    vi.stubEnv('TROUPE_TALKING_PROVIDER', 'fal');
     try {
       const f = await mediaFixture();
       const payload = await f.queued('talking');

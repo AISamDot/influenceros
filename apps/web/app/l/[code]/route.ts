@@ -1,4 +1,4 @@
-import { resolveShortLink } from '@ios/commerce';
+import { resolveShortLink } from '@troupe/commerce';
 import { cookie, hostSlug } from '@/components/site-http';
 import { getServices } from '@/lib/services';
 

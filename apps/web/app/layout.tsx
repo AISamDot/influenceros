@@ -1,7 +1,7 @@
 import '@fontsource-variable/geist';
 import '@fontsource/instrument-serif/400.css';
 import './globals.css';
-import { studioTotals } from '@ios/core';
+import { studioTotals } from '@troupe/core';
 import type { Metadata, Viewport } from 'next';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -11,7 +11,7 @@ import { authOff, currentSession } from '@/lib/auth';
 import { studioContext } from '@/lib/server';
 
 export const metadata: Metadata = {
-  title: { default: 'Influencer OS', template: '%s · Influencer OS' },
+  title: { default: 'Troupe House', template: '%s · Troupe House' },
   description: 'The studio dashboard for openly AI influencer personas.',
   robots: { index: false, follow: false },
 };
@@ -20,7 +20,7 @@ export const viewport: Viewport = { colorScheme: 'light dark', width: 'device-wi
 export const dynamic = 'force-dynamic';
 
 // Applies the saved theme (or the system preference) before first paint.
-const THEME_SCRIPT = `try{var t=localStorage.getItem('ios-theme');if(t!=='light'&&t!=='dark'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}document.documentElement.dataset.theme=t}catch(e){}`;
+const THEME_SCRIPT = `try{var t=(localStorage.getItem('troupe-theme')||localStorage.getItem('ios-theme'));if(t!=='light'&&t!=='dark'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}document.documentElement.dataset.theme=t}catch(e){}`;
 
 async function counts() {
   try {
@@ -39,8 +39,8 @@ async function counts() {
  */
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const h = await headers();
-  const path = h.get('x-ios-path') ?? '';
-  if (h.get('x-ios-site') || path.startsWith('/p/') || path.startsWith('/l/')) {
+  const path = h.get('x-troupe-path') ?? '';
+  if (h.get('x-troupe-site') || path.startsWith('/p/') || path.startsWith('/l/')) {
     return (
       <html lang="en">
         <body>{children}</body>

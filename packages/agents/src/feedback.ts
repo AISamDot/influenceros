@@ -1,5 +1,5 @@
-import { type Actor, actorRef, ApprovalError, audit, NotFoundError, propose } from '@ios/core';
-import { type Db, json } from '@ios/db';
+import { type Actor, actorRef, ApprovalError, audit, NotFoundError, propose } from '@troupe/core';
+import { type Db, json } from '@troupe/db';
 import { latestBible } from './data';
 
 /**

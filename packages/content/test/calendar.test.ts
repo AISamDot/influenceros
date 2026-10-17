@@ -1,8 +1,8 @@
-import { type CadencePolicy, CADENCE_BOUNDS, DEFAULT_CADENCE } from '@ios/agents';
-import { createTestStudio, makeTestPersona } from '@ios/agents/testing';
-import { json } from '@ios/db';
+import { type CadencePolicy, CADENCE_BOUNDS, DEFAULT_CADENCE } from '@troupe/agents';
+import { createTestStudio, makeTestPersona } from '@troupe/agents/testing';
+import { json } from '@troupe/db';
 import { describe, expect, it } from 'vitest';
-import { CORE_FORMATS } from '@ios/core';
+import { CORE_FORMATS } from '@troupe/core';
 import { apportionFormats, assignMix, bookReactionIdeas, effectiveCadence, mixFormats, normaliseCadence, planWeek, postingTimes, WINNER_CADENCE } from '../src/calendar';
 import { fakeHooks, HOOK_TYPES, parseHooks, scoreHook, selectHooks } from '../src/hooks';
 import { loadPersonaContext } from '../src/persona';

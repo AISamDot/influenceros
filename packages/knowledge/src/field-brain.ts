@@ -1,7 +1,7 @@
-import type { StudioServices } from '@ios/agents';
-import { BudgetExceededError, metered } from '@ios/core';
-import { json } from '@ios/db';
-import type { FieldMap, TopicResearch } from '@ios/providers';
+import type { StudioServices } from '@troupe/agents';
+import { BudgetExceededError, metered } from '@troupe/core';
+import { json } from '@troupe/db';
+import type { FieldMap, TopicResearch } from '@troupe/providers';
 import { embedNodes } from './embed';
 import { skillBlock } from './skills';
 import { deferOnBudget, enqueueOnce, hostOf, shortQuote, trimText } from './util';

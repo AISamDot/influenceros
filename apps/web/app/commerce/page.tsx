@@ -1,6 +1,6 @@
-import { getCommerceSettings, listingPack, listStats, membershipStats, postAttribution, productStoreBoard, type ProductStoreRow } from '@ios/commerce';
-import { personaSiteUrl } from '@ios/agents';
-import type { StoreInfo } from '@ios/providers';
+import { getCommerceSettings, listingPack, listStats, membershipStats, postAttribution, productStoreBoard, type ProductStoreRow } from '@troupe/commerce';
+import { personaSiteUrl } from '@troupe/agents';
+import type { StoreInfo } from '@troupe/providers';
 import { CommerceStoreBadge } from '@/components/commerce-bits';
 import { Flash } from '@/components/flash';
 import { Kpi } from '@/components/kpi';

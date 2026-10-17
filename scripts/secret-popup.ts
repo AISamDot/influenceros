@@ -1,6 +1,6 @@
 /**
- * `pnpm ios:keys` — the non-developer way to store keys: each secret is asked for in a macOS pop-up with hidden
- * input, then saved straight to the Keychain (service ai.influencer-os). The value never touches argv, shell history,
+ * `pnpm troupe:keys` — the non-developer way to store keys: each secret is asked for in a macOS pop-up with hidden
+ * input, then saved straight to the Keychain (service ai.troupe-house). The value never touches argv, shell history,
  * the screen or a file; only the secret's name is printed. Usage: tsx scripts/secret-popup.ts <name> [<name>…]
  */
 import { execFileSync } from 'node:child_process';
@@ -20,7 +20,7 @@ function ask(name: string): string | null {
   try {
     const out = execFileSync(
       'osascript',
-      ['-e', `text returned of (display dialog ${asAppleScript(prompt)} default answer "" with hidden answer with title "Influencer OS keys" buttons {"Cancel", "Save"} default button "Save")`],
+      ['-e', `text returned of (display dialog ${asAppleScript(prompt)} default answer "" with hidden answer with title "Troupe House keys" buttons {"Cancel", "Save"} default button "Save")`],
       { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
     );
     return out.replace(/[\r\n]+$/, '');
@@ -29,9 +29,10 @@ function ask(name: string): string | null {
   }
 }
 
+if (process.env.npm_lifecycle_event === 'ios:keys') console.error('Note: `pnpm ios:keys` is deprecated; use `pnpm troupe:keys`.');
 const names = process.argv.slice(2);
 if (!names.length || !names.every(isSecretName)) {
-  console.error(`Usage: pnpm ios:keys <secret name>…  (known: ${Object.keys(SECRETS).join(', ')})`);
+  console.error(`Usage: pnpm troupe:keys <secret name>…  (known: ${Object.keys(SECRETS).join(', ')})`);
   process.exit(2);
 }
 const backend = new KeyringBackend(KEYCHAIN_SERVICE);

@@ -1,5 +1,5 @@
-import type { Caller, KnowledgeHit, ToolDef } from '@ios/agents';
-import { LAUNCH_FILES, readPersonaDoc } from '@ios/core/seed';
+import type { Caller, KnowledgeHit, ToolDef } from '@troupe/agents';
+import { LAUNCH_FILES, readPersonaDoc } from '@troupe/core/seed';
 import { fieldBrainStatus } from './field-brain';
 import { reactionQueue } from './news';
 import { personasSourceDir } from './personas';

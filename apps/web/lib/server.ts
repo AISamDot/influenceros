@@ -1,6 +1,6 @@
-import { findThread, getStudio, listMessages, type ThreadKind } from '@ios/core';
-import { getDb } from '@ios/db';
-import type { Db } from '@ios/db';
+import { findThread, getStudio, listMessages, type ThreadKind } from '@troupe/core';
+import { getDb } from '@troupe/db';
+import type { Db } from '@troupe/db';
 import type { ChatMsg } from '@/components/chat-panel';
 import { getServices } from './services';
 

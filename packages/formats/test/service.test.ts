@@ -1,10 +1,10 @@
-import { type FormatBenchmark, nullRadar, type RadarService, WINNER_CADENCE } from '@ios/agents';
-import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
-import { attachSampleBible, planWeek } from '@ios/content';
-import { CORE_FORMATS, OWNER, STUDIO_MANAGER } from '@ios/core';
-import { json } from '@ios/db';
-import { chooseOption, createDraft, GENERATOR_TOOLS, launchDraft, setDraftExtension } from '@ios/generator';
-import { createCadencePolicy, formatBounds, leverInputs, planFormatMix, runLevers, validTarget } from '@ios/profit';
+import { type FormatBenchmark, nullRadar, type RadarService, WINNER_CADENCE } from '@troupe/agents';
+import { createTestStudio, makeTestPersona, type TestStudio } from '@troupe/agents/testing';
+import { attachSampleBible, planWeek } from '@troupe/content';
+import { CORE_FORMATS, OWNER, STUDIO_MANAGER } from '@troupe/core';
+import { json } from '@troupe/db';
+import { chooseOption, createDraft, GENERATOR_TOOLS, launchDraft, setDraftExtension } from '@troupe/generator';
+import { createCadencePolicy, formatBounds, leverInputs, planFormatMix, runLevers, validTarget } from '@troupe/profit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // Generator walks and full Story days are heavy under the parallel suite (PGlite per test).

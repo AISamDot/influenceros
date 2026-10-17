@@ -1,5 +1,5 @@
-import type { Caller, ToolContext, ToolDef } from '@ios/agents';
-import { budgetStatus } from '@ios/core';
+import type { Caller, ToolContext, ToolDef } from '@troupe/agents';
+import { budgetStatus } from '@troupe/core';
 import { rankActions } from './actions';
 import { profitCard } from './card';
 import { runWeeklyCycle } from './cycle';

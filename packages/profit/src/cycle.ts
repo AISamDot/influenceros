@@ -1,5 +1,5 @@
-import type { StudioServices } from '@ios/agents';
-import { notify } from '@ios/core';
+import type { StudioServices } from '@troupe/agents';
+import { notify } from '@troupe/core';
 import { forecastStudio, storeForecasts } from './forecast';
 import { proposeKillCandidates } from './kill';
 import { measureLevers, runLevers } from './levers';

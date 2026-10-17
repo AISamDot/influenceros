@@ -1,8 +1,8 @@
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { findRepoRoot } from '@ios/db';
-import { EMBEDDING_DIM, type EmbeddingProvider } from '@ios/providers';
+import { findRepoRoot } from '@troupe/db';
+import { EMBEDDING_DIM, type EmbeddingProvider } from '@troupe/providers';
 
 /**
  * Live EmbeddingProviders (384-d, unit length).
@@ -11,7 +11,7 @@ import { EMBEDDING_DIM, type EmbeddingProvider } from '@ios/providers';
  * from Hugging Face into `.data/models` and cached. The package is imported lazily with a non-literal specifier so
  * bundlers leave it alone; it only loads in the Node process that embeds (the worker or the dev server).
  *
- * VoyageEmbeddings (optional, IOS_EMBEDDINGS=voyage + voyage.api_key): voyage-3.5-lite at 512 dims, truncated to
+ * VoyageEmbeddings (optional, TROUPE_EMBEDDINGS=voyage + voyage.api_key): voyage-3.5-lite at 512 dims, truncated to
  * 384 and re-normalised (Matryoshka-trained, so the prefix keeps most of the quality).
  */
 
@@ -24,7 +24,7 @@ interface TransformersModule {
 }
 
 /**
- * transformers.js is a dependency of @ios/knowledge only, so it is resolved from this package's folder on disk (not
+ * transformers.js is a dependency of @troupe/knowledge only, so it is resolved from this package's folder on disk (not
  * from wherever a bundler put the compiled code) and imported at run time.
  */
 async function loadTransformers(): Promise<TransformersModule> {

@@ -1,4 +1,4 @@
-import { handleStoreWebhook } from '@ios/commerce';
+import { handleStoreWebhook } from '@troupe/commerce';
 import { getServices } from '@/lib/services';
 import { fakeWebhooksRefused } from '@/lib/webhook-guard';
 

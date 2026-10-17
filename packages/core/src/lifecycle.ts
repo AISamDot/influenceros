@@ -1,4 +1,4 @@
-import type { Db } from '@ios/db';
+import type { Db } from '@troupe/db';
 import { audit } from './audit';
 import { ApprovalRequiredError, InvalidTransitionError, NotFoundError } from './errors';
 import { reconcilePostApprovals } from './policy';

@@ -1,4 +1,4 @@
-import { decide, OWNER, propose, publishPost, runOnce, STUDIO_MANAGER } from '@ios/core';
+import { decide, OWNER, propose, publishPost, runOnce, STUDIO_MANAGER } from '@troupe/core';
 import { describe, expect, it } from 'vitest';
 import { jobs, RECOVER_PUBLISHING_JOB, schedules } from '../src';
 import { createTestStudio, makeTestPersona } from '../src/testing';

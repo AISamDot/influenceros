@@ -1,6 +1,6 @@
-import type { CameraStyle } from '@ios/agents';
-import { loadPersonaContext } from '@ios/content';
-import type { Db } from '@ios/db';
+import type { CameraStyle } from '@troupe/agents';
+import { loadPersonaContext } from '@troupe/content';
+import type { Db } from '@troupe/db';
 import { CAMERA_SPEC, cameraStylesFor } from './camera';
 import { type IdentityRef, identityRefs, type LocationLock, locationLocks } from './store';
 

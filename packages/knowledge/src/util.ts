@@ -1,6 +1,6 @@
-import { BudgetExceededError, DeferJob, enqueue, type JobRow } from '@ios/core';
-import type { Db } from '@ios/db';
-import { EMBEDDING_DIM } from '@ios/providers';
+import { BudgetExceededError, DeferJob, enqueue, type JobRow } from '@troupe/core';
+import type { Db } from '@troupe/db';
+import { EMBEDDING_DIM } from '@troupe/providers';
 
 /** pgvector literal for a 384-d embedding. */
 export function toVector(v: readonly number[]): string {

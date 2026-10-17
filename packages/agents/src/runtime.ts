@@ -1,6 +1,7 @@
-import { budgetStatus, BudgetExceededError, debit, metered } from '@ios/core';
-import { findRepoRoot, json } from '@ios/db';
-import { createFakeProviders, estimateTokens, FakeLlm, llmCostUsd, type LlmRequest, type ModelTier } from '@ios/providers';
+import { troupeEnv } from '@troupe/env';
+import { budgetStatus, BudgetExceededError, debit, metered } from '@troupe/core';
+import { findRepoRoot, json } from '@troupe/db';
+import { createFakeProviders, estimateTokens, FakeLlm, llmCostUsd, type LlmRequest, type ModelTier } from '@troupe/providers';
 import {
   type AgentResult,
   type AgentRuntime,
@@ -51,7 +52,7 @@ export interface LiveRuntimeOptions {
   llm: AnthropicLlm;
   /** Engines (tests inject fakes). Default: Messages API + Claude Agent SDK. */
   engines?: Partial<Record<Engine['name'], Engine>>;
-  /** 'messages' | 'agent-sdk' forces one engine for every run (IOS_AGENT_ENGINE). */
+  /** 'messages' | 'agent-sdk' forces one engine for every run (TROUPE_AGENT_ENGINE). */
   forceEngine?: Engine['name'];
 }
 
@@ -59,7 +60,7 @@ export interface LiveRuntimeOptions {
  * Builds the services every tool, job and agent uses. `mode`:
  * - 'fake' (default, tests): never calls a model;
  * - 'auto': live when `providers.llm` is the live Anthropic adapter (wiring overlays it only when the key is
- *   present, the integration has a live adapter and IOS_FAKE_PROVIDERS doesn't force fakes), else fake;
+ *   present, the integration has a live adapter and TROUPE_FAKE_PROVIDERS doesn't force fakes), else fake;
  * - 'live': requires the live adapter.
  */
 export function createServices(
@@ -89,14 +90,14 @@ export function createServices(
   const llm = base.providers.llm;
   if (opts.runtime) services.runtime = opts.runtime(services);
   else if (mode !== 'fake' && isAnthropicLlm(llm)) {
-    const forced = process.env.IOS_AGENT_ENGINE;
+    const forced = troupeEnv('AGENT_ENGINE');
     services.runtime = createLiveRuntime(services, {
       llm,
       engines: opts.engines,
       forceEngine: forced === 'messages' || forced === 'agent-sdk' ? forced : undefined,
     });
   } else if (mode === 'live') {
-    throw new Error('live mode needs the Anthropic key (pnpm ios secrets set anthropic.api_key)');
+    throw new Error('live mode needs the Anthropic key (pnpm troupe secrets set anthropic.api_key)');
   } else services.runtime = createFakeRuntime(services);
   return services;
 }
@@ -261,7 +262,7 @@ export function pickEngine(task: Pick<AgentTask<unknown>, 'tools' | 'skills'>, f
 /** Live runtime: Claude via the Messages API or the Claude Agent SDK, behind the same pipeline as the fake. */
 export function createLiveRuntime(services: StudioServices, opts: LiveRuntimeOptions): StudioRuntime {
   const engines: Record<Engine['name'], Engine> = {
-    messages: opts.engines?.messages ?? createMessagesEngine(opts.llm.messages, { fallbacks: process.env.IOS_LLM_FALLBACKS !== 'off' }),
+    messages: opts.engines?.messages ?? createMessagesEngine(opts.llm.messages, { fallbacks: troupeEnv('LLM_FALLBACKS') !== 'off' }),
     'agent-sdk': opts.engines?.['agent-sdk'] ?? createAgentSdkEngine({ sdk: loadAgentSdk, cwd: findRepoRoot(), env: () => opts.llm.agentSdkEnv() }),
   };
   return pipeline(services, 'live', async (task, tier, { maxCostUsd, opts: runOpts }) => {

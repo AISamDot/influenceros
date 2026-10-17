@@ -1,4 +1,4 @@
-import { DraftError, generatorTurn, getDraft, listDraftMessages, MAX_CHAT_CHARS } from '@ios/generator';
+import { DraftError, generatorTurn, getDraft, listDraftMessages, MAX_CHAT_CHARS } from '@troupe/generator';
 // Relative imports so the route can be exercised directly in tests (apps/web/test/routes.test.ts).
 import { requireOwner } from '../../../../../lib/auth';
 import { UUID_RE } from '../../../../../lib/http';

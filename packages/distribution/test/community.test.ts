@@ -1,6 +1,6 @@
-import { COMMUNITY_CLASSES } from '@ios/agents';
-import { decide, OWNER } from '@ios/core';
-import type { PublishComment } from '@ios/providers';
+import { COMMUNITY_CLASSES } from '@troupe/agents';
+import { decide, OWNER } from '@troupe/core';
+import type { PublishComment } from '@troupe/providers';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   classifyHeuristic,

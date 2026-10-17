@@ -1,4 +1,4 @@
-import type { PersonaState } from '@ios/core';
+import type { PersonaState } from '@troupe/core';
 import { type CadencePolicy, type CadenceTarget, DEFAULT_CADENCE, type KnowledgeService, type RoutingPolicy, type ServiceBase } from './contracts';
 import {
   type CompiledPrompt,
@@ -50,7 +50,7 @@ export const defaultRouting = (_base?: ServiceBase): RoutingPolicy => ({
 });
 
 // ─── IOS-5 defaults (docs/IOS-5-CONTRACTS.md §5): used until the owning stream's package is wired, and in other
-// streams' tests. Each stream replaces its own through its package's factory (composed by @ios/wiring). ───
+// streams' tests. Each stream replaces its own through its package's factory (composed by @troupe/wiring). ───
 
 /** No Radar data yet (stream I replaces): no benchmarks, no evidence, no patterns. */
 export const nullRadar = (_base?: ServiceBase): RadarService => ({

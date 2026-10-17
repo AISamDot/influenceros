@@ -1,5 +1,5 @@
-import { createTestDb } from '@ios/db/testing';
-import { MemoryKeyring } from '@ios/secrets';
+import { createTestDb } from '@troupe/db/testing';
+import { MemoryKeyring } from '@troupe/secrets';
 import { describe, expect, it } from 'vitest';
 import { allJobs, allSchedules, allTools, createStudioServices, MODULES, providerEnv, resolveProviders } from '../src';
 
@@ -29,7 +29,7 @@ describe('wiring', () => {
     // IOS-5 members. Open-Meteo needs no key, so it is live unless fakes are forced.
     expect(p.weather.name).toBe('open-meteo');
     expect(p.pinterest.name).toBe('fake-pinterest');
-    const forced = resolveProviders(providerEnv({ IOS_FAKE_PROVIDERS: '1' }, new MemoryKeyring()));
+    const forced = resolveProviders(providerEnv({ TROUPE_FAKE_PROVIDERS: '1' }, new MemoryKeyring()));
     expect(forced.weather.name).toBe('fake-open-meteo');
   });
 

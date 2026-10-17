@@ -1,9 +1,9 @@
-import type { CameraStyle } from '@ios/agents';
-import { type Db, json } from '@ios/db';
+import type { CameraStyle } from '@troupe/agents';
+import { type Db, json } from '@troupe/db';
 
 /**
  * Stream K's tables (migration 0019): identity references, location locks and the consistency chain, plus the
- * `calendar_slot.meta.production` record. Plain SQL helpers shared by the compiler (reads), @ios/media (writes, after
+ * `calendar_slot.meta.production` record. Plain SQL helpers shared by the compiler (reads), @troupe/media (writes, after
  * each generation) and the dashboard.
  */
 

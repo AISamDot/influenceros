@@ -1,5 +1,5 @@
-import { audit, type Actor, ForbiddenError, actorRef } from '@ios/core';
-import { type Db, json } from '@ios/db';
+import { audit, type Actor, ForbiddenError, actorRef } from '@troupe/core';
+import { type Db, json } from '@troupe/db';
 
 /**
  * Profit Engine settings (stream D's own table, `profit_setting`). Every key has a code default, so a fresh

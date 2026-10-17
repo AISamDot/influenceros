@@ -22,7 +22,7 @@ import {
   type StoryCapability,
   type StoryMetrics,
   type TikTokCommercialTrack,
-} from '@ios/providers';
+} from '@troupe/providers';
 import { ZERNIO_STORY_SUPPORT, type ZernioExtraPlatform } from './platforms';
 
 /**
@@ -204,7 +204,7 @@ export function buildPostBody(req: ZernioPublishRequest, enabled: readonly Zerni
   const body: Json = {
     ...(kind !== 'story' && req.caption ? { content: req.caption } : {}),
     mediaItems,
-    metadata: { source: 'influencer-os', idempotency_key: req.idempotencyKey ?? null },
+    metadata: { source: 'troupe-house', idempotency_key: req.idempotencyKey ?? null },
   };
   if (req.platform !== 'tiktok' && 'musicSoundInfo' in extra) throw new PublishRefusedError('zernio: musicSoundInfo is TikTok-only');
   if (req.platform !== 'instagram' && 'audioConfiguration' in extra) throw new PublishRefusedError('zernio: audioConfiguration is Instagram-only');

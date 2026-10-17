@@ -1,6 +1,6 @@
-import type { SlotBeat } from '@ios/agents';
-import type { PostFormat, PostPurpose } from '@ios/core';
-import { type Db, json } from '@ios/db';
+import type { SlotBeat } from '@troupe/agents';
+import type { PostFormat, PostPurpose } from '@troupe/core';
+import { type Db, json } from '@troupe/db';
 import { type BeatKind, type Storyline, type StoryChapter } from './model';
 import { isoDay, mondayOf } from './time';
 

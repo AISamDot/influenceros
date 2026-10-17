@@ -14,7 +14,7 @@ import {
   isRestoredDraft,
   STEPS,
   type StepState,
-} from '@ios/generator';
+} from '@troupe/generator';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';

@@ -1,3 +1,4 @@
+import { isDeployed, studioDomain, troupeEnv } from '@troupe/env';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -61,16 +62,16 @@ export function isPublicPath(pathname: string): boolean {
   return ['/api/auth/', '/api/webhooks/', '/api/cron/'].some((p) => pathname.startsWith(p));
 }
 
-/** Subdomains of the studio domain that are never persona sites (keep in sync with @ios/agents RESERVED_SUBDOMAINS). */
+/** Subdomains of the studio domain that are never persona sites (keep in sync with @troupe/agents RESERVED_SUBDOMAINS). */
 export const RESERVED_SUBDOMAINS: readonly string[] = ['www', 'app', 'api', 'admin', 'studio', 'mail', 'email', 'l', 'go', 'dashboard'];
 const SUBDOMAIN_RE = /^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/;
 
 /**
- * The persona slug when `host` is `<slug>.<IOS_STUDIO_DOMAIN>` (a persona site), else null. Only one label deep;
+ * The persona slug when `host` is `<slug>.<TROUPE_STUDIO_DOMAIN>` (a persona site), else null. Only one label deep;
  * reserved names (www, app, api, …) are never personas.
  */
 export function personaHostSlug(host: string | null | undefined, env: Readonly<Record<string, string | undefined>> = process.env): string | null {
-  const domain = env.IOS_STUDIO_DOMAIN?.trim().toLowerCase().replace(/^\.+|\.+$/g, '');
+  const domain = studioDomain(env);
   if (!domain || !host) return null;
   const name = host.replace(/:\d+$/, '').toLowerCase();
   if (!name.endsWith(`.${domain}`)) return null;
@@ -79,9 +80,9 @@ export function personaHostSlug(host: string | null | undefined, env: Readonly<R
   return sub;
 }
 
-export const isDeployed = (env: Readonly<Record<string, string | undefined>> = process.env) => Boolean(env.VERCEL) || env.IOS_DEPLOYED === '1';
+export { isDeployed };
 
-/** Walks up to the folder holding pnpm-workspace.yaml (no @ios/db import here: the proxy stays light). */
+/** Walks up to the folder holding pnpm-workspace.yaml (no @troupe/db import here: the proxy stays light). */
 function repoRoot(start = process.cwd()): string {
   let dir = resolve(start);
   for (;;) {
@@ -103,7 +104,7 @@ export function authSecret(env: Readonly<Record<string, string | undefined>> = p
   if (s && s.length >= 32) return s;
   if (isDeployed(env)) return null;
   if (cachedLocal) return cachedLocal;
-  const file = env.IOS_AUTH_SECRET_FILE ?? join(repoRoot(), '.data', 'auth-secret');
+  const file = troupeEnv('AUTH_SECRET_FILE', env) ?? join(repoRoot(), '.data', 'auth-secret');
   try {
     // Local development only (deployed servers return above): ignore for output tracing.
     if (existsSync(/*turbopackIgnore: true*/ file)) {
@@ -129,7 +130,7 @@ export type AuthDecision =
  * The proxy's decision for one request. Public paths pass; with a valid session everything passes; otherwise API
  * calls get 401 and pages go to /login?next=… . Without a signing secret (deployed, AUTH_SECRET unset) protected
  * routes fail closed with 503.
- * `IOS_AUTH=off` turns the check off only on a loopback host and never when deployed (local development).
+ * `TROUPE_AUTH=off` turns the check off only on a loopback host and never when deployed (local development).
  */
 export function authorize(
   req: { pathname: string; search?: string; cookie: string | null | undefined; host: string | null },
@@ -139,7 +140,7 @@ export function authorize(
   if (isPublicPath(req.pathname)) return { action: 'allow', session: null };
   const hostname = (req.host ?? '').replace(/:\d+$/, '').toLowerCase();
   const loopback = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname.endsWith('.localhost');
-  if (env.IOS_AUTH === 'off' && loopback && !isDeployed(env)) return { action: 'allow', session: null };
+  if (troupeEnv('AUTH', env) === 'off' && loopback && !isDeployed(env)) return { action: 'allow', session: null };
   const secret = opts.secret !== undefined ? opts.secret : authSecret(env);
   const isApi = req.pathname.startsWith('/api/');
   if (!secret) {

@@ -5,14 +5,14 @@
 //                          it reports "pending key" and spends nothing.
 //   probe-costs            print `higgsfield generate cost` for the model grid (the worker's weekly job writes the table)
 // None of these opens the studio database, so they are safe while the dev server runs.
-import { createServices, MEDIA_RENDER_JOB, type MediaRenderPayload, type ProviderEnv } from '@ios/agents';
-import { attachSampleBible, liveProviders as contentLive, planWeek, processSlot } from '@ios/content';
-import { DEFAULT_SETTINGS, POST_FORMATS, type PostFormat } from '@ios/core';
-import { json } from '@ios/db';
-import { createTestDb } from '@ios/db/testing';
-import { createFakeProviders, type Providers } from '@ios/providers';
-import { createPromptCompiler } from '@ios/production';
-import { defaultBackend, integrationStates, isSecretName, readSecret } from '@ios/secrets';
+import { createServices, MEDIA_RENDER_JOB, type MediaRenderPayload, type ProviderEnv } from '@troupe/agents';
+import { attachSampleBible, liveProviders as contentLive, planWeek, processSlot } from '@troupe/content';
+import { DEFAULT_SETTINGS, POST_FORMATS, type PostFormat } from '@troupe/core';
+import { json } from '@troupe/db';
+import { createTestDb } from '@troupe/db/testing';
+import { createFakeProviders, type Providers } from '@troupe/providers';
+import { createPromptCompiler } from '@troupe/production';
+import { defaultBackend, integrationStates, isSecretName, readSecret } from '@troupe/secrets';
 import { GEN_RESOLUTION, mediaModels, PROBE_GRID } from './config';
 import { mediaDeps } from './deps';
 import { resolveBins } from './ffmpeg';
@@ -54,7 +54,7 @@ async function sample(format: PostFormat) {
     ...(env.isLive('elevenlabs') || !['talking', 'voiceover', 'facecam_screen', 'reply_comment', 'news_greenscreen'].includes(format) ? [] : ['elevenlabs.api_key']),
   ];
   if (missing.length) {
-    console.log(`pending key: ${missing.join(', ')}. Add with \`pnpm ios secrets set <name>\`; nothing was spent.`);
+    console.log(`pending key: ${missing.join(', ')}. Add with \`pnpm troupe secrets set <name>\`; nothing was spent.`);
     return;
   }
   const db = await createTestDb(); // scratch database: never the studio's .data/pglite

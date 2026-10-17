@@ -1,8 +1,8 @@
-import { type AgentName, baseCadence, CADENCE_BOUNDS, type CadencePolicy, type CadenceTarget, DEFAULT_CADENCE, type FormatMix, type FormatPlan, type RoutingPolicy, type ServiceBase, WINNER_CADENCE, WINNER_STATES } from '@ios/agents';
-import type { PersonaState } from '@ios/core';
-import { type CoreFormat, CORE_FORMATS, isOptionalFormat, type PostFormat, type PostPurpose, POST_FORMATS } from '@ios/core';
-import type { Db } from '@ios/db';
-import type { ModelTier } from '@ios/providers';
+import { type AgentName, baseCadence, CADENCE_BOUNDS, type CadencePolicy, type CadenceTarget, DEFAULT_CADENCE, type FormatMix, type FormatPlan, type RoutingPolicy, type ServiceBase, WINNER_CADENCE, WINNER_STATES } from '@troupe/agents';
+import type { PersonaState } from '@troupe/core';
+import { type CoreFormat, CORE_FORMATS, isOptionalFormat, type PostFormat, type PostPurpose, POST_FORMATS } from '@troupe/core';
+import type { Db } from '@troupe/db';
+import type { ModelTier } from '@troupe/providers';
 import { apportion, isoDate, sum } from './util';
 
 /**

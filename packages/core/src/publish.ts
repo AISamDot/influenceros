@@ -1,5 +1,5 @@
-import type { Db } from '@ios/db';
-import { isPublishRefused, type PublishProvider } from '@ios/providers';
+import type { Db } from '@troupe/db';
+import { isPublishRefused, type PublishProvider } from '@troupe/providers';
 import { audit } from './audit';
 import { PublishBlockedError } from './errors';
 import { assertCanPublish } from './killswitch';

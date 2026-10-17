@@ -1,8 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { type OpportunityEvidence, runAgent, STUDIO_RULES_BLOCK, type StudioServices } from '@ios/agents';
-import { type Actor, BudgetExceededError } from '@ios/core';
-import { listArchivedPersonas } from '@ios/core/seed';
-import type { Db } from '@ios/db';
+import { type OpportunityEvidence, runAgent, STUDIO_RULES_BLOCK, type StudioServices } from '@troupe/agents';
+import { type Actor, BudgetExceededError } from '@troupe/core';
+import { listArchivedPersonas } from '@troupe/core/seed';
+import type { Db } from '@troupe/db';
 import { buildConcept, fakeCharacter, fakeConcepts, fakeContent, fakeLookProfile, fakeOpportunities, opportunityFor, sheetPrompt, type StudioMix, type VoiceBrief, voiceBriefs } from './fake';
 import { ARCHETYPES, archetypeByKey, type NicheDef, nicheByKey, nicheForText, rng } from './library';
 import { archiveStudioPersona, restoreStudioPersona } from './archive';

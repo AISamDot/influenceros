@@ -1,5 +1,5 @@
-import { activeKillSwitches, budgetStatus, type PersonaRow } from '@ios/core';
-import type { Db } from '@ios/db';
+import { activeKillSwitches, budgetStatus, type PersonaRow } from '@troupe/core';
+import type { Db } from '@troupe/db';
 
 /**
  * Read models the managers' tools return (and the no-key replies are built from). Plain JSON-serialisable data,

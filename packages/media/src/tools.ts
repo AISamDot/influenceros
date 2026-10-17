@@ -1,5 +1,5 @@
-import type { Caller, ToolDef } from '@ios/agents';
-import { enqueue } from '@ios/core';
+import type { Caller, ToolDef } from '@troupe/agents';
+import { enqueue } from '@troupe/core';
 import { MEDIA_JOB, rerenderSlot } from './jobs';
 import { personaMedia, slotMedia } from './read';
 

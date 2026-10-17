@@ -1,4 +1,4 @@
-import type { StudioServices } from '@ios/agents';
+import type { StudioServices } from '@troupe/agents';
 import { sourceFor } from './attribution';
 import { sitePersona } from './sites';
 import { storeFor } from './store';

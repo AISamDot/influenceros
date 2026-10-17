@@ -1,6 +1,6 @@
-import { type Caller, enqueueOnceFor, fingerprintOf, type ToolDef } from '@ios/agents';
-import { POST_FORMATS, type PostFormat } from '@ios/core';
-import type { Db } from '@ios/db';
+import { type Caller, enqueueOnceFor, fingerprintOf, type ToolDef } from '@troupe/agents';
+import { POST_FORMATS, type PostFormat } from '@troupe/core';
+import type { Db } from '@troupe/db';
 import { contradictions, continuityChecks, extractFacts } from './continuity';
 import { groundingFor, ledgerOf, loadWorld, backfillWorld, updateBible } from './service';
 import { checkConceptFingerprint } from './norepeat';

@@ -1,6 +1,6 @@
-import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
-import { json } from '@ios/db';
-import type { StoreEvent } from '@ios/providers';
+import { createTestStudio, makeTestPersona, type TestStudio } from '@troupe/agents/testing';
+import { json } from '@troupe/db';
+import type { StoreEvent } from '@troupe/providers';
 import { updateCommerceSettings } from '../src';
 
 /** Stream G test fixtures (fake providers, in-memory PGlite). */

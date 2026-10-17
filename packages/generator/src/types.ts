@@ -1,4 +1,4 @@
-import type { FormatPlan, OpportunityEvidence, WorldDraft } from '@ios/agents';
+import type { FormatPlan, OpportunityEvidence, WorldDraft } from '@troupe/agents';
 
 /**
  * The Persona Generator's draft model (PRD §3.12). A draft holds seven steps; each step keeps the options the

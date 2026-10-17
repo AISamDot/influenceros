@@ -1,5 +1,5 @@
-import { activeKillSwitches, decide, findThread, ForbiddenError, OWNER, propose, STUDIO_MANAGER } from '@ios/core';
-import { json } from '@ios/db';
+import { activeKillSwitches, decide, findThread, ForbiddenError, OWNER, propose, STUDIO_MANAGER } from '@troupe/core';
+import { json } from '@troupe/db';
 import { describe, expect, it } from 'vitest';
 import { A_TOOLS, acceptOwnerMessage, measureFeedbackEffects, respondToOwner, type ToolContext, ToolPermissionError } from '../src';
 import { transcript } from '../src/agents/common';

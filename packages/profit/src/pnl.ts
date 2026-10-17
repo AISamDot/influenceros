@@ -1,5 +1,5 @@
-import type { Platform, PostFormat } from '@ios/core';
-import type { Db } from '@ios/db';
+import type { Platform, PostFormat } from '@troupe/core';
+import type { Db } from '@troupe/db';
 import { getProfitSettings } from './settings';
 import type { PnlGrain, PnlQuery, PnlRow, PnlTotals } from './types';
 import { isoDate, mondayOf, round, sum, WEEK_MS } from './util';

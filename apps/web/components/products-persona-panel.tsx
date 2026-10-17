@@ -1,4 +1,4 @@
-import type { Db } from '@ios/db';
+import type { Db } from '@troupe/db';
 import Link from 'next/link';
 import { FILE_LABEL, fileHref, productCards, stageLine } from '@/app/products/_data';
 

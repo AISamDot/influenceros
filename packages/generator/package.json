@@ -1,5 +1,5 @@
 {
-  "name": "@ios/generator",
+  "name": "@troupe/generator",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,11 +12,11 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@ios/agents": "workspace:*",
-    "@ios/core": "workspace:*",
-    "@ios/db": "workspace:*",
-    "@ios/media": "workspace:*",
-    "@ios/production": "workspace:*",
-    "@ios/providers": "workspace:*"
+    "@troupe/agents": "workspace:*",
+    "@troupe/core": "workspace:*",
+    "@troupe/db": "workspace:*",
+    "@troupe/media": "workspace:*",
+    "@troupe/production": "workspace:*",
+    "@troupe/providers": "workspace:*"
   }
 }

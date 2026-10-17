@@ -5,7 +5,7 @@ Four builders work in parallel on IOS-3 (media) and IOS-4 (distribution and mone
 - **Product spec:** `/Users/hossamhamdy/Desktop/Family/Hossam/Ventures/Influencer-OS/PRD.md`: §3.6 (QC), §3.8 (dashboard), FR-5 to FR-13, FR-20 to FR-22, §7 (integrations), §8 (architecture) and §8.6 (secrets). Where the PRD and the owner rules in §1 disagree, §1 wins. For example, talking reels use Higgsfield Seedance, not HeyGen.
 - **Base:** branch from the `dev` commit that added this file (`git log -1 --format=%h -- docs/IOS-34-CONTRACTS.md`).
 - **Contract stubs in that commit:**
-  - empty packages `@ios/media` (E), `@ios/distribution` (F), `@ios/commerce` (G) and `@ios/products` (H), already composed by `@ios/wiring` and listed in `apps/web`;
+  - empty packages `@troupe/media` (E), `@troupe/distribution` (F), `@troupe/commerce` (G) and `@troupe/products` (H), already composed by `@troupe/wiring` and listed in `apps/web`;
   - root scripts `pnpm media|distribution|commerce|products`;
   - the shared types in `packages/agents/src/ios34.ts`;
   - the additive provider interfaces and fakes, including the new `audience` and `storage` members;
@@ -21,9 +21,9 @@ These are the IOS-2 rules (`docs/IOS-2-CONTRACTS.md` §1) plus the owner's IOS-3
 
 - **Fully automated:** no manual steps anywhere in the pipeline. The only exceptions are the Owner-only actions in the next point.
 - **Killing or retiring a persona always needs the Owner's explicit approval.** So do spending above caps, disclosure or legal text changes, and creating platform accounts. Agents only ever propose these.
-- **The Compliance Gate checks legal/platform lines only** (`@ios/content` `runGate` / `gatePost` / `gateReply`). Red never ships.
+- **The Compliance Gate checks legal/platform lines only** (`@troupe/content` `runGate` / `gatePost` / `gateReply`). Red never ships.
 - **AI disclosure is the platform minimum:**
-  - Every post sets the platform AI flag to **true**, always (`AI_FLAG_FIELDS` in `@ios/providers` are the studio's names; the Zernio adapter sends the vendor's, inside `platforms[].platformSpecificData`: TikTok `videoMadeWithAi`, Instagram/Pinterest `isAiGenerated`, YouTube `containsSyntheticMedia`). A post type that can't carry the flag through the API is never sent (TikTok photo posts and TikTok drafts); Facebook has no API field (Meta-side labelling) and is off by default.
+  - Every post sets the platform AI flag to **true**, always (`AI_FLAG_FIELDS` in `@troupe/providers` are the studio's names; the Zernio adapter sends the vendor's, inside `platforms[].platformSpecificData`: TikTok `videoMadeWithAi`, Instagram/Pinterest `isAiGenerated`, YouTube `containsSyntheticMedia`). A post type that can't carry the flag through the API is never sent (TikTok photo posts and TikTok drafts); Facebook has no API field (Meta-side labelling) and is off by default.
   - The platform AI **profile** label is tracked per account (`account.ai_label_ok`).
   - Agents and community replies **never deny being AI**.
   - There's no bio line and no watermark.
@@ -44,16 +44,16 @@ These are the IOS-2 rules (`docs/IOS-2-CONTRACTS.md` §1) plus the owner's IOS-3
   - Lemon Squeezy as merchant of record: one store per persona, a read-only products API, and webhooks.
   - Resend for email.
   - A studio domain with one subdomain per persona.
-- **Everything works in fake mode with no keys, and is ready for real keys.** The Keychain names already exist (`pnpm ios secrets status`). Tests never reach a live provider: `vitest.config.ts` sets `IOS_FAKE_PROVIDERS=1` and `IOS_KEYCHAIN=off`.
+- **Everything works in fake mode with no keys, and is ready for real keys.** The Keychain names already exist (`pnpm troupe secrets status`). Tests never reach a live provider: `vitest.config.ts` sets `TROUPE_FAKE_PROVIDERS=1` and `TROUPE_KEYCHAIN=off`.
 
 ## 2. Streams, branches and the tests to keep green
 
 | Stream | Branch | Scope |
 |---|---|---|
-| **E** Media pipeline (IOS-3) | `ios34-e-media` | (1) **Higgsfield adapter** behind `ImageVideoProvider` (+ `TalkingProvider` `higgsfield-seedance`). It shells out to the official CLI (`higgsfield generate create / cost / status`, `upload`) or uses the MCP. It covers: Soul ID training from the persona's look-prompts; character sheet and look-pack stills; Nano Banana stills; image-to-video activity clips (start image); talking clips via Seedance 2.0 at 720p with `--audio` (≤ 15 s, 2 clips per 30 s reel); and a `generate cost` probe that writes model prices into config. Credits are debited through the governor at the actual cost. The fal Kling AI Avatar v2 adapter is the fallback. (2) **Voice:** ElevenLabs TTS on the existing secret, with a Higgsfield TTS option, producing per-persona voice tracks (QC Q2 via `@ios/content` `voiceCheck`). (3) **Render worker** (`media.*` jobs, run by `apps/worker` / the inline worker) on Remotion/FFmpeg, adapting Brand OS `packages/creative` + `apps/creative-worker` patterns. It handles the 5 formats: talking reel (2 clips stitched with cutaways); activity + on-screen text (6–10 s loop); voiceover reel (3 activity shots + narration + captions); static image + caption; carousel (6–8 slides, 4:5). It burns captions in the safe zones, exports 1080×1920 (carousels 1080×1350) with sharpening, applies the persona colour grade, and sets the AI-flag metadata the post record gets. (4) **QC Q3** (avatar: face similarity against the persona reference, using a local face-embedding model with a commercial licence or a vision-model check through the runtime; artefacts; frozen frames). **QC Q4** (FFmpeg ebur128 −14 LUFS ±1, true peak ≤ −1 dBTP, silencedetect > 0.7 s, blackdetect, freezedetect, resolution/fps/duration via ffprobe, caption OCR against the transcript through an OCR interface with a fake). Auto-fix loop at most 2, then block with a report. (5) The `media.render` handler wired after the Gate, with **render thumbnails on the Pipeline board**. |
+| **E** Media pipeline (IOS-3) | `ios34-e-media` | (1) **Higgsfield adapter** behind `ImageVideoProvider` (+ `TalkingProvider` `higgsfield-seedance`). It shells out to the official CLI (`higgsfield generate create / cost / status`, `upload`) or uses the MCP. It covers: Soul ID training from the persona's look-prompts; character sheet and look-pack stills; Nano Banana stills; image-to-video activity clips (start image); talking clips via Seedance 2.0 at 720p with `--audio` (≤ 15 s, 2 clips per 30 s reel); and a `generate cost` probe that writes model prices into config. Credits are debited through the governor at the actual cost. The fal Kling AI Avatar v2 adapter is the fallback. (2) **Voice:** ElevenLabs TTS on the existing secret, with a Higgsfield TTS option, producing per-persona voice tracks (QC Q2 via `@troupe/content` `voiceCheck`). (3) **Render worker** (`media.*` jobs, run by `apps/worker` / the inline worker) on Remotion/FFmpeg, adapting Brand OS `packages/creative` + `apps/creative-worker` patterns. It handles the 5 formats: talking reel (2 clips stitched with cutaways); activity + on-screen text (6–10 s loop); voiceover reel (3 activity shots + narration + captions); static image + caption; carousel (6–8 slides, 4:5). It burns captions in the safe zones, exports 1080×1920 (carousels 1080×1350) with sharpening, applies the persona colour grade, and sets the AI-flag metadata the post record gets. (4) **QC Q3** (avatar: face similarity against the persona reference, using a local face-embedding model with a commercial licence or a vision-model check through the runtime; artefacts; frozen frames). **QC Q4** (FFmpeg ebur128 −14 LUFS ±1, true peak ≤ −1 dBTP, silencedetect > 0.7 s, blackdetect, freezedetect, resolution/fps/duration via ffprobe, caption OCR against the transcript through an OCR interface with a fake). Auto-fix loop at most 2, then block with a report. (5) The `media.render` handler wired after the Gate, with **render thumbnails on the Pipeline board**. |
 | **F** Distribution + community + analytics (IOS-4) | `ios34-f-distribution` | (1) **Zernio adapter** (real HTTP behind `PublishProvider`, plus the fake). It handles `publish.prepare` (posts per platform: TikTok and Instagram first, YouTube Shorts after the persona's day 30), **always sets the AI flags true**, verifies the live post and stores the URL. It respects kill switches, the approval engine and publish idempotency, and supports draft-to-inbox mode for trending-sound posts. (2) **Comments and DMs** ingestion (Zernio webhooks or polling) and a **Community worker**. It classifies each item (`COMMUNITY_CLASSES`), then acts by policy: hide spam, reply in persona voice through the Gate reply check, comment keyword → DM with the lead-magnet link, never deny being AI. It escalates S1 (crisis: stop replying, send the approved helpline text only) and S2 to Owner notifications. All third-party text is fenced as untrusted, with reply budgets. (3) **Analytics ingestion:** per-post metrics (views, watch time, likes, saves, shares, follows, profile visits, link clicks) into `metric_snapshot` at 1h/24h/72h/7d, feeding the Profit Engine and per-persona scorecards. (4) **Settings → Accounts** per persona: handles, platform AI-profile-label status and the account-setup sheet (handle, bio, profile image, link, label instructions) the Owner uses to create the accounts. |
 | **G** Commerce + audience + persona sites (IOS-4) | `ios34-g-commerce` | (1) **Lemon Squeezy adapter:** read stores and products, verify webhooks (signature), store orders, refunds and subscriptions, and attribute through per-post coupons and short links. The Owner creates LS products from listing packs **only if unavoidable**. Prefer API-less automation: a listing pack plus checkout URLs stored per product, with a clear status in the dashboard. (2) **Persona micro-sites** on the studio domain, one subdomain per persona (host routing is in place; locally `/p/<slug>`). Each has a link-in-bio page, a lead-magnet opt-in page with double opt-in for EU sign-ups, product pages linking to the LS checkout, and a thank-you page with the upsell. Each is styled from the persona's bible palette (`loadPersonaKit`). (3) **Resend:** a list per persona with consent records, a 5-email welcome sequence engine (agent-written, Gate-checked), broadcasts, unsubscribe, a physical-address footer setting and webhook events. (4) **Membership:** LS subscriptions gate a monthly drop (members area on the persona site with magic-link access). Discord gating comes later behind an interface. (5) **Attribution end to end:** post → short link / coupon → order → persona/post P&L (the Profit Engine already reads `orders` attribution). |
-| **H** Product Builder + robustness (IOS-4) | `ios34-h-products` | (1) **Product Builder** (PRD FR-9, `workbook-builder` skill). It goes from product brief → structured content (sections, named rules, tick-box trackers, fill-in pages, bonus pages) → styled HTML in the persona's visual identity → PDF via headless Chrome (A4 and US Letter). A Google Sheets / Notion template option sits behind interfaces with fakes. **QC QP:** the PDF opens, fonts are embedded, there's no placeholder text, the TOC and page numbers are right, the links work, and every promised section is present. Then a listing pack and the Owner's v1 card. (2) **Content import:** ready-written manuscripts (markdown files dropped in a folder) render to finished PDFs through the same pipeline. (3) **Robustness:** (a) a **PGlite single-process lock**: any CLI that opens the local DB (`owner` login-link and set-password, `knowledge` import, `db:*` scripts, `content`, `profit`, `worker`, seed) refuses with a clear message, or routes through the running server's API, when another process holds `.data/pglite`. (b) The studio header says "5 personas live" while all are in SETUP: count only TESTING and later states as live, and show the setup count. (c) `pnpm owner login-link` prints the configured app URL and port (`IOS_PUBLIC_URL`, else `PORT`, else 3100), not 3000. |
+| **H** Product Builder + robustness (IOS-4) | `ios34-h-products` | (1) **Product Builder** (PRD FR-9, `workbook-builder` skill). It goes from product brief → structured content (sections, named rules, tick-box trackers, fill-in pages, bonus pages) → styled HTML in the persona's visual identity → PDF via headless Chrome (A4 and US Letter). A Google Sheets / Notion template option sits behind interfaces with fakes. **QC QP:** the PDF opens, fonts are embedded, there's no placeholder text, the TOC and page numbers are right, the links work, and every promised section is present. Then a listing pack and the Owner's v1 card. (2) **Content import:** ready-written manuscripts (markdown files dropped in a folder) render to finished PDFs through the same pipeline. (3) **Robustness:** (a) a **PGlite single-process lock**: any CLI that opens the local DB (`owner` login-link and set-password, `knowledge` import, `db:*` scripts, `content`, `profit`, `worker`, seed) refuses with a clear message, or routes through the running server's API, when another process holds `.data/pglite`. (b) The studio header says "5 personas live" while all are in SETUP: count only TESTING and later states as live, and show the setup count. (c) `pnpm owner login-link` prints the configured app URL and port (`TROUPE_PUBLIC_URL`, else `PORT`, else 3100), not 3000. |
 
 **Every builder keeps these green, in the foreground, before every handoff:**
 
@@ -78,7 +78,7 @@ While working, `pnpm vitest run packages/<yours>` is the quick loop.
   ```
   export PGLITE_DIR="$(mktemp -d)/pglite"
   pnpm db:setup
-  pnpm --filter @ios/web exec next dev --hostname 127.0.0.1 --port 3201
+  pnpm --filter @troupe/web exec next dev --hostname 127.0.0.1 --port 3201
   ```
 - Don't start a dev server on 3100.
 - Tests use in-memory PGlite and are always safe.
@@ -88,24 +88,24 @@ While working, `pnpm vitest run packages/<yours>` is the quick loop.
 ## 3. How the packages fit together
 
 ```
-@ios/db ← @ios/core ← @ios/agents (contracts + ios34.ts + runtime)
+@troupe/db ← @troupe/core ← @troupe/agents (contracts + ios34.ts + runtime)
               ↑                ↑
-   @ios/providers        @ios/content · @ios/knowledge · @ios/profit   (IOS-2, read-only libraries now)
+   @troupe/providers        @troupe/content · @troupe/knowledge · @troupe/profit   (IOS-2, read-only libraries now)
    (interfaces + fakes)        ↑
-                        @ios/media (E) · @ios/distribution (F) · @ios/commerce (G) · @ios/products (H)
+                        @troupe/media (E) · @troupe/distribution (F) · @troupe/commerce (G) · @troupe/products (H)
                                ↑
-                        @ios/wiring (composition root) ← apps/web, apps/worker, cron tick
+                        @troupe/wiring (composition root) ← apps/web, apps/worker, cron tick
 ```
 
 **Dependencies:**
-- E, F, G and H may depend on `@ios/agents`, `@ios/core`, `@ios/db`, `@ios/providers` and, read-only, the IOS-2 packages `@ios/content`, `@ios/knowledge` and `@ios/profit`. Examples: `gatePost`, `gateReply`, `runGate`, `voiceCheck`, `buildListingPack`, `ProductBrief`, `readLaunchDoc` from `@ios/core/seed`, `personasSourceDir`.
-- **They never import each other.** Cross-stream work goes through the job queue (§5.1), the database (§5.6) and the shared types in `@ios/agents` `ios34.ts`.
-- Each package already lists `agents`, `content`, `core`, `db` and `providers`. Add `@ios/knowledge` or `@ios/profit` to your own `package.json` if you need them.
+- E, F, G and H may depend on `@troupe/agents`, `@troupe/core`, `@troupe/db`, `@troupe/providers` and, read-only, the IOS-2 packages `@troupe/content`, `@troupe/knowledge` and `@troupe/profit`. Examples: `gatePost`, `gateReply`, `runGate`, `voiceCheck`, `buildListingPack`, `ProductBrief`, `readLaunchDoc` from `@troupe/core/seed`, `personasSourceDir`.
+- **They never import each other.** Cross-stream work goes through the job queue (§5.1), the database (§5.6) and the shared types in `@troupe/agents` `ios34.ts`.
+- Each package already lists `agents`, `content`, `core`, `db` and `providers`. Add `@troupe/knowledge` or `@troupe/profit` to your own `package.json` if you need them.
 
-**Every package's `src/index.ts` exports a `StudioModule`:** `tools`, `jobs`, `schedules` and `liveProviders(env)`. The stubs exist. Replace their bodies and keep the names and signatures. `@ios/wiring` composes all eight modules and throws on a duplicate tool, job kind, schedule or provider member. Nobody edits wiring: you plug in through your own exports.
+**Every package's `src/index.ts` exports a `StudioModule`:** `tools`, `jobs`, `schedules` and `liveProviders(env)`. The stubs exist. Replace their bodies and keep the names and signatures. `@troupe/wiring` composes all eight modules and throws on a duplicate tool, job kind, schedule or provider member. Nobody edits wiring: you plug in through your own exports.
 
 **Tests:**
-- Build services with `createTestStudio()` / `makeTestPersona()` from `@ios/agents/testing`.
+- Build services with `createTestStudio()` / `makeTestPersona()` from `@troupe/agents/testing`.
 - `createFakeProviders()` now includes `audience` (`FakeResendAudience`) and `storage` (`MemoryMediaStore`).
 - Never import another package's `test/` folder.
 - Never depend on the seed's personas.
@@ -185,7 +185,7 @@ You may create and edit only what your stream owns. Anything not listed is froze
     - `apps/worker/src/main.ts`;
     - the matching tests, in a new `packages/db/test/lock.test.ts`.
   - **Robustness (b), the studio header:** `studioTotals` in `packages/core/src/queries.ts`, and the header line and KPI in `apps/web/app/page.tsx`.
-  - **Robustness (c), the login link:** `packages/auth/src/cli.ts`. Use `appOrigin()` semantics: `IOS_PUBLIC_URL`, else `PORT`, else 3100.
+  - **Robustness (c), the login link:** `packages/auth/src/cli.ts`. Use `appOrigin()` semantics: `TROUPE_PUBLIC_URL`, else `PORT`, else 3100.
 - **`apps/web/` files:** `app/products/**`, `app/api/products/**`, `components/products-*.tsx` (including `products-persona-panel.tsx`).
 - **Migrations:** `0012_h_*.sql`.
 - **Tables H may alter:** `product_version`, `product_brief`, plus new tables prefixed `product_build`, `product_manuscript`, `product_template`.
@@ -215,20 +215,20 @@ You may create and edit only what your stream owns. Anything not listed is froze
 
 | Contract | Where | Implemented by | Consumed by |
 |---|---|---|---|
-| `MEDIA_RENDER_JOB`, `MediaRenderPayload` | `@ios/agents` `contracts.ts` (IOS-2) | B enqueues (exists) | E handles |
-| `PUBLISH_PREPARE_JOB`, `PublishPreparePayload`, `RenderedMedia` | `@ios/agents` `ios34.ts` | E enqueues | F handles |
+| `MEDIA_RENDER_JOB`, `MediaRenderPayload` | `@troupe/agents` `contracts.ts` (IOS-2) | B enqueues (exists) | E handles |
+| `PUBLISH_PREPARE_JOB`, `PublishPreparePayload`, `RenderedMedia` | `@troupe/agents` `ios34.ts` | E enqueues | F handles |
 | `enqueueOnceFor` (one cross-stream job per subject) | `ios34.ts` | integrator | E, F, G, H |
 | `PRODUCT_BUILD_JOB`, `ProductBuildPayload`, `ProductFile` | `ios34.ts` | H (enqueues and handles) | G reads `product_version.files` |
 | `COMMUNITY_CLASSES` / `CommunityClass` | `ios34.ts` | F writes `comment.classification`, `dm_thread.classification` | B's Monetization Agent (`question`, `purchase_intent`), dashboards |
 | `METRIC_WINDOWS`, `METRIC_WINDOW_MS` | `ios34.ts` | F writes `metric_snapshot.window` | D (P&L, levers), scorecards |
 | `personaSiteUrl`, `shortLinkUrl`, `appOrigin`, `SITE_PATHS`, `RESERVED_SUBDOMAINS` | `ios34.ts` | G serves the pages | F (bio link, DM links), E/H (links in media and PDFs) |
 | `PersonaKit`, `loadPersonaKit`, `parsePalette`, `kitColors` | `ios34.ts` | integrator | E (grade, captions), G (sites, emails), H (PDFs) |
-| `ImageVideoProvider` (+ `upload`), `TalkingProvider`, `VoiceProvider` | `@ios/providers` | E (live) | E |
-| `PublishProvider` (+ IOS-4 members), `AI_FLAG_FIELDS` | `@ios/providers` | F (live) | F, core `publishPost` |
-| `StoreProvider` (+ IOS-4 members), `AudienceProvider` | `@ios/providers` | G (live) | G |
-| `MediaStore`, `LocalMediaStore`, `MemoryMediaStore`, `mediaUrl`, `isPublicMediaKey` | `@ios/providers` `storage.ts` | E (live member) | E, F, G, H |
-| Gate (`runGate`, `gatePost`, `gateReply`), Q2 (`voiceCheck`), listing packs (`buildListingPack`), `ProductBrief` | `@ios/content` | B (done) | E, F, G, H |
-| `metered()`, `propose()`, `publishPost()`, `notify()`, `enqueue()`, `audit()` | `@ios/core` | A (done); F owns `publish.ts` now | all |
+| `ImageVideoProvider` (+ `upload`), `TalkingProvider`, `VoiceProvider` | `@troupe/providers` | E (live) | E |
+| `PublishProvider` (+ IOS-4 members), `AI_FLAG_FIELDS` | `@troupe/providers` | F (live) | F, core `publishPost` |
+| `StoreProvider` (+ IOS-4 members), `AudienceProvider` | `@troupe/providers` | G (live) | G |
+| `MediaStore`, `LocalMediaStore`, `MemoryMediaStore`, `mediaUrl`, `isPublicMediaKey` | `@troupe/providers` `storage.ts` | E (live member) | E, F, G, H |
+| Gate (`runGate`, `gatePost`, `gateReply`), Q2 (`voiceCheck`), listing packs (`buildListingPack`), `ProductBrief` | `@troupe/content` | B (done) | E, F, G, H |
+| `metered()`, `propose()`, `publishPost()`, `notify()`, `enqueue()`, `audit()` | `@troupe/core` | A (done); F owns `publish.ts` now | all |
 
 ### 5.1 Jobs, schedules and the cross-stream flow
 
@@ -254,7 +254,7 @@ G  product 'approved' → listing pack + checkout URL status → 'live' once a c
 **Job and schedule rules:**
 - **Job kinds are `<namespace>.<verb>`** within your namespaces. Enqueue with core `enqueue()`, always with `personaId` for persona work.
 - **Handlers are idempotent.** They resume from stored state and throw `DeferJob` to wait without spending an attempt (for example on a capped governor). They pass `ctx.job` through untouched.
-- **A cross-stream job is enqueued at most once per subject.** Use `enqueueOnceFor(db, { kind, key, … }, { ever: true })` from `@ios/agents`, with keys like `slot:<slotId>` and `product:<productId>:v<N>`. Its handler is also idempotent per subject.
+- **A cross-stream job is enqueued at most once per subject.** Use `enqueueOnceFor(db, { kind, key, … }, { ever: true })` from `@troupe/agents`, with keys like `slot:<slotId>` and `product:<productId>:v<N>`. Its handler is also idempotent per subject.
 - **The worker claims only kinds that have a handler.** Until F merges, `publish.prepare` jobs simply wait. Until H merges, nothing enqueues `product.build`.
 - **Schedules are cheap and idempotent:** enqueue, don't work inline. D's scheduler runs `allSchedules()` on every tick.
 - **Long jobs call `heartbeat()`.** Renders and Higgsfield polling do. On `false`, stop.
@@ -273,7 +273,7 @@ G  product 'approved' → listing pack + checkout URL status → 'live' once a c
   - email-writer → `{ type: 'persona', id }`.
 - **Over a cap the governor refuses.** Defer the job (6 h) and let the Studio Manager reallocate. Never raise a cap: a raise is an Owner proposal.
 
-### 5.3 Providers (`@ios/providers`)
+### 5.3 Providers (`@troupe/providers`)
 
 Additive changes in the base commit. Fakes are deterministic, record their calls, and never touch the network.
 
@@ -285,10 +285,10 @@ Additive changes in the base commit. Fakes are deterministic, record their calls
 | `publish` | `PublishRequest`: `kind`, `title`, `coverUrl`, `mode: 'publish' \| 'draft_inbox'`, `platformOptions`; members `uploadMedia`, `hideComment`, `listDms`, `fetchMetrics`, `listAccounts`, `verifyWebhook`, `parseWebhook` (`DistributionEvent[]`) | F | `FakeZernio` (`inbox`, `accounts`, `sign()`) |
 | `store` | `listProducts({ storeId? })`, `listStores`, `createCheckout` (custom data for attribution), `createDiscount`; `StoreProduct.storeId/variantId/checkoutUrl`; `StoreEvent` gains attribution fields and subscription lifecycle events | G | `FakeLemonSqueezy` (`stores`, `sign()`) |
 | `audience` (**new**) | `ensureAudience`, `upsertContact`, `send` (with `headers` for List-Unsubscribe), `sendBroadcast`, `verifyWebhook` (Svix headers), `parseWebhook` | G | `FakeResendAudience` |
-| `storage` (**new**) | `put`, `putFile`, `get`, `localPath`, `url` | E (`LocalMediaStore` on `IOS_MEDIA_DIR`, default `<repo>/.data/media`; the memory store under Vitest) | `MemoryMediaStore` |
+| `storage` (**new**) | `put`, `putFile`, `get`, `localPath`, `url` | E (`LocalMediaStore` on `TROUPE_MEDIA_DIR`, default `<repo>/.data/media`; the memory store under Vitest) | `MemoryMediaStore` |
 
 **Rules:**
-- **Live adapters live in your own package**, returned from your `liveProviders(env)` only when `env.isLive('<integration>')`. `@ios/wiring` overlays them on the fakes. Two packages supplying the same member is an error.
+- **Live adapters live in your own package**, returned from your `liveProviders(env)` only when `env.isLive('<integration>')`. `@troupe/wiring` overlays them on the fakes. Two packages supplying the same member is an error.
 - **Read keys only through `env.secret(name)`.** Never log them, store them, put them in prompts or argv, or pass them to a subprocess except through its environment. For example, the Higgsfield CLI gets `HIGGSFIELD_API_KEY` / `HIGGSFIELD_API_SECRET` in its child env.
 - **New optional secrets exist:** `zernio.webhook_secret` and `resend.webhook_secret`. Without one, the adapter polls instead of accepting webhooks.
 - **The AI flag can't be switched off.** `aiLabel: true` is a literal type. A live adapter maps it to `AI_FLAG_FIELDS[platform]` and refuses anything else.
@@ -307,9 +307,9 @@ Additive changes in the base commit. Fakes are deterministic, record their calls
 
 ### 5.5 Public persona sites (routing done in the base commit)
 
-- **Production.** `https://<slug>.<IOS_STUDIO_DOMAIN>/<path>`: the proxy rewrites it to `/p/<slug>/<path>`. `/l/*`, `/api/public/*` and Next's assets pass through unchanged. A persona host can never reach a dashboard page or API: everything else is rewritten under `/p/<slug>`. Reserved subdomains (`RESERVED_SUBDOMAINS`) and nested labels get 421.
+- **Production.** `https://<slug>.<TROUPE_STUDIO_DOMAIN>/<path>`: the proxy rewrites it to `/p/<slug>/<path>`. `/l/*`, `/api/public/*` and Next's assets pass through unchanged. A persona host can never reach a dashboard page or API: everything else is rewritten under `/p/<slug>`. Reserved subdomains (`RESERVED_SUBDOMAINS`) and nested labels get 421.
 - **Local.** `http://localhost:3100/p/<slug>/…` (any port).
-- **Public paths (no Owner session):** `/p/*`, `/l/*`, `/api/public/*`, `/api/webhooks/*`. The root layout renders `/p/*` and `/l/*` bare: no nav, no session check, no studio data. G's own `app/p/[slug]/layout.tsx` styles the site from `loadPersonaKit`. The proxy sets `x-ios-site` and strips a client-sent one.
+- **Public paths (no Owner session):** `/p/*`, `/l/*`, `/api/public/*`, `/api/webhooks/*`. The root layout renders `/p/*` and `/l/*` bare: no nav, no session check, no studio data. G's own `app/p/[slug]/layout.tsx` styles the site from `loadPersonaKit`. The proxy sets `x-troupe-site` and strips a client-sent one.
 - **Mutating `/api/public/*` calls must be same-origin** (the proxy enforces it). Add rate limits, honeypots and no account enumeration in G's handlers.
 - **Fixed paths other streams link to:** `SITE_PATHS.home` (`/`, the profile link) and `SITE_PATHS.freebie` (`/free`, the lead magnet). G owns every other path, for example `/shop/<product>`, `/thanks/<product>`, `/members`, `/unsubscribe`, `/privacy`, `/confirm`.
 - **Members' magic-link sessions use their own cookie,** for example `ios_member`. It's host-only and HttpOnly, and is never the Owner's `ios_session`.

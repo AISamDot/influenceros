@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { json } from '@ios/db';
+import { json } from '@troupe/db';
 import { describe, expect, it } from 'vitest';
 import { appOrigin, contrastRatio, enqueueOnceFor, kitColors, PUBLISH_PREPARE_JOB, loadPersonaKit, parsePalette, personaSiteUrl, shortLinkUrl, SITE_PATHS } from '../src';
 import { createTestStudio, makeTestPersona } from '../src/testing';
@@ -9,11 +9,18 @@ describe('IOS-3/4 shared contracts', () => {
   it('builds persona-site and short-link URLs for local dev and for the studio domain', () => {
     expect(appOrigin({})).toBe('http://localhost:3100');
     expect(personaSiteUrl('rosa', SITE_PATHS.home, {})).toBe('http://localhost:3100/p/rosa');
-    expect(personaSiteUrl('rosa', SITE_PATHS.freebie, { IOS_PUBLIC_URL: 'https://studio.test/' })).toBe('https://studio.test/p/rosa/free');
-    expect(personaSiteUrl('rosa', '/', { IOS_STUDIO_DOMAIN: 'Studio.Example' })).toBe('https://rosa.studio.example/');
-    expect(personaSiteUrl('rosa', 'free', { IOS_STUDIO_DOMAIN: 'studio.example' })).toBe('https://rosa.studio.example/free');
+    expect(personaSiteUrl('rosa', SITE_PATHS.freebie, { TROUPE_PUBLIC_URL: 'https://studio.test/' })).toBe('https://studio.test/p/rosa/free');
+    expect(personaSiteUrl('rosa', '/', { TROUPE_STUDIO_DOMAIN: 'Studio.Example' })).toBe('https://rosa.studio.example/');
+    expect(personaSiteUrl('rosa', 'free', { TROUPE_STUDIO_DOMAIN: 'studio.example' })).toBe('https://rosa.studio.example/free');
     expect(shortLinkUrl('rosa', 'ab12cd', {})).toBe('http://localhost:3100/l/ab12cd');
-    expect(shortLinkUrl('rosa', 'ab12cd', { IOS_STUDIO_DOMAIN: 'studio.example' })).toBe('https://rosa.studio.example/l/ab12cd');
+    expect(shortLinkUrl('rosa', 'ab12cd', { TROUPE_STUDIO_DOMAIN: 'studio.example' })).toBe('https://rosa.studio.example/l/ab12cd');
+  });
+
+  it('persona sites default to <slug>.troupehouse.com when deployed; legacy IOS_ names still work', () => {
+    expect(personaSiteUrl('rosa', SITE_PATHS.home, { VERCEL: '1' })).toBe('https://rosa.troupehouse.com/');
+    expect(shortLinkUrl('rosa', 'ab12cd', { VERCEL: '1' })).toBe('https://rosa.troupehouse.com/l/ab12cd');
+    expect(personaSiteUrl('rosa', '/', { IOS_STUDIO_DOMAIN: 'legacy.example' })).toBe('https://rosa.legacy.example/');
+    expect(appOrigin({ IOS_PUBLIC_URL: 'https://old.example/' })).toBe('https://old.example');
   });
 
   it('enqueues a cross-stream job once per subject', async () => {

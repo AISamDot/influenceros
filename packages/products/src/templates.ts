@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { MediaStore } from '@ios/providers';
+import type { MediaStore } from '@troupe/providers';
 import { blockStrings, plainInline, type ProductDoc } from './model';
 
 /**

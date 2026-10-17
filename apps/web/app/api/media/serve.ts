@@ -1,5 +1,5 @@
-import type { MediaStore } from '@ios/providers';
-import { isValidMediaKey } from '@ios/providers';
+import type { MediaStore } from '@troupe/providers';
+import { isValidMediaKey } from '@troupe/providers';
 
 /**
  * Serves one stored media file (stream E): byte ranges for video seeking, a strict content type, no sniffing, and

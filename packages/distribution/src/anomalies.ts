@@ -1,7 +1,7 @@
-import type { StudioServices } from '@ios/agents';
-import { audit, notify, PUBLISHING_STATES, setKillSwitch, updatePersonaControls } from '@ios/core';
-import { json } from '@ios/db';
-import type { Platform } from '@ios/providers';
+import type { StudioServices } from '@troupe/agents';
+import { audit, notify, PUBLISHING_STATES, setKillSwitch, updatePersonaControls } from '@troupe/core';
+import { json } from '@troupe/db';
+import type { Platform } from '@troupe/providers';
 import { DAY_MS, HOUR_MS, SYSTEM_PUBLISHER } from './util';
 
 /**

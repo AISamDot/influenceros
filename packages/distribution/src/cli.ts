@@ -1,11 +1,11 @@
 // `pnpm distribution <command>`: stream F (publishing, community, analytics, accounts).
 // With local PGlite only one process may open the data dir: never open it while the dev server is running (use a
 // scratch PGLITE_DIR or DATABASE_URL).
-import { createServices, type ProviderEnv, type StudioServices } from '@ios/agents';
-import { getStudio, OWNER } from '@ios/core';
-import { type Db, openDb } from '@ios/db';
-import { createFakeProviders } from '@ios/providers';
-import { defaultBackend, integrationStates, isSecretName, readSecret } from '@ios/secrets';
+import { createServices, type ProviderEnv, type StudioServices } from '@troupe/agents';
+import { getStudio, OWNER } from '@troupe/core';
+import { type Db, openDb } from '@troupe/db';
+import { createFakeProviders } from '@troupe/providers';
+import { defaultBackend, integrationStates, isSecretName, readSecret } from '@troupe/secrets';
 import { accountSetupSheet, syncAccounts } from './accounts';
 import { personaScorecard, pullMetrics } from './analytics';
 import { approvedCrisisText, handleCommunity, pollCommunity, proposeCrisisText } from './community';

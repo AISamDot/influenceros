@@ -2,10 +2,13 @@ import { inspect } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import {
   defaultBackend,
+  FallbackBackend,
   importFromBrandOs,
   integrationStates,
   KeyringBackend,
+  LEGACY_KEYCHAIN_SERVICE,
   MemoryKeyring,
+  migrateKeychainService,
   NullBackend,
   readSecret,
   runSecretsCli,
@@ -36,7 +39,7 @@ describe('secrets', () => {
     expect(defaultBackend()).toBeInstanceOf(NullBackend);
   });
 
-  it('KeyringBackend uses service ai.influencer-os and account = secret name', () => {
+  it('KeyringBackend uses service ai.troupe-house and account = secret name', () => {
     const seen: Array<[string, string]> = [];
     const store = new Map<string, string>();
     const mod = {
@@ -61,7 +64,86 @@ describe('secrets', () => {
     const kb = new KeyringBackend(undefined, mod);
     kb.set('apify.token', FAKE_APIFY);
     expect(kb.get('apify.token')).toBe(FAKE_APIFY);
-    expect(seen[0]).toEqual(['ai.influencer-os', 'apify.token']);
+    expect(seen[0]).toEqual(['ai.troupe-house', 'apify.token']);
+  });
+
+  it('the legacy Influencer OS service is ai.influencer-os', () => {
+    expect(LEGACY_KEYCHAIN_SERVICE).toBe('ai.influencer-os');
+  });
+
+  it('FallbackBackend reads the new service first, then the legacy one; writes only the new one; unset clears both', () => {
+    const current = new MemoryKeyring({ 'anthropic.api_key': 'new-FAKE' });
+    const legacy = new MemoryKeyring({ 'anthropic.api_key': 'old-FAKE', 'zernio.api_key': 'zernio-old-FAKE' });
+    const kc = new FallbackBackend(current, legacy);
+    expect(kc.get('anthropic.api_key')).toBe('new-FAKE');
+    expect(kc.get('zernio.api_key')).toBe('zernio-old-FAKE');
+    expect(kc.get('resend.api_key')).toBeNull();
+    kc.set('resend.api_key', 're-FAKE');
+    expect(current.get('resend.api_key')).toBe('re-FAKE');
+    expect(legacy.get('resend.api_key')).toBeNull();
+    // readSecret / integration status see legacy-only items.
+    expect(readSecret('zernio.api_key', kc, {})?.reveal()).toBe('zernio-old-FAKE');
+    expect(integrationStates(kc, {}).find((s) => s.def.id === 'zernio')?.status).toBe('connected');
+    expect(kc.delete('zernio.api_key')).toBe(true);
+    expect(kc.get('zernio.api_key')).toBeNull();
+    expect(kc.delete('zernio.api_key')).toBe(false);
+    expect(JSON.stringify({ kc })).not.toContain('FAKE');
+    expect(inspect(kc)).not.toContain('FAKE');
+  });
+
+  it('migrateKeychainService copies every known secret once, never overwrites, keeps the old items, returns no values', () => {
+    const legacy = new MemoryKeyring({
+      'supabase.database_url': 'postgres://FAKE',
+      'supabase.service_role_key': 'sb_secret_FAKE',
+      'anthropic.api_key': 'sk-ant-FAKE-old',
+      'zernio.api_key': 'zernio-FAKE',
+      'not.a.secret': 'ignored-FAKE',
+    });
+    const current = new MemoryKeyring({ 'anthropic.api_key': 'sk-ant-FAKE-new' });
+    const first = migrateKeychainService(legacy, current);
+    expect(first.counts).toMatchObject({ copied: 3, already_set: 1, unreadable: 0, failed: 0 });
+    expect(first.counts.missing).toBe(first.results.length - 4);
+    expect(current.get('supabase.database_url')).toBe('postgres://FAKE');
+    expect(current.get('zernio.api_key')).toBe('zernio-FAKE');
+    expect(current.get('anthropic.api_key')).toBe('sk-ant-FAKE-new');
+    expect(current.get('not.a.secret')).toBeNull();
+    expect(legacy.get('supabase.database_url')).toBe('postgres://FAKE');
+    expect(JSON.stringify(first)).not.toContain('FAKE');
+    // Idempotent: a second run copies nothing.
+    const second = migrateKeychainService(legacy, current);
+    expect(second.counts).toMatchObject({ copied: 0, already_set: 4 });
+  });
+
+  it('migrateKeychainService reports an unreadable legacy item without failing the rest', () => {
+    const legacy = new MemoryKeyring({ 'zernio.api_key': 'zernio-FAKE' });
+    const locked = {
+      get: (n: string) => {
+        if (n === 'apify.token') throw new Error('keychain locked');
+        return legacy.get(n);
+      },
+      set: () => undefined,
+      delete: () => false,
+    };
+    const current = new MemoryKeyring();
+    const r = migrateKeychainService(locked, current);
+    expect(r.counts).toMatchObject({ copied: 1, unreadable: 1 });
+    expect(current.get('zernio.api_key')).toBe('zernio-FAKE');
+  });
+
+  it('CLI migrate-service prints counts only and status reads the legacy service', async () => {
+    const legacy = new MemoryKeyring({ 'zernio.api_key': 'zernio-FAKE', 'anthropic.api_key': 'sk-ant-FAKE' });
+    const t = io({ legacyBackend: legacy });
+    expect(await runSecretsCli(['status'], t)).toBe(0);
+    expect(t.lines.join('\n')).toMatch(/zernio\.api_key\s+keychain/);
+    expect(await runSecretsCli(['migrate-service'], t)).toBe(0);
+    expect(await runSecretsCli(['migrate-service'], t)).toBe(0);
+    const out = t.lines.join('\n');
+    expect(out).not.toContain('FAKE');
+    expect(out).toMatch(/Copied 2, already set 0/);
+    expect(out).toMatch(/Copied 0, already set 2/);
+    expect(t.backend.get('zernio.api_key')).toBe('zernio-FAKE');
+    expect(legacy.get('zernio.api_key')).toBe('zernio-FAKE');
+    expect(await runSecretsCli(['migrate-service'], io())).toBe(1);
   });
 
   it('Secret values refuse to print', () => {
@@ -80,16 +162,16 @@ describe('secrets', () => {
 
   it('imports Brand OS secrets without exposing values', () => {
     const brandos = new MemoryKeyring({ 'apify.token': FAKE_APIFY, 'elevenlabs.api_key': FAKE_ELEVEN });
-    const ios = new MemoryKeyring({ 'elevenlabs.api_key': 'already-here' });
-    const res = importFromBrandOs(brandos, ios);
+    const troupe = new MemoryKeyring({ 'elevenlabs.api_key': 'already-here' });
+    const res = importFromBrandOs(brandos, troupe);
     expect(res).toEqual([
       { name: 'apify.token', outcome: 'copied' },
       { name: 'elevenlabs.api_key', outcome: 'already_set' },
       { name: 'pixabay.api_key', outcome: 'missing_in_brandos' },
     ]);
     expect(JSON.stringify(res)).not.toContain('FAKE');
-    expect(ios.get('apify.token')).toBe(FAKE_APIFY);
-    expect(ios.get('elevenlabs.api_key')).toBe('already-here');
+    expect(troupe.get('apify.token')).toBe(FAKE_APIFY);
+    expect(troupe.get('elevenlabs.api_key')).toBe('already-here');
   });
 
   it('CLI: set, status, import and unset never print values', async () => {
@@ -128,8 +210,8 @@ describe('secrets', () => {
     // IOS-5 stream I, whose contract flips its entry to liveAdapter: true). Open-Meteo needs no key, so it is live
     // unless fakes are forced.
     expect(states.filter((s) => s.mode === 'live').map((s) => s.def.id)).toEqual(['anthropic', 'apify', 'open-meteo']);
-    expect(integrationStates(kc, { ANTHROPIC_API_KEY: 'x', IOS_FAKE_PROVIDERS: '1' }).every((s) => s.mode === 'fake')).toBe(true);
-    expect(integrationStates(kc, { IOS_FAKE_PROVIDERS: 'apify' }).find((s) => s.def.id === 'apify')?.status).toBe(
+    expect(integrationStates(kc, { ANTHROPIC_API_KEY: 'x', TROUPE_FAKE_PROVIDERS: '1' }).every((s) => s.mode === 'fake')).toBe(true);
+    expect(integrationStates(kc, { TROUPE_FAKE_PROVIDERS: 'apify' }).find((s) => s.def.id === 'apify')?.status).toBe(
       'fake_mode',
     );
     const ids = states.map((s) => s.def.id);

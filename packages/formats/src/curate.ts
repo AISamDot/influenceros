@@ -1,6 +1,6 @@
-import { HIGHLIGHT_SETS, type HighlightSet, type StoryFrameKind, type StudioServices } from '@ios/agents';
-import { type Actor, audit } from '@ios/core';
-import { json } from '@ios/db';
+import { HIGHLIGHT_SETS, type HighlightSet, type StoryFrameKind, type StudioServices } from '@troupe/agents';
+import { type Actor, audit } from '@troupe/core';
+import { json } from '@troupe/db';
 import { editPlan } from './plan';
 import { planInForce, savePlan } from './store';
 import { storyStats } from './stories';

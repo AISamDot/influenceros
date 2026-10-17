@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { type ChatMessageRow, clearKillSwitch, OWNER, setKillSwitch } from '@ios/core';
-import type { LlmCacheBlock } from '@ios/providers';
-import type { CostRef } from '@ios/core';
+import { type ChatMessageRow, clearKillSwitch, OWNER, setKillSwitch } from '@troupe/core';
+import type { LlmCacheBlock } from '@troupe/providers';
+import type { CostRef } from '@troupe/core';
 import type { RunTrust, StudioServices } from '../contracts';
 import { bibleText, compact, latestBible, personaStatus, type PersonaStatus, playbookRules, usd } from '../data';
 import {

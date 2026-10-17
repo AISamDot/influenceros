@@ -1,14 +1,19 @@
 import { inspect } from 'node:util';
 
 /**
- * Secrets (PRD §8.6), the Brand OS pattern: macOS Keychain via `@napi-rs/keyring`, service `ai.influencer-os`,
+ * Secrets (PRD §8.6), the Brand OS pattern: macOS Keychain via `@napi-rs/keyring`, service `ai.troupe-house`,
  * account = secret name. Values are never printed, logged, put in argv or stored in the database.
- * On Vercel the same names are read from environment variables (`ios secrets sync` lands in a later milestone).
+ * On Vercel the same names are read from environment variables (`troupe secrets sync` lands in a later milestone).
  */
-export const KEYCHAIN_SERVICE = 'ai.influencer-os';
+export const KEYCHAIN_SERVICE = 'ai.troupe-house';
+/**
+ * The pre-rename (Influencer OS) Keychain service. Reads fall back to it, and `pnpm troupe secrets migrate-service`
+ * copies its items into KEYCHAIN_SERVICE. Never written to.
+ */
+export const LEGACY_KEYCHAIN_SERVICE = 'ai.influencer-os';
 export const BRANDOS_KEYCHAIN_SERVICE = 'ai.brandos';
 
-/** Every secret Influencer OS knows, with the environment variable used in the cloud. */
+/** Every secret Troupe House knows, with the environment variable used in the cloud. */
 export const SECRETS = {
   'anthropic.api_key': { env: 'ANTHROPIC_API_KEY', label: 'Anthropic API key' },
   'higgsfield.api_key': { env: 'HIGGSFIELD_API_KEY', label: 'Higgsfield API key' },
@@ -70,6 +75,36 @@ export class MemoryKeyring implements SecretBackend {
   }
   [inspect.custom](): string {
     return '[MemoryKeyring]';
+  }
+}
+
+/**
+ * The current Keychain service with the legacy one behind it: reads try `primary` and then `legacy`; writes go to
+ * `primary` only; `delete` removes the item from both (so `unset` really unsets it).
+ */
+export class FallbackBackend implements SecretBackend {
+  constructor(
+    readonly primary: SecretBackend,
+    readonly legacy: SecretBackend,
+  ) {}
+  get(name: string): string | null {
+    const v = this.primary.get(name);
+    if (v !== null && v !== '') return v;
+    return this.legacy.get(name);
+  }
+  set(name: string, value: string): void {
+    this.primary.set(name, value);
+  }
+  delete(name: string): boolean {
+    const a = this.primary.delete(name);
+    const b = this.legacy.delete(name);
+    return a || b;
+  }
+  toJSON(): string {
+    return '[FallbackBackend]';
+  }
+  [inspect.custom](): string {
+    return '[FallbackBackend]';
   }
 }
 

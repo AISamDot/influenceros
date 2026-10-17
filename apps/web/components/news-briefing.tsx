@@ -1,4 +1,4 @@
-import type { Briefing } from '@ios/agents';
+import type { Briefing } from '@troupe/agents';
 
 /** One persona's morning briefing: scored stories, why they matter, the take, and the fast-reaction ideas. */
 export function NewsBriefing({ briefing }: { briefing: Briefing }) {

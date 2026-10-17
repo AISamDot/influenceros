@@ -1,6 +1,6 @@
-import type { Db } from '@ios/db';
-import { type LaunchPersona, loadArchivedPersonas } from '@ios/core/seed';
-import { nicheFilter } from '@ios/production';
+import type { Db } from '@troupe/db';
+import { type LaunchPersona, loadArchivedPersonas } from '@troupe/core/seed';
+import { nicheFilter } from '@troupe/production';
 import { type NicheDef, nicheByKey, firstName } from './library';
 import { type ConceptOption, type ContentPlanDraft, type DraftState, type Distinctness, type OpportunityOption, type Scorecard, SCORECARD_WEIGHTS } from './types';
 

@@ -1,17 +1,18 @@
+import { troupeEnv } from '@troupe/env';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { enqueueOnceFor, PRODUCT_BUILD_JOB, type StudioServices } from '@ios/agents';
-import { audit, notify } from '@ios/core';
-import { loadPersonaContext, priceFor, productKeyword, type ProductBrief, type Rung } from '@ios/content';
-import { findRepoRoot, json } from '@ios/db';
+import { enqueueOnceFor, PRODUCT_BUILD_JOB, type StudioServices } from '@troupe/agents';
+import { audit, notify } from '@troupe/core';
+import { loadPersonaContext, priceFor, productKeyword, type ProductBrief, type Rung } from '@troupe/content';
+import { findRepoRoot, json } from '@troupe/db';
 import { PRODUCT_BUILDER } from './build';
 import { parseManuscript } from './manuscript';
 import { slugify } from './model';
 
 /**
  * Content import (stream H scope 2): ready-written manuscripts dropped into the inbox folder become finished PDFs
- * through the same pipeline. Layout: `<IOS_MANUSCRIPTS_DIR or <repo>/.data/manuscripts>/<persona-slug>/<file>.md`
+ * through the same pipeline. Layout: `<TROUPE_MANUSCRIPTS_DIR or <repo>/.data/manuscripts>/<persona-slug>/<file>.md`
  * (or any `.md` with `persona:` in its front matter). Each file is imported once per content hash; an edited file
  * with the same product slug becomes a new version (or replaces an unapproved v1).
  */
@@ -19,7 +20,7 @@ import { slugify } from './model';
 const RUNGS: readonly Rung[] = ['lead_magnet', 'entry', 'addon', 'core_bundle', 'upsell', 'product_2_3', 'marketplace', 'membership', 'course'];
 
 export function manuscriptsDir(env: Readonly<Record<string, string | undefined>> = process.env): string {
-  return env.IOS_MANUSCRIPTS_DIR?.trim() || join(findRepoRoot(), '.data', 'manuscripts');
+  return troupeEnv('MANUSCRIPTS_DIR', env)?.trim() || join(findRepoRoot(), '.data', 'manuscripts');
 }
 
 export interface ImportResult {

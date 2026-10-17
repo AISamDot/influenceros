@@ -1,5 +1,5 @@
-import { type Actor, audit, type JobRow } from '@ios/core';
-import type { Db } from '@ios/db';
+import { type Actor, audit, type JobRow } from '@troupe/core';
+import type { Db } from '@troupe/db';
 import { KNOWLEDGE_JOBS } from './field-brain';
 import { NEWS_JOBS } from './news';
 import { enqueueOnce } from './util';

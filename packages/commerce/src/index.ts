@@ -1,12 +1,13 @@
-import type { JobHandlerMap, ProviderEnv, ScheduledTask, ToolDef } from '@ios/agents';
-import type { Providers } from '@ios/providers';
+import { troupeEnv } from '@troupe/env';
+import type { JobHandlerMap, ProviderEnv, ScheduledTask, ToolDef } from '@troupe/agents';
+import type { Providers } from '@troupe/providers';
 import { jobs as commerceJobs, schedules as commerceSchedules } from './jobs';
 import { LemonSqueezyStore, LemonSqueezyWebhooks } from './live/lemonsqueezy';
 import { ResendAudience } from './live/resend-audience';
 import { tools as commerceTools } from './tools';
 
 /**
- * @ios/commerce (IOS-4 stream G): Lemon Squeezy stores, products and webhooks; persona micro-sites; Resend lists,
+ * @troupe/commerce (IOS-4 stream G): Lemon Squeezy stores, products and webhooks; persona micro-sites; Resend lists,
  * consent, the welcome sequence and broadcasts; membership with magic-link access and a monthly drop; attribution
  * from post to order. See docs/IOS-34-CONTRACTS.md.
  */
@@ -27,7 +28,7 @@ export { clientHash, emailHash, isEmail, needsDoubleOptIn, PublicInputError } fr
 export { LemonSqueezyStore, LemonSqueezyWebhooks, parseLemonSqueezyWebhook, UnsupportedStoreEvent } from './live/lemonsqueezy';
 export { parseResendWebhook, ResendAudience, signSvix, verifySvix } from './live/resend-audience';
 
-// StudioModule exports, composed by @ios/wiring.
+// StudioModule exports, composed by @troupe/wiring.
 export const tools: ReadonlyArray<ToolDef<any, any>> = commerceTools;
 export const jobs: JobHandlerMap = commerceJobs;
 export const schedules: readonly ScheduledTask[] = commerceSchedules;
@@ -55,8 +56,8 @@ export function liveProviders(env: ProviderEnv): Partial<Providers> {
   return out;
 }
 
-/** IOS_FAKE_PROVIDERS=1|all|<id> forces fakes (mirrors @ios/secrets integrationStates). */
+/** TROUPE_FAKE_PROVIDERS=1|all|<id> forces fakes (mirrors @troupe/secrets integrationStates). */
 function forcedFake(id: string): boolean {
-  const forced = (process.env.IOS_FAKE_PROVIDERS ?? '').split(',').map((s) => s.trim());
+  const forced = (troupeEnv('FAKE_PROVIDERS') ?? '').split(',').map((s) => s.trim());
   return forced.includes('1') || forced.includes('all') || forced.includes(id);
 }

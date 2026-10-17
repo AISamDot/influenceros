@@ -1,6 +1,6 @@
-import type { QcCheck } from '@ios/agents';
-import { alignWords, diffTokens, MEME_WORDS, mentionsOutlet, qcPass, qcScore, showsHandle, TEXT_NOTE_WORDS } from '@ios/content';
-import type { PostFormat } from '@ios/core';
+import type { QcCheck } from '@troupe/agents';
+import { alignWords, diffTokens, MEME_WORDS, mentionsOutlet, qcPass, qcScore, showsHandle, TEXT_NOTE_WORDS } from '@troupe/content';
+import type { PostFormat } from '@troupe/core';
 import { FORMAT_SPEC, formatFrame, Q3_TARGETS, Q4_TARGETS, SAFE_ZONE, SLIDE_RANGE } from './config';
 import { type Analysis, insideSafeZone, type Interval, type MediaInfo, type TextBox } from './toolkit';
 

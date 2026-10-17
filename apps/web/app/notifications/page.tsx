@@ -1,4 +1,4 @@
-import { listNotifications } from '@ios/core';
+import { listNotifications } from '@troupe/core';
 import { relative } from '@/lib/format';
 import { studioContext } from '@/lib/server';
 import { requireOwnerPage } from '@/lib/auth';

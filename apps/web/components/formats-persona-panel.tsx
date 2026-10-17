@@ -1,5 +1,5 @@
-import type { Db } from '@ios/db';
-import { defaultPlan, planHistory, planInForce } from '@ios/formats';
+import type { Db } from '@troupe/db';
+import { defaultPlan, planHistory, planInForce } from '@troupe/formats';
 import { savePersonaPlan } from '@/app/generator/formats-actions';
 import { FormatPlanForm, FormatPlanView } from './formats-plan-view';
 

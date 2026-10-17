@@ -1,6 +1,6 @@
-import { ToolPermissionError } from '@ios/agents';
-import { createTestStudio, makeTestPersona, type TestStudio } from '@ios/agents/testing';
-import { OWNER, STUDIO_MANAGER } from '@ios/core';
+import { ToolPermissionError } from '@troupe/agents';
+import { createTestStudio, makeTestPersona, type TestStudio } from '@troupe/agents/testing';
+import { OWNER, STUDIO_MANAGER } from '@troupe/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createCadencePolicy, createRoutingPolicy, postWeeklyReport, profitCard, rankActions, runWeeklyCycle, tools } from '../src';
 import { addDebit, addWeeklyHistory, daysAgo, NOW } from './fixtures';

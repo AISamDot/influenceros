@@ -1,4 +1,4 @@
-import type { ChatMessageRow } from '@ios/core';
+import type { ChatMessageRow } from '@troupe/core';
 import type { Caller, RunTrust, StudioServices } from '../contracts';
 
 /** What an agent turn produced, before it is saved as a chat message. */

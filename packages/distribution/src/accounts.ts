@@ -1,8 +1,8 @@
-import { enqueueOnceFor, personaSiteUrl, SITE_PATHS, type StudioServices } from '@ios/agents';
-import { type Actor, audit } from '@ios/core';
-import type { Db } from '@ios/db';
-import { json } from '@ios/db';
-import type { Platform } from '@ios/providers';
+import { enqueueOnceFor, personaSiteUrl, SITE_PATHS, type StudioServices } from '@troupe/agents';
+import { type Actor, audit } from '@troupe/core';
+import type { Db } from '@troupe/db';
+import { json } from '@troupe/db';
+import type { Platform } from '@troupe/providers';
 import { DAY_MS } from './util';
 import { YOUTUBE_FROM_DAY } from './platforms';
 

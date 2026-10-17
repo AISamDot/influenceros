@@ -29,66 +29,69 @@ importers:
       '@fontsource/instrument-serif':
         specifier: 5.3.0
         version: 5.3.0
-      '@ios/agents':
-        specifier: workspace:*
-        version: link:../../packages/agents
-      '@ios/auth':
-        specifier: workspace:*
-        version: link:../../packages/auth
-      '@ios/commerce':
-        specifier: workspace:*
-        version: link:../../packages/commerce
-      '@ios/content':
-        specifier: workspace:*
-        version: link:../../packages/content
-      '@ios/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@ios/db':
-        specifier: workspace:*
-        version: link:../../packages/db
-      '@ios/distribution':
-        specifier: workspace:*
-        version: link:../../packages/distribution
-      '@ios/formats':
-        specifier: workspace:*
-        version: link:../../packages/formats
-      '@ios/generator':
-        specifier: workspace:*
-        version: link:../../packages/generator
-      '@ios/knowledge':
-        specifier: workspace:*
-        version: link:../../packages/knowledge
-      '@ios/media':
-        specifier: workspace:*
-        version: link:../../packages/media
-      '@ios/production':
-        specifier: workspace:*
-        version: link:../../packages/production
-      '@ios/products':
-        specifier: workspace:*
-        version: link:../../packages/products
-      '@ios/profit':
-        specifier: workspace:*
-        version: link:../../packages/profit
-      '@ios/providers':
-        specifier: workspace:*
-        version: link:../../packages/providers
-      '@ios/radar':
-        specifier: workspace:*
-        version: link:../../packages/radar
-      '@ios/secrets':
-        specifier: workspace:*
-        version: link:../../packages/secrets
-      '@ios/wiring':
-        specifier: workspace:*
-        version: link:../../packages/wiring
-      '@ios/world':
-        specifier: workspace:*
-        version: link:../../packages/world
       '@napi-rs/keyring':
         specifier: 2.1.0
         version: 2.1.0
+      '@troupe/agents':
+        specifier: workspace:*
+        version: link:../../packages/agents
+      '@troupe/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
+      '@troupe/commerce':
+        specifier: workspace:*
+        version: link:../../packages/commerce
+      '@troupe/content':
+        specifier: workspace:*
+        version: link:../../packages/content
+      '@troupe/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@troupe/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@troupe/distribution':
+        specifier: workspace:*
+        version: link:../../packages/distribution
+      '@troupe/env':
+        specifier: workspace:*
+        version: link:../../packages/env
+      '@troupe/formats':
+        specifier: workspace:*
+        version: link:../../packages/formats
+      '@troupe/generator':
+        specifier: workspace:*
+        version: link:../../packages/generator
+      '@troupe/knowledge':
+        specifier: workspace:*
+        version: link:../../packages/knowledge
+      '@troupe/media':
+        specifier: workspace:*
+        version: link:../../packages/media
+      '@troupe/production':
+        specifier: workspace:*
+        version: link:../../packages/production
+      '@troupe/products':
+        specifier: workspace:*
+        version: link:../../packages/products
+      '@troupe/profit':
+        specifier: workspace:*
+        version: link:../../packages/profit
+      '@troupe/providers':
+        specifier: workspace:*
+        version: link:../../packages/providers
+      '@troupe/radar':
+        specifier: workspace:*
+        version: link:../../packages/radar
+      '@troupe/secrets':
+        specifier: workspace:*
+        version: link:../../packages/secrets
+      '@troupe/wiring':
+        specifier: workspace:*
+        version: link:../../packages/wiring
+      '@troupe/world':
+        specifier: workspace:*
+        version: link:../../packages/world
       next:
         specifier: 16.3.8
         version: 16.3.8(@types/node@22.20.5)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -117,19 +120,22 @@ importers:
 
   apps/worker:
     dependencies:
-      '@ios/agents':
+      '@troupe/agents':
         specifier: workspace:*
         version: link:../../packages/agents
-      '@ios/core':
+      '@troupe/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@ios/db':
+      '@troupe/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@ios/profit':
+      '@troupe/env':
+        specifier: workspace:*
+        version: link:../../packages/env
+      '@troupe/profit':
         specifier: workspace:*
         version: link:../../packages/profit
-      '@ios/wiring':
+      '@troupe/wiring':
         specifier: workspace:*
         version: link:../../packages/wiring
 
@@ -141,83 +147,95 @@ importers:
       '@anthropic-ai/sdk':
         specifier: 0.128.0
         version: 0.128.0(zod@4.6.5)
-      '@ios/core':
-        specifier: workspace:*
-        version: link:../core
-      '@ios/db':
-        specifier: workspace:*
-        version: link:../db
-      '@ios/providers':
-        specifier: workspace:*
-        version: link:../providers
       '@modelcontextprotocol/sdk':
         specifier: 1.30.1
         version: 1.30.1(zod@4.6.5)
+      '@troupe/core':
+        specifier: workspace:*
+        version: link:../core
+      '@troupe/db':
+        specifier: workspace:*
+        version: link:../db
+      '@troupe/env':
+        specifier: workspace:*
+        version: link:../env
+      '@troupe/providers':
+        specifier: workspace:*
+        version: link:../providers
       zod:
         specifier: 4.6.5
         version: 4.6.5
 
   packages/auth:
     dependencies:
-      '@ios/core':
+      '@troupe/core':
         specifier: workspace:*
         version: link:../core
-      '@ios/db':
+      '@troupe/db':
         specifier: workspace:*
         version: link:../db
-      '@ios/providers':
+      '@troupe/env':
+        specifier: workspace:*
+        version: link:../env
+      '@troupe/providers':
         specifier: workspace:*
         version: link:../providers
-      '@ios/secrets':
+      '@troupe/secrets':
         specifier: workspace:*
         version: link:../secrets
 
   packages/commerce:
     dependencies:
-      '@ios/agents':
+      '@troupe/agents':
         specifier: workspace:*
         version: link:../agents
-      '@ios/content':
+      '@troupe/content':
         specifier: workspace:*
         version: link:../content
-      '@ios/core':
+      '@troupe/core':
         specifier: workspace:*
         version: link:../core
-      '@ios/db':
+      '@troupe/db':
         specifier: workspace:*
         version: link:../db
-      '@ios/providers':
+      '@troupe/env':
+        specifier: workspace:*
+        version: link:../env
+      '@troupe/providers':
         specifier: workspace:*
         version: link:../providers
-      '@ios/secrets':
+      '@troupe/secrets':
         specifier: workspace:*
         version: link:../secrets
     devDependencies:
-      '@ios/profit':
+      '@troupe/profit':
         specifier: workspace:*
         version: link:../profit
 
   packages/content:
     dependencies:
-      '@ios/agents':
+      '@troupe/agents':
         specifier: workspace:*
         version: link:../agents
-      '@ios/core':
+      '@troupe/core':
         specifier: workspace:*
         version: link:../core
-      '@ios/db':
+      '@troupe/db':
         specifier: workspace:*
         version: link:../db
-      '@ios/providers':
+      '@troupe/providers':
         specifier: workspace:*
         version: link:../providers
 
   packages/core:
     dependencies:
-      '@ios/db':
+      '@troupe/db':
         specifier: workspace:*
         version: link:../db
-      '@ios/providers':
+      '@troupe/env':
+        specifier: workspace:*
+        version: link:../env
+      '@troupe/providers':
         specifier: workspace:*
         version: link:../providers
 
@@ -229,6 +247,9 @@ importers:
       '@electric-sql/pglite-pgvector':
         specifier: 0.0.9
         version: 0.0.9(@electric-sql/pglite@0.5.8)
+      '@troupe/env':
+        specifier: workspace:*
+        version: link:../env
       pg:
         specifier: 8.23.1
         version: 8.23.1
@@ -239,76 +260,78 @@ importers:
 
   packages/distribution:
     dependencies:
-      '@ios/agents':
+      '@troupe/agents':
         specifier: workspace:*
         version: link:../agents
-      '@ios/content':
+      '@troupe/content':
         specifier: workspace:*
         version: link:../content
-      '@ios/core':
+      '@troupe/core':
         specifier: workspace:*
         version: link:../core
-      '@ios/db':
+      '@troupe/db':
         specifier: workspace:*
         version: link:../db
-      '@ios/profit':
+      '@troupe/profit':
         specifier: workspace:*
         version: link:../profit
-      '@ios/providers':
+      '@troupe/providers':
         specifier: workspace:*
         version: link:../providers
-      '@ios/secrets':
+      '@troupe/secrets':
         specifier: workspace:*
         version: link:../secrets
 
+  packages/env: {}
+
   packages/formats:
     dependencies:
-      '@ios/agents':
+      '@troupe/agents':
         specifier: workspace:*
         version: link:../agents
-      '@ios/content':
+      '@troupe/content':
         specifier: workspace:*
         version: link:../content
-      '@ios/core':
+      '@troupe/core':
         specifier: workspace:*
         version: link:../core
-      '@ios/db':
+      '@troupe/db':
         specifier: workspace:*
         version: link:../db
-      '@ios/generator':
+      '@troupe/generator':
         specifier: workspace:*
         version: link:../generator
-      '@ios/media':
+      '@troupe/media':
         specifier: workspace:*
         version: link:../media
-      '@ios/profit':
+      '@troupe/profit':
         specifier: workspace:*
         version: link:../profit
-      '@ios/providers':
+      '@troupe/providers':
         specifier: workspace:*
         version: link:../providers
-      '@ios/secrets':
+      '@troupe/secrets':
         specifier: workspace:*
         version: link:../secrets
 
   packages/generator:
     dependencies:
-      '@ios/agents':
+      '@troupe/agents':
         specifier: workspace:*
         version: link:../agents
-      '@ios/core':
+      '@troupe/core':
         specifier: workspace:*
         version: link:../core
-      '@ios/db':
+      '@troupe/db':
         specifier: workspace:*
         version: link:../db
-      '@ios/media':
+      '@troupe/media':
         specifier: workspace:*
         version: link:../media
-      '@ios/production':
+      '@troupe/production':
         specifier: workspace:*
         version: link:../production
-      '@ios/providers':
+      '@troupe/providers':
         specifier: workspace:*
         version: link:../providers
 
@@ -320,19 +343,22 @@ importers:
       '@huggingface/transformers':
         specifier: 4.3.1
         version: 4.3.1(@types/node@22.20.5)
-      '@ios/agents':
+      '@troupe/agents':
         specifier: workspace:*
         version: link:../agents
-      '@ios/core':
+      '@troupe/core':
         specifier: workspace:*
         version: link:../core
-      '@ios/db':
+      '@troupe/db':
         specifier: workspace:*
         version: link:../db
-      '@ios/generator':
+      '@troupe/env':
+        specifier: workspace:*
+        version: link:../env
+      '@troupe/generator':
         specifier: workspace:*
         version: link:../generator
-      '@ios/providers':
+      '@troupe/providers':
         specifier: workspace:*
         version: link:../providers
       fast-xml-parser:
@@ -341,25 +367,28 @@ importers:
 
   packages/media:
     dependencies:
-      '@ios/agents':
+      '@troupe/agents':
         specifier: workspace:*
         version: link:../agents
-      '@ios/content':
+      '@troupe/content':
         specifier: workspace:*
         version: link:../content
-      '@ios/core':
+      '@troupe/core':
         specifier: workspace:*
         version: link:../core
-      '@ios/db':
+      '@troupe/db':
         specifier: workspace:*
         version: link:../db
-      '@ios/production':
+      '@troupe/env':
+        specifier: workspace:*
+        version: link:../env
+      '@troupe/production':
         specifier: workspace:*
         version: link:../production
-      '@ios/providers':
+      '@troupe/providers':
         specifier: workspace:*
         version: link:../providers
-      '@ios/secrets':
+      '@troupe/secrets':
         specifier: workspace:*
         version: link:../secrets
       ffmpeg-static:
@@ -374,58 +403,61 @@ importers:
 
   packages/production:
     dependencies:
-      '@ios/agents':
+      '@troupe/agents':
         specifier: workspace:*
         version: link:../agents
-      '@ios/content':
+      '@troupe/content':
         specifier: workspace:*
         version: link:../content
-      '@ios/core':
+      '@troupe/core':
         specifier: workspace:*
         version: link:../core
-      '@ios/db':
+      '@troupe/db':
         specifier: workspace:*
         version: link:../db
-      '@ios/providers':
+      '@troupe/providers':
         specifier: workspace:*
         version: link:../providers
-      '@ios/secrets':
+      '@troupe/secrets':
         specifier: workspace:*
         version: link:../secrets
 
   packages/products:
     dependencies:
-      '@ios/agents':
+      '@troupe/agents':
         specifier: workspace:*
         version: link:../agents
-      '@ios/content':
+      '@troupe/content':
         specifier: workspace:*
         version: link:../content
-      '@ios/core':
+      '@troupe/core':
         specifier: workspace:*
         version: link:../core
-      '@ios/db':
+      '@troupe/db':
         specifier: workspace:*
         version: link:../db
-      '@ios/providers':
+      '@troupe/env':
+        specifier: workspace:*
+        version: link:../env
+      '@troupe/providers':
         specifier: workspace:*
         version: link:../providers
-      '@ios/secrets':
+      '@troupe/secrets':
         specifier: workspace:*
         version: link:../secrets
 
   packages/profit:
     dependencies:
-      '@ios/agents':
+      '@troupe/agents':
         specifier: workspace:*
         version: link:../agents
-      '@ios/core':
+      '@troupe/core':
         specifier: workspace:*
         version: link:../core
-      '@ios/db':
+      '@troupe/db':
         specifier: workspace:*
         version: link:../db
-      '@ios/providers':
+      '@troupe/providers':
         specifier: workspace:*
         version: link:../providers
 
@@ -433,22 +465,22 @@ importers:
 
   packages/radar:
     dependencies:
-      '@ios/agents':
+      '@troupe/agents':
         specifier: workspace:*
         version: link:../agents
-      '@ios/content':
+      '@troupe/content':
         specifier: workspace:*
         version: link:../content
-      '@ios/core':
+      '@troupe/core':
         specifier: workspace:*
         version: link:../core
-      '@ios/db':
+      '@troupe/db':
         specifier: workspace:*
         version: link:../db
-      '@ios/providers':
+      '@troupe/providers':
         specifier: workspace:*
         version: link:../providers
-      '@ios/secrets':
+      '@troupe/secrets':
         specifier: workspace:*
         version: link:../secrets
 
@@ -457,83 +489,89 @@ importers:
       '@napi-rs/keyring':
         specifier: 2.1.0
         version: 2.1.0
+      '@troupe/env':
+        specifier: workspace:*
+        version: link:../env
 
   packages/wiring:
     dependencies:
-      '@ios/agents':
+      '@troupe/agents':
         specifier: workspace:*
         version: link:../agents
-      '@ios/commerce':
+      '@troupe/commerce':
         specifier: workspace:*
         version: link:../commerce
-      '@ios/content':
+      '@troupe/content':
         specifier: workspace:*
         version: link:../content
-      '@ios/core':
+      '@troupe/core':
         specifier: workspace:*
         version: link:../core
-      '@ios/db':
+      '@troupe/db':
         specifier: workspace:*
         version: link:../db
-      '@ios/distribution':
+      '@troupe/distribution':
         specifier: workspace:*
         version: link:../distribution
-      '@ios/formats':
+      '@troupe/formats':
         specifier: workspace:*
         version: link:../formats
-      '@ios/generator':
+      '@troupe/generator':
         specifier: workspace:*
         version: link:../generator
-      '@ios/knowledge':
+      '@troupe/knowledge':
         specifier: workspace:*
         version: link:../knowledge
-      '@ios/media':
+      '@troupe/media':
         specifier: workspace:*
         version: link:../media
-      '@ios/production':
+      '@troupe/production':
         specifier: workspace:*
         version: link:../production
-      '@ios/products':
+      '@troupe/products':
         specifier: workspace:*
         version: link:../products
-      '@ios/profit':
+      '@troupe/profit':
         specifier: workspace:*
         version: link:../profit
-      '@ios/providers':
+      '@troupe/providers':
         specifier: workspace:*
         version: link:../providers
-      '@ios/radar':
+      '@troupe/radar':
         specifier: workspace:*
         version: link:../radar
-      '@ios/secrets':
+      '@troupe/secrets':
         specifier: workspace:*
         version: link:../secrets
-      '@ios/world':
+      '@troupe/world':
         specifier: workspace:*
         version: link:../world
 
   packages/world:
     dependencies:
-      '@ios/agents':
+      '@troupe/agents':
         specifier: workspace:*
         version: link:../agents
-      '@ios/content':
+      '@troupe/content':
         specifier: workspace:*
         version: link:../content
-      '@ios/core':
+      '@troupe/core':
         specifier: workspace:*
         version: link:../core
-      '@ios/db':
+      '@troupe/db':
         specifier: workspace:*
         version: link:../db
-      '@ios/providers':
+      '@troupe/env':
+        specifier: workspace:*
+        version: link:../env
+      '@troupe/providers':
         specifier: workspace:*
         version: link:../providers
-      '@ios/secrets':
+      '@troupe/secrets':
         specifier: workspace:*
         version: link:../secrets
     devDependencies:
-      '@ios/generator':
+      '@troupe/generator':
         specifier: workspace:*
         version: link:../generator
 
