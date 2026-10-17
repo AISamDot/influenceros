@@ -6,9 +6,9 @@
 
 ## Ground rules
 - **Repository and files**
-  - The git directory lives outside iCloud at `~/Library/Application Support/InfluencerOS/vcs/influencer-os.git`.
-  - Builders work in the dev worktree at `~/Library/Application Support/InfluencerOS/worktrees/dev` (branch `dev`), where `node_modules` lives.
-  - The Desktop folder `Hossam/influencer-os` is the `main` checkout. It is fast-forwarded at milestone ends.
+  - The git directory lives outside iCloud at `~/Library/Application Support/TroupeHouse/vcs/troupehouse.git`.
+  - Builders work in the dev worktree at `~/Library/Application Support/TroupeHouse/worktrees/dev` (branch `dev`), where `node_modules` lives.
+  - The Desktop folder `Hossam/troupe-house` is the `main` checkout. It is fast-forwarded at milestone ends.
 - **Commits:** local checkpoint commits are fine. Push `dev` and `main` to `origin` at milestone ends (owner-approved, 14 Oct). Never commit secrets.
 - **Stack:**
   - Node 22 (`~/.nvm` v22.23.3), pnpm 10, TypeScript and a pnpm monorepo.
